@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f1ea;
+  --foreground: #12241c;
+  --brand-deep: #0f2a1f;
+  --brand-green: #1f6b45;
+  --brand-gold: #d4b46a;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+@media print {
+  body {
+    background: white !important;
+  }
+
+  header,
+  nav,
+  .print\:hidden,
+  button,
+  form,
+  aside {
+    display: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  #propuesta-comercial,
+  #informe-tecnico {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+}
