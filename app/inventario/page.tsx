@@ -67,6 +67,9 @@ export default function InventarioPage() {
   const [priceEditMode, setPriceEditMode] = useState<"COP" | "USD">("COP");
   const [savedFlash, setSavedFlash] = useState("");
   const [query, setQuery] = useState("");
+  const [openCats, setOpenCats] = useState<Partial<Record<EquipmentCategory, boolean>>>(
+    {}
+  );
 
   useEffect(() => {
     const inv = loadInventory();
@@ -84,6 +87,21 @@ export default function InventarioPage() {
       return `${i.name} ${i.brand} ${i.model}`.toLowerCase().includes(q);
     });
   }, [items, filter, query]);
+
+  const grouped = useMemo(
+    () =>
+      CATEGORIES.map((category) => ({
+        category,
+        items: filtered.filter((i) => i.category === category),
+      })).filter((g) => (filter === "all" ? true : g.category === filter)),
+    [filtered, filter]
+  );
+
+  function isCatOpen(category: EquipmentCategory) {
+    if (filter !== "all") return true;
+    if (query.trim()) return true;
+    return Boolean(openCats[category]);
+  }
 
   function persist(next: InventoryItem[]) {
     setItems(next);
@@ -154,6 +172,7 @@ export default function InventarioPage() {
 
   function startEdit(item: InventoryItem) {
     window.scrollTo({ top: 0, behavior: "smooth" });
+    setOpenCats((s) => ({ ...s, [item.category]: true }));
     setEditingId(item.id);
     setForm({
       category: item.category,
@@ -610,131 +629,207 @@ export default function InventarioPage() {
             ))}
           </div>
 
-          <div className="space-y-3">
-            {filtered.map((item) => (
-              <article
-                key={item.id}
-                className={`rounded-2xl border bg-white p-4 shadow-sm transition ${
-                  item.active ? "border-[#ddd6c8]" : "border-dashed border-[#c9bfad] opacity-70"
-                }`}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-semibold tracking-[0.18em] text-[#8a6b2a] uppercase">
-                      {CATEGORY_LABELS[item.category]}
-                      {item.mountType ? ` · ${MOUNT_LABELS[item.mountType]}` : ""}
-                    </p>
-                    <h4 className="mt-0.5 text-base font-semibold">{item.name}</h4>
-                    <p className="text-sm text-[#4d5c55]">
-                      {item.brand} {item.model}
-                      {item.capacity != null ? ` · ${item.capacity} ${item.unit === "módulo" && item.category === "panel" ? "Wp" : ""}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-end justify-end gap-3">
-                    <InlinePrice
-                      priceCOP={item.priceCOP}
-                      priceUSD={item.priceUSD}
-                      onCommit={(raw) => updatePriceCOP(item.id, raw)}
-                    />
-                    <label className="min-w-[88px] text-right text-sm">
-                      <span className="block text-[10px] font-semibold tracking-wide text-[#8a6b2a] uppercase">
-                        Ganancia %
-                      </span>
-                      <input
-                        className="mt-0.5 w-full rounded-lg border border-[#d8d2c4] bg-[#fbfaf6] px-2 py-1.5 text-right font-semibold outline-none ring-[#1f6b45] focus:ring-2"
-                        defaultValue={item.marginPercent ?? 0}
-                        key={`${item.id}-m-${item.marginPercent}`}
-                        inputMode="decimal"
-                        onBlur={(e) => {
-                          const m = Number(e.target.value.replace(",", "."));
-                          if (!Number.isFinite(m)) return;
-                          persist(
-                            items.map((i) =>
-                              i.id === item.id
-                                ? { ...i, marginPercent: m, updatedAt: new Date().toISOString() }
-                                : i
-                            )
-                          );
-                        }}
-                      />
-                    </label>
-                    <label className="flex items-center gap-1 pb-2 text-[11px] text-[#4d5c55]">
-                      <input
-                        type="checkbox"
-                        checked={item.applyIva}
-                        onChange={(e) =>
-                          persist(
-                            items.map((i) =>
-                              i.id === item.id
-                                ? {
-                                    ...i,
-                                    applyIva: e.target.checked,
-                                    updatedAt: new Date().toISOString(),
-                                  }
-                                : i
-                            )
-                          )
-                        }
-                      />
-                      IVA
-                    </label>
-                  </div>
-                  <p className="mt-1 w-full text-right text-xs text-[#1f6b45]">
-                    Venta {copFmt.format(saleUnitCOP(item))}
-                    {item.applyIva ? " + IVA" : " sin IVA"}
-                    {item.stock != null ? ` · Stock ${item.stock}` : ""}
-                    {item.leadTimeDays ? ` · ${item.leadTimeDays} días` : ""}
-                  </p>
-                  {getPriceHistory(item.id).length > 1 ? (
-                    <p className="mt-1 w-full text-right text-[10px] text-[#8a7f70]">
-                      Historial:{" "}
-                      {getPriceHistory(item.id)
-                        .slice(-4)
-                        .map((h) => copFmt.format(h.priceCOP))
-                        .join(" → ")}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {item.isDefault ? (
-                    <span className="rounded-full bg-[#1f6b45] px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase">
-                      Default cotizador
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setAsDefault(item.id)}
-                      className="rounded-full bg-[#f0ebe3] px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-[#4d5c55] uppercase hover:bg-[#1f6b45] hover:text-white"
+          <div className="space-y-2">
+            {grouped.map((group) => {
+              const open = isCatOpen(group.category);
+              return (
+                <section
+                  key={group.category}
+                  className="overflow-hidden rounded-2xl border border-[#ddd6c8] bg-white"
+                >
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() =>
+                      setOpenCats((s) => ({
+                        ...s,
+                        [group.category]: !isCatOpen(group.category),
+                      }))
+                    }
+                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                  >
+                    <div>
+                      <h3 className="text-base font-semibold">
+                        {CATEGORY_LABELS[group.category]}
+                      </h3>
+                      <p className="text-xs text-[#6d7c74]">
+                        {group.items.length} equipo
+                        {group.items.length === 1 ? "" : "s"}
+                        {!open && group.items[0]
+                          ? ` · ${group.items[0].brand}`
+                          : ""}
+                      </p>
+                    </div>
+                    <span
+                      aria-hidden
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fbfaf6] text-lg font-semibold text-[#1f6b45]"
                     >
-                      Usar por defecto
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => toggleActive(item.id)}
-                    className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ring-1 ring-[#d8d2c4]"
-                  >
-                    {item.active ? "Desactivar" : "Activar"}
+                      {open ? "−" : "+"}
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => startEdit(item)}
-                    className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ring-1 ring-[#d8d2c4]"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-[#9b2c2c] uppercase ring-1 ring-[#e8cfcf]"
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </article>
-            ))}
-            {filtered.length === 0 ? (
+                  {open ? (
+                    <div className="space-y-3 border-t border-[#eee8dc] px-3 py-3">
+                      {group.items.length === 0 ? (
+                        <p className="px-1 py-4 text-center text-sm text-[#6d7c74]">
+                          No hay equipos en esta categoría.
+                        </p>
+                      ) : (
+                        group.items.map((item) => (
+                          <article
+                            key={item.id}
+                            className={`rounded-xl border bg-[#fbfaf6] p-4 shadow-sm transition ${
+                              item.active
+                                ? "border-[#ddd6c8]"
+                                : "border-dashed border-[#c9bfad] opacity-70"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-[10px] font-semibold tracking-[0.18em] text-[#8a6b2a] uppercase">
+                                  {item.mountType
+                                    ? MOUNT_LABELS[item.mountType]
+                                    : CATEGORY_LABELS[item.category]}
+                                </p>
+                                <h4 className="mt-0.5 text-base font-semibold">
+                                  {item.name}
+                                </h4>
+                                <p className="text-sm text-[#4d5c55]">
+                                  {item.brand} {item.model}
+                                  {item.capacity != null
+                                    ? ` · ${item.capacity} ${
+                                        item.unit === "módulo" &&
+                                        item.category === "panel"
+                                          ? "Wp"
+                                          : ""
+                                      }`
+                                    : ""}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-end justify-end gap-3">
+                                <InlinePrice
+                                  priceCOP={item.priceCOP}
+                                  priceUSD={item.priceUSD}
+                                  onCommit={(raw) =>
+                                    updatePriceCOP(item.id, raw)
+                                  }
+                                />
+                                <label className="min-w-[88px] text-right text-sm">
+                                  <span className="block text-[10px] font-semibold tracking-wide text-[#8a6b2a] uppercase">
+                                    Ganancia %
+                                  </span>
+                                  <input
+                                    className="mt-0.5 w-full rounded-lg border border-[#d8d2c4] bg-white px-2 py-1.5 text-right font-semibold outline-none ring-[#1f6b45] focus:ring-2"
+                                    defaultValue={item.marginPercent ?? 0}
+                                    key={`${item.id}-m-${item.marginPercent}`}
+                                    inputMode="decimal"
+                                    onBlur={(e) => {
+                                      const m = Number(
+                                        e.target.value.replace(",", ".")
+                                      );
+                                      if (!Number.isFinite(m)) return;
+                                      persist(
+                                        items.map((i) =>
+                                          i.id === item.id
+                                            ? {
+                                                ...i,
+                                                marginPercent: m,
+                                                updatedAt:
+                                                  new Date().toISOString(),
+                                              }
+                                            : i
+                                        )
+                                      );
+                                    }}
+                                  />
+                                </label>
+                                <label className="flex items-center gap-1 pb-2 text-[11px] text-[#4d5c55]">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.applyIva}
+                                    onChange={(e) =>
+                                      persist(
+                                        items.map((i) =>
+                                          i.id === item.id
+                                            ? {
+                                                ...i,
+                                                applyIva: e.target.checked,
+                                                updatedAt:
+                                                  new Date().toISOString(),
+                                              }
+                                            : i
+                                        )
+                                      )
+                                    }
+                                  />
+                                  IVA
+                                </label>
+                              </div>
+                              <p className="mt-1 w-full text-right text-xs text-[#1f6b45]">
+                                Venta {copFmt.format(saleUnitCOP(item))}
+                                {item.applyIva ? " + IVA" : " sin IVA"}
+                                {item.stock != null
+                                  ? ` · Stock ${item.stock}`
+                                  : ""}
+                                {item.leadTimeDays
+                                  ? ` · ${item.leadTimeDays} días`
+                                  : ""}
+                              </p>
+                              {getPriceHistory(item.id).length > 1 ? (
+                                <p className="mt-1 w-full text-right text-[10px] text-[#8a7f70]">
+                                  Historial:{" "}
+                                  {getPriceHistory(item.id)
+                                    .slice(-4)
+                                    .map((h) => copFmt.format(h.priceCOP))
+                                    .join(" → ")}
+                                </p>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {item.isDefault ? (
+                                <span className="rounded-full bg-[#1f6b45] px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase">
+                                  Default cotizador
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setAsDefault(item.id)}
+                                  className="rounded-full bg-[#f0ebe3] px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-[#4d5c55] uppercase hover:bg-[#1f6b45] hover:text-white"
+                                >
+                                  Usar por defecto
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleActive(item.id)}
+                                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ring-1 ring-[#d8d2c4]"
+                              >
+                                {item.active ? "Desactivar" : "Activar"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => startEdit(item)}
+                                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ring-1 ring-[#d8d2c4]"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeItem(item.id)}
+                                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-[#9b2c2c] uppercase ring-1 ring-[#e8cfcf]"
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </article>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
+            {filtered.length === 0 && filter !== "all" ? (
               <p className="rounded-2xl border border-dashed border-[#c9bfad] p-8 text-center text-sm text-[#6d7c74]">
                 No hay equipos en esta categoría.
               </p>
