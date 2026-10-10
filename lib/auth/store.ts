@@ -26,7 +26,7 @@ export type PublicUser = Omit<StoredUser, "passwordHash" | "passwordSalt">;
 function seedCeo(): StoredUser {
   const { hash, salt } = hashPassword(DEFAULT_CEO_PASSWORD);
   return {
-    id: crypto.randomUUID(),
+    id: "ceo-camilo-genera",
     username: DEFAULT_CEO_USERNAME,
     name: "Camilo",
     role: "ceo",

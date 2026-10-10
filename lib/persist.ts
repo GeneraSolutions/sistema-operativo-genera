@@ -13,21 +13,32 @@ export function hasCloudKv(): boolean {
   return Boolean(kvUrl() && kvToken());
 }
 
+/** En Vercel el código es de solo lectura; /tmp sí se puede escribir. */
 function filePath() {
+  if (process.env.VERCEL) {
+    return path.join("/tmp", "genera-os", "kv.json");
+  }
   return path.join(process.cwd(), "data", "kv.json");
 }
+
+let memory: Record<string, unknown> = {};
 
 function readFileMap(): Record<string, unknown> {
   try {
     return JSON.parse(readFileSync(filePath(), "utf8")) as Record<string, unknown>;
   } catch {
-    return {};
+    return { ...memory };
   }
 }
 
 function writeFileMap(map: Record<string, unknown>) {
-  mkdirSync(path.dirname(filePath()), { recursive: true });
-  writeFileSync(filePath(), JSON.stringify(map), "utf8");
+  memory = map;
+  try {
+    mkdirSync(path.dirname(filePath()), { recursive: true });
+    writeFileSync(filePath(), JSON.stringify(map), "utf8");
+  } catch {
+    /* serverless sin disco: queda en memoria de la instancia */
+  }
 }
 
 async function kvCommand(cmd: unknown[]): Promise<unknown> {
