@@ -5,8 +5,28 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import {
   SPECIALISTS,
+  specialistsByGroup,
   type SpecialistId,
 } from "@/lib/specialists";
+import {
+  loadSpecialistManuals,
+  upsertSpecialistManual,
+  type SpecialistManuals,
+} from "@/lib/specialist-manuals";
+import { ROLE_LABELS, type Role } from "@/lib/auth/roles";
+
+type TeamConsulta = {
+  id: string;
+  createdAt: string;
+  userId: string;
+  userName: string;
+  username: string;
+  role: Role;
+  mode: "specialist" | "mesa";
+  specialistLabel: string;
+  question: string;
+  answer: string;
+};
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -23,12 +43,43 @@ export default function InteligenciaPage() {
   const [error, setError] = useState("");
   const [offlineNote, setOfflineNote] = useState(false);
   const [suggestedKwp, setSuggestedKwp] = useState("50");
+  const [manuals, setManuals] = useState<SpecialistManuals>({});
+  const [manualDraft, setManualDraft] = useState("");
+  const [manualSaved, setManualSaved] = useState(false);
+  const [consultas, setConsultas] = useState<TeamConsulta[]>([]);
+  const [viewerId, setViewerId] = useState("");
+  const [viewerRole, setViewerRole] = useState<Role | "">("");
+  const [openConsulta, setOpenConsulta] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
     () => SPECIALISTS.find((s) => s.id === specialistId)!,
     [specialistId]
   );
+
+  async function loadConsultas() {
+    try {
+      const res = await fetch("/api/inteligencia/consultas");
+      const data = await res.json();
+      if (!res.ok) return;
+      setConsultas(data.consultas ?? []);
+      setViewerId(data.viewerId ?? "");
+      setViewerRole(data.viewerRole ?? "");
+    } catch {
+      /* silencioso */
+    }
+  }
+
+  useEffect(() => {
+    const loaded = loadSpecialistManuals();
+    setManuals(loaded);
+    void loadConsultas();
+  }, []);
+
+  useEffect(() => {
+    setManualDraft(manuals[specialistId] ?? "");
+    setManualSaved(false);
+  }, [specialistId, manuals]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -57,6 +108,7 @@ export default function InteligenciaPage() {
           specialistId: mode === "specialist" ? specialistId : undefined,
           message: text,
           history: nextHistory.map(({ role, content }) => ({ role, content })),
+          manuals,
         }),
       });
       const data = await res.json();
@@ -78,6 +130,7 @@ export default function InteligenciaPage() {
       if (match) {
         setSuggestedKwp(match[1].replace(",", "."));
       }
+      void loadConsultas();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {
@@ -99,14 +152,15 @@ export default function InteligenciaPage() {
   return (
     <AppShell
       title="Centro de Inteligencia"
-      subtitle="Ingeniería · Legal · Tributario · Colombia"
+      subtitle="14 especialistas · Manual GENERA · Colombia"
     >
       <div className="mb-6">
         <h2 className="text-2xl font-semibold">Especialistas virtuales</h2>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-          Seis perfiles con prompts de sistema calibrados para el marco
-          regulatorio y técnico colombiano. Active la{" "}
-          <strong>Mesa Redonda</strong> para consultas cruzadas simultáneas.
+          Catorce perfiles para no dejar pasar diseño, obra, SST, RETIE, O&M,
+          comercial, compras ni licencias. Pegue el manual de cada uno: manda
+          sobre el conocimiento genérico. La{" "}
+          <strong>Mesa Redonda</strong> cruza a todo el equipo.
         </p>
       </div>
 
@@ -136,45 +190,68 @@ export default function InteligenciaPage() {
       </div>
 
       {mode === "specialist" ? (
-        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 print:hidden">
-          {SPECIALISTS.map((s) => {
-            const selected = specialistId === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSpecialistId(s.id)}
-                className={`rounded-2xl border p-4 text-left transition ${
-                  selected
-                    ? "border-transparent bg-[#0f2a1f] text-white shadow-lg"
-                    : "border-[#ddd6c8] bg-white hover:border-[#1f6b45]/40"
-                }`}
-              >
-                <span
-                  className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase"
-                  style={{
-                    backgroundColor: selected ? "rgba(212,180,106,0.2)" : `${s.accent}18`,
-                    color: selected ? "#d4b46a" : s.accent,
-                  }}
-                >
-                  {s.shortTitle}
-                </span>
-                <p className="mt-2 text-base font-semibold">{s.name}</p>
-                <p
-                  className={`text-sm ${selected ? "text-[#c9d7cf]" : "text-[#4d5c55]"}`}
-                >
-                  {s.title}
-                </p>
-                <p
-                  className={`mt-2 text-xs leading-5 ${
-                    selected ? "text-[#a8c4b6]" : "text-[#6d7c74]"
-                  }`}
-                >
-                  {s.description}
-                </p>
-              </button>
-            );
-          })}
+        <div className="mb-6 space-y-5 print:hidden">
+          {specialistsByGroup().map((block) => (
+            <div key={block.group}>
+              <p className="mb-2 text-[11px] font-semibold tracking-[0.2em] text-[#8a6b2a] uppercase">
+                {block.label}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {block.items.map((s) => {
+                  const selected = specialistId === s.id;
+                  const hasManual = Boolean(manuals[s.id]?.trim());
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSpecialistId(s.id)}
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        selected
+                          ? "border-transparent bg-[#0f2a1f] text-white shadow-lg"
+                          : "border-[#ddd6c8] bg-white hover:border-[#1f6b45]/40"
+                      }`}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span
+                          className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase"
+                          style={{
+                            backgroundColor: selected
+                              ? "rgba(212,180,106,0.2)"
+                              : `${s.accent}18`,
+                            color: selected ? "#d4b46a" : s.accent,
+                          }}
+                        >
+                          {s.shortTitle}
+                        </span>
+                        {hasManual ? (
+                          <span
+                            className={`text-[10px] font-semibold ${
+                              selected ? "text-[#d4b46a]" : "text-[#1f6b45]"
+                            }`}
+                          >
+                            Manual
+                          </span>
+                        ) : null}
+                      </span>
+                      <p className="mt-2 text-base font-semibold">{s.name}</p>
+                      <p
+                        className={`text-sm ${selected ? "text-[#c9d7cf]" : "text-[#4d5c55]"}`}
+                      >
+                        {s.title}
+                      </p>
+                      <p
+                        className={`mt-2 text-xs leading-5 ${
+                          selected ? "text-[#a8c4b6]" : "text-[#6d7c74]"
+                        }`}
+                      >
+                        {s.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="mb-6 rounded-2xl border border-[#1a3d2e] bg-gradient-to-br from-[#0f2a1f] to-[#163d2c] p-5 text-white print:hidden">
@@ -182,12 +259,12 @@ export default function InteligenciaPage() {
             Mesa Redonda activa
           </p>
           <h3 className="mt-1 text-xl font-semibold">
-            Consulta cruzada de los 6 especialistas
+            Consulta cruzada de los 14 especialistas
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[#c9d7cf]">
-            FV · Conexión/CREG · Estructural · Civil · Contador Ley 1715 · Abogado
-            EPC/PPA. La respuesta sintetiza riesgos cruzados y parámetros para el
-            cotizador.
+            Diseño, potencia, SCADA, O&M, SST, RETIE, tributario, contratos,
+            comercial, compras y ambiental. Si hay manuales pegados, la mesa los
+            usa como doctrina GENERA.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {SPECIALISTS.map((s) => (
@@ -316,11 +393,115 @@ export default function InteligenciaPage() {
             <h3 className="mt-1 font-semibold">
               {mode === "mesa" ? "Moderador Mesa Redonda" : active.name}
             </h3>
-            <p className="mt-2 max-h-48 overflow-y-auto text-xs leading-5 text-[#4d5c55]">
+            <p className="mt-2 max-h-32 overflow-y-auto text-xs leading-5 text-[#4d5c55]">
               {mode === "mesa"
-                ? "Síntesis cruzada de FV, CREG/UPME, NSR-10, obra civil, Ley 1715 y contratos EPC/PPA."
+                ? "Síntesis de los 14 flancos. Los manuales pegados mandan sobre el modelo genérico."
                 : active.systemPrompt.slice(0, 420) + "…"}
             </p>
+          </div>
+
+          {mode === "specialist" ? (
+            <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
+              <p className="text-xs tracking-[0.18em] text-[#8a6b2a] uppercase">
+                Manual GENERA
+              </p>
+              <h3 className="mt-1 font-semibold">Doctrina de {active.shortTitle}</h3>
+              <p className="mt-1 text-xs leading-5 text-[#4d5c55]">
+                {active.manualHint} Se guarda en este navegador y se inyecta en
+                cada consulta de este perfil.
+              </p>
+              <textarea
+                className="mt-3 w-full resize-y rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-xs leading-5 outline-none ring-[#1f6b45] focus:ring-2"
+                rows={10}
+                placeholder="Pegue aquí procedimientos, checklists, marcas homologadas, lo que nunca se improvisa…"
+                value={manualDraft}
+                onChange={(e) => {
+                  setManualDraft(e.target.value);
+                  setManualSaved(false);
+                }}
+              />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-[#8a7f70]">
+                  {manualDraft.trim().length.toLocaleString("es-CO")} caracteres
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = upsertSpecialistManual(
+                      specialistId,
+                      manualDraft,
+                      manuals
+                    );
+                    setManuals(next);
+                    setManualSaved(true);
+                  }}
+                  className="rounded-xl bg-[#0f2a1f] px-3 py-2 text-xs font-semibold text-white"
+                >
+                  {manualSaved ? "Manual guardado" : "Guardar manual"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5 text-xs leading-5 text-[#4d5c55]">
+              <p className="font-semibold text-[#12241c]">Manuales en la mesa</p>
+              <p className="mt-1">
+                {
+                  SPECIALISTS.filter((s) => manuals[s.id]?.trim()).length
+                }{" "}
+                de {SPECIALISTS.length} perfiles tienen doctrina pegada. Cargue
+                manuales en modo especialista; la mesa los lee todos.
+              </p>
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <p className="text-xs tracking-[0.18em] text-[#8a6b2a] uppercase">
+              Equipo
+            </p>
+            <h3 className="mt-1 font-semibold">Consultas del personal</h3>
+            <p className="mt-1 text-xs leading-5 text-[#4d5c55]">
+              {viewerRole === "ceo"
+                ? "Como CEO ve todas las consultas, incluidas las suyas (privadas para el resto)."
+                : "Ve las consultas del equipo. Las del CEO no aparecen aquí."}
+            </p>
+            <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+              {consultas.length === 0 ? (
+                <p className="text-xs text-[#6d7c74]">Aún no hay consultas visibles.</p>
+              ) : (
+                consultas.map((c) => {
+                  const mine = c.userId === viewerId;
+                  const ceoPrivate = c.role === "ceo";
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() =>
+                        setOpenConsulta((id) => (id === c.id ? null : c.id))
+                      }
+                      className="w-full rounded-xl bg-[#f7f4ee] px-3 py-2 text-left text-xs"
+                    >
+                      <p className="font-semibold text-[#12241c]">
+                        {c.userName}
+                        {mine ? " · usted" : ""}
+                        {ceoPrivate && mine ? " · privada" : ""}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wide text-[#8a6b2a]">
+                        {ROLE_LABELS[c.role]} · {c.specialistLabel}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[#4d5c55]">{c.question}</p>
+                      {openConsulta === c.id ? (
+                        <div className="mt-2 whitespace-pre-wrap border-t border-[#eee8dc] pt-2 text-[#12241c]">
+                          <p className="font-medium">Pregunta</p>
+                          <p>{c.question}</p>
+                          <p className="mt-2 font-medium">Respuesta</p>
+                          <p>{c.answer}</p>
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5">

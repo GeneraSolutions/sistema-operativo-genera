@@ -10,10 +10,14 @@ import {
   type StructureMountType,
   type TrmConfig,
 } from "@/types/inventory";
+import { saveDatasheetFile } from "@/lib/datasheets";
+import { getPriceHistory, recordPrice } from "@/lib/price-history";
+import { saleUnitCOP } from "@/lib/pricing";
 import {
   copToUsd,
   loadInventory,
   loadTrm,
+  restoreOfficialCatalog,
   saveInventory,
   saveTrm,
   usdToCop,
@@ -46,6 +50,11 @@ const emptyForm = {
   isDefault: false,
   active: true,
   notes: "",
+  marginPercent: "0",
+  applyIva: true,
+  stock: "",
+  leadTimeDays: "",
+  datasheetUrl: "",
 };
 
 export default function InventarioPage() {
@@ -57,6 +66,7 @@ export default function InventarioPage() {
   const [form, setForm] = useState(emptyForm);
   const [priceEditMode, setPriceEditMode] = useState<"COP" | "USD">("COP");
   const [savedFlash, setSavedFlash] = useState("");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const inv = loadInventory();
@@ -67,9 +77,13 @@ export default function InventarioPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return items;
-    return items.filter((i) => i.category === filter);
-  }, [items, filter]);
+    const q = query.trim().toLowerCase();
+    return items.filter((i) => {
+      if (filter !== "all" && i.category !== filter) return false;
+      if (!q) return true;
+      return `${i.name} ${i.brand} ${i.model}`.toLowerCase().includes(q);
+    });
+  }, [items, filter, query]);
 
   function persist(next: InventoryItem[]) {
     setItems(next);
@@ -88,10 +102,9 @@ export default function InventarioPage() {
     };
     setTrm(next);
     saveTrm(next);
-    // Recalcular precios COP desde USD para todos (fuente USD)
     const converted = items.map((item) => ({
       ...item,
-      priceCOP: usdToCop(item.priceUSD, value),
+      priceUSD: copToUsd(item.priceCOP, value),
       updatedAt: new Date().toISOString(),
     }));
     persist(converted);
@@ -120,7 +133,27 @@ export default function InventarioPage() {
     }
   }
 
+  function updatePriceCOP(id: string, raw: string) {
+    const cop = parseCopInput(raw);
+    if (!Number.isFinite(cop) || cop < 0) return;
+    recordPrice(id, Math.round(cop));
+    persist(
+      items.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              priceCOP: Math.round(cop),
+              priceUSD: copToUsd(cop, trm.trm),
+              updatedAt: new Date().toISOString(),
+            }
+          : i
+      )
+    );
+    setSavedFlash("Precio actualizado");
+  }
+
   function startEdit(item: InventoryItem) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
     setEditingId(item.id);
     setForm({
       category: item.category,
@@ -135,6 +168,11 @@ export default function InventarioPage() {
       isDefault: item.isDefault,
       active: item.active,
       notes: item.notes ?? "",
+      marginPercent: String(item.marginPercent ?? 0),
+      applyIva: item.applyIva ?? item.category !== "panel",
+      stock: item.stock != null ? String(item.stock) : "",
+      leadTimeDays: item.leadTimeDays != null ? String(item.leadTimeDays) : "",
+      datasheetUrl: item.datasheetUrl ?? "",
     });
   }
 
@@ -165,8 +203,14 @@ export default function InventarioPage() {
       isDefault: form.isDefault,
       active: form.active,
       notes: form.notes.trim() || undefined,
+      marginPercent: Number(form.marginPercent) || 0,
+      applyIva: form.applyIva,
+      stock: form.stock ? Number(form.stock) : undefined,
+      leadTimeDays: form.leadTimeDays ? Number(form.leadTimeDays) : undefined,
+      datasheetUrl: form.datasheetUrl.trim() || undefined,
       updatedAt: new Date().toISOString(),
     };
+    recordPrice(payload.id, payload.priceCOP);
 
     let next = [...items];
     if (payload.isDefault) {
@@ -220,10 +264,20 @@ export default function InventarioPage() {
         <div>
           <h2 className="text-2xl font-semibold">Inventario de equipos</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-[#4d5c55]">
-            Administre paneles, inversores, baterías, estructuras, cableado y
-            protecciones. Los precios se convierten automáticamente con la TRM.
-            Marque el equipo por defecto de cada categoría para el cotizador.
+            Puede cambiar el precio COP de cada equipo en la lista (se guarda al
+            salir del campo o al pulsar Enter). El cotizador usa esos valores de
+            inmediato. La TRM solo actualiza el equivalente en USD; no pisa sus COP.
           </p>
+          <button
+            type="button"
+            className="mt-3 text-sm font-medium text-[#1f6b45] underline"
+            onClick={() => {
+              persist(restoreOfficialCatalog());
+              setSavedFlash("Lista oficial restaurada");
+            }}
+          >
+            Restaurar lista oficial de precios Genera
+          </button>
         </div>
         {savedFlash ? (
           <span className="rounded-full bg-[#1f6b45]/15 px-3 py-1 text-xs font-semibold text-[#1f6b45]">
@@ -241,8 +295,8 @@ export default function InventarioPage() {
             {trm.source ? ` · ${trm.source}` : ""}
           </p>
           <p className="mt-1 text-xs text-[#6d7c74]">
-            Al guardar se recalculan los precios COP desde USD del catálogo.
-            Edición activa: {priceEditMode}.
+            Al aplicar TRM se recalcula el USD a partir del COP (el peso colombiano
+            es la fuente de verdad).
           </p>
         </div>
         <div className="flex items-end gap-2">
@@ -334,7 +388,7 @@ export default function InventarioPage() {
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium">Precio COP</span>
+                <span className="mb-1 block font-medium">Costo COP</span>
                 <input
                   className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
                   value={form.priceCOP}
@@ -390,8 +444,61 @@ export default function InventarioPage() {
               )}
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Stock (und)</span>
+                <input
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={form.stock}
+                  onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                  inputMode="numeric"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Lead time (días)</span>
+                <input
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={form.leadTimeDays}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, leadTimeDays: e.target.value }))
+                  }
+                  inputMode="numeric"
+                />
+              </label>
+            </div>
             <label className="block text-sm">
-              <span className="mb-1 block font-medium">Notas</span>
+              <span className="mb-1 block font-medium">URL ficha técnica</span>
+              <input
+                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                placeholder="https://…pdf o cargue un archivo abajo"
+                value={form.datasheetUrl}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, datasheetUrl: e.target.value }))
+                }
+              />
+            </label>
+            {editingId ? (
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">PDF ficha técnica</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="w-full text-sm"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !editingId) return;
+                    await saveDatasheetFile(editingId, file);
+                    setSavedFlash("Ficha técnica guardada");
+                  }}
+                />
+              </label>
+            ) : (
+              <p className="text-xs text-[#6d7c74]">
+                Guarde el equipo primero para adjuntar el PDF de la ficha.
+              </p>
+            )}
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium">Notas internas</span>
               <textarea
                 className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
                 rows={2}
@@ -399,6 +506,43 @@ export default function InventarioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               />
             </label>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Ganancia %</span>
+                <input
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={form.marginPercent}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, marginPercent: e.target.value }))
+                  }
+                  inputMode="decimal"
+                />
+              </label>
+              <label className="flex items-end gap-2 pb-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.applyIva}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, applyIva: e.target.checked }))
+                  }
+                />
+                Aplica IVA 19%
+              </label>
+            </div>
+            {Number(form.priceCOP) > 0 ? (
+              <p className="text-sm text-[#4d5c55]">
+                Precio de venta:{" "}
+                <strong>
+                  {copFmt.format(
+                    Math.round(
+                      Number(form.priceCOP) *
+                        (1 + (Number(form.marginPercent) || 0) / 100)
+                    )
+                  )}
+                </strong>
+              </p>
+            ) : null}
 
             <div className="flex flex-wrap gap-4 text-sm">
               <label className="flex items-center gap-2">
@@ -444,6 +588,12 @@ export default function InventarioPage() {
         </section>
 
         <section className="space-y-4">
+          <input
+            className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2.5 text-sm outline-none ring-[#1f6b45] focus:ring-2"
+            placeholder="Buscar por nombre, marca o modelo…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <div className="flex flex-wrap gap-1.5">
             <FilterChip
               active={filter === "all"}
@@ -480,10 +630,70 @@ export default function InventarioPage() {
                       {item.capacity != null ? ` · ${item.capacity} ${item.unit === "módulo" && item.category === "panel" ? "Wp" : ""}` : ""}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-lg font-semibold">{copFmt.format(item.priceCOP)}</p>
-                    <p className="text-xs text-[#6d7c74]">{usdFmt.format(item.priceUSD)}</p>
+                  <div className="flex flex-wrap items-end justify-end gap-3">
+                    <InlinePrice
+                      priceCOP={item.priceCOP}
+                      priceUSD={item.priceUSD}
+                      onCommit={(raw) => updatePriceCOP(item.id, raw)}
+                    />
+                    <label className="min-w-[88px] text-right text-sm">
+                      <span className="block text-[10px] font-semibold tracking-wide text-[#8a6b2a] uppercase">
+                        Ganancia %
+                      </span>
+                      <input
+                        className="mt-0.5 w-full rounded-lg border border-[#d8d2c4] bg-[#fbfaf6] px-2 py-1.5 text-right font-semibold outline-none ring-[#1f6b45] focus:ring-2"
+                        defaultValue={item.marginPercent ?? 0}
+                        key={`${item.id}-m-${item.marginPercent}`}
+                        inputMode="decimal"
+                        onBlur={(e) => {
+                          const m = Number(e.target.value.replace(",", "."));
+                          if (!Number.isFinite(m)) return;
+                          persist(
+                            items.map((i) =>
+                              i.id === item.id
+                                ? { ...i, marginPercent: m, updatedAt: new Date().toISOString() }
+                                : i
+                            )
+                          );
+                        }}
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 pb-2 text-[11px] text-[#4d5c55]">
+                      <input
+                        type="checkbox"
+                        checked={item.applyIva}
+                        onChange={(e) =>
+                          persist(
+                            items.map((i) =>
+                              i.id === item.id
+                                ? {
+                                    ...i,
+                                    applyIva: e.target.checked,
+                                    updatedAt: new Date().toISOString(),
+                                  }
+                                : i
+                            )
+                          )
+                        }
+                      />
+                      IVA
+                    </label>
                   </div>
+                  <p className="mt-1 w-full text-right text-xs text-[#1f6b45]">
+                    Venta {copFmt.format(saleUnitCOP(item))}
+                    {item.applyIva ? " + IVA" : " sin IVA"}
+                    {item.stock != null ? ` · Stock ${item.stock}` : ""}
+                    {item.leadTimeDays ? ` · ${item.leadTimeDays} días` : ""}
+                  </p>
+                  {getPriceHistory(item.id).length > 1 ? (
+                    <p className="mt-1 w-full text-right text-[10px] text-[#8a7f70]">
+                      Historial:{" "}
+                      {getPriceHistory(item.id)
+                        .slice(-4)
+                        .map((h) => copFmt.format(h.priceCOP))
+                        .join(" → ")}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -533,6 +743,48 @@ export default function InventarioPage() {
         </section>
       </div>
     </AppShell>
+  );
+}
+
+function parseCopInput(raw: string): number {
+  const compact = raw.replace(/\s/g, "").replace(/[.$]/g, "").replace(",", ".");
+  const n = Number(compact);
+  return n;
+}
+
+function InlinePrice({
+  priceCOP,
+  priceUSD,
+  onCommit,
+}: {
+  priceCOP: number;
+  priceUSD: number;
+  onCommit: (raw: string) => void;
+}) {
+  const [draft, setDraft] = useState(String(priceCOP));
+  useEffect(() => {
+    setDraft(String(priceCOP));
+  }, [priceCOP]);
+
+  return (
+    <div className="min-w-[160px] text-right">
+      <label className="block text-[10px] font-semibold tracking-wide text-[#8a6b2a] uppercase">
+        Precio COP
+      </label>
+      <input
+        className="mt-0.5 w-full rounded-lg border border-[#d8d2c4] bg-[#fbfaf6] px-2 py-1.5 text-right text-base font-semibold outline-none ring-[#1f6b45] focus:ring-2"
+        value={draft}
+        inputMode="numeric"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => onCommit(draft)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      <p className="mt-0.5 text-xs text-[#6d7c74]">{usdFmt.format(priceUSD)}</p>
+    </div>
   );
 }
 

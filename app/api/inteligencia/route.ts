@@ -1,7 +1,10 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth/request";
+import { appendIntelligenceLog } from "@/lib/intelligence-log";
 import {
-  MESA_REDONDA_PROMPT,
+  composeMesaPrompt,
+  composeSpecialistPrompt,
   getSpecialist,
   type SpecialistId,
 } from "@/lib/specialists";
@@ -13,10 +16,15 @@ interface ChatBody {
   specialistId?: SpecialistId;
   message: string;
   history?: { role: "user" | "assistant"; content: string }[];
+  manuals?: Partial<Record<SpecialistId, string>>;
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const session = getSessionFromRequest(req);
+    if (!session) {
+      return NextResponse.json({ error: "No autenticado." }, { status: 401 });
+    }
     const body = (await req.json()) as ChatBody;
     const message = body.message?.trim();
 
@@ -27,7 +35,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let systemPrompt = MESA_REDONDA_PROMPT;
+    const manuals = body.manuals ?? {};
+    let systemPrompt = composeMesaPrompt(manuals);
     let label = "Mesa Redonda";
 
     if (body.mode === "specialist") {
@@ -44,14 +53,24 @@ export async function POST(req: NextRequest) {
           { status: 404 }
         );
       }
-      systemPrompt = specialist.systemPrompt;
+      systemPrompt = composeSpecialistPrompt(
+        specialist,
+        manuals[specialist.id]
+      );
       label = specialist.title;
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
+      const reply = buildOfflineReply(label, message, body.mode);
+      await appendIntelligenceLog(session, {
+        mode: body.mode,
+        specialistLabel: label,
+        question: message,
+        answer: reply,
+      });
       return NextResponse.json({
-        reply: buildOfflineReply(label, message, body.mode),
+        reply,
         offline: true,
         label,
       });
@@ -76,6 +95,13 @@ export async function POST(req: NextRequest) {
     const reply =
       completion.choices[0]?.message?.content?.trim() ||
       "No se obtuvo respuesta del modelo.";
+
+    await appendIntelligenceLog(session, {
+      mode: body.mode,
+      specialistLabel: label,
+      question: message,
+      answer: reply,
+    });
 
     return NextResponse.json({ reply, offline: false, label });
   } catch (err) {

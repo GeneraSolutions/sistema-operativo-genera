@@ -14,10 +14,14 @@ export interface InventoryItem {
   name: string;
   brand: string;
   model: string;
-  /** Precio unitario en COP */
+  /** Costo interno / compra unitario en COP */
   priceCOP: number;
-  /** Precio unitario en USD */
+  /** Costo interno unitario en USD */
   priceUSD: number;
+  /** Ganancia sobre el costo (ej: 20 = 20%) */
+  marginPercent: number;
+  /** Si el ítem genera IVA en la venta */
+  applyIva: boolean;
   /** Unidad de medida (Wp, kW, kWh, m, kit, etc.) */
   unit: string;
   /** Capacidad / potencia nominal cuando aplica */
@@ -29,6 +33,12 @@ export interface InventoryItem {
   /** Activo en catálogo */
   active: boolean;
   notes?: string;
+  /** Unidades disponibles en bodega */
+  stock?: number;
+  /** Días de importación / entrega si no hay stock */
+  leadTimeDays?: number;
+  /** URL de ficha técnica (fabricante) */
+  datasheetUrl?: string;
   updatedAt: string;
 }
 

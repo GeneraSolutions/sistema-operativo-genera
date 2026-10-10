@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
-import { CashFlowChart } from "@/components/CashFlowChart";
+import { EpcProposalView } from "@/components/proposal/EpcProposalView";
 import { Toggle } from "@/components/Toggle";
 import {
   filterByCategory,
@@ -13,23 +13,36 @@ import {
 } from "@/lib/inventory";
 import {
   calculateParametricQuote,
+  suggestQuantities,
   type MountPreference,
   type QuoteEquipmentSelection,
+  type QuoteQuantities,
 } from "@/lib/quote-engine";
+import { loadKits, type EquipmentKit } from "@/lib/kits";
+import { buildEpcProposal } from "@/lib/proposal-builder";
+import { saveProposal } from "@/lib/proposal-store";
 import {
-  ColombiaSolarFinancials,
-  type FinancialMetrics,
-  type SolarProjectInput,
-} from "@/types/financials";
+  deleteSavedQuote,
+  idsFromSelection,
+  loadSavedQuotes,
+  saveQuoteSnapshot,
+  type SavedQuote,
+} from "@/lib/saved-quotes";
+import {
+  applyCityPreset,
+  DEFAULT_TAX_CONFIG,
+  loadTaxConfig,
+  saveTaxConfig,
+  type ColombiaTaxConfig,
+} from "@/lib/colombia-tax";
 import type { InventoryItem } from "@/types/inventory";
 
+const numFmt = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
 const copFmt = new Intl.NumberFormat("es-CO", {
   style: "currency",
   currency: "COP",
   maximumFractionDigits: 0,
 });
-
-const numFmt = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
 
 export interface ProposalToggles {
   showTir: boolean;
@@ -58,8 +71,27 @@ function CotizadorInner() {
   const [includeBattery, setIncludeBattery] = useState(false);
   const [batteryKwh, setBatteryKwh] = useState(20);
   const [mount, setMount] = useState<MountPreference>("cubierta");
-  const [softCostPercent, setSoftCostPercent] = useState(18);
-  const [marginPercent, setMarginPercent] = useState(15);
+  const [overheadPercent, setOverheadPercent] = useState(3);
+  const [chargeIva, setChargeIva] = useState(true);
+  const [engineeringSaleCOP, setEngineeringSaleCOP] = useState(0);
+  const [engineeringCostCOP, setEngineeringCostCOP] = useState(0);
+  const [technicians, setTechnicians] = useState(3);
+  const [dailyWageCOP, setDailyWageCOP] = useState(90_000);
+  const [laborSaleCOP, setLaborSaleCOP] = useState(0);
+  const [laborMarginPercent, setLaborMarginPercent] = useState(25);
+  const [targetNetProfitCOP, setTargetNetProfitCOP] = useState(0);
+  const [clientWithholds, setClientWithholds] = useState(true);
+  const [clientGranContribuyente, setClientGranContribuyente] = useState(false);
+  const [taxConfig, setTaxConfig] = useState<ColombiaTaxConfig>(DEFAULT_TAX_CONFIG);
+  const [qty, setQty] = useState<QuoteQuantities>({
+    panels: 1,
+    inverters: 1,
+    batteries: 0,
+    structure: 1,
+    cabling: 12,
+    protectionDc: 1,
+    protectionAc: 1,
+  });
   const [selection, setSelection] = useState<QuoteEquipmentSelection>({
     panel: null,
     inverter: null,
@@ -72,8 +104,22 @@ function CotizadorInner() {
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
   const [applyLey1715, setApplyLey1715] = useState(true);
   const [clientName, setClientName] = useState("Cliente Corporativo");
+  const [clientCity, setClientCity] = useState("Bogotá");
+  const [monthlyConsumption, setMonthlyConsumption] = useState(800);
+  const [executionDays, setExecutionDays] = useState(7);
+  const [advancePercent, setAdvancePercent] = useState(70);
   const [linkFlash, setLinkFlash] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [openFolds, setOpenFolds] = useState({
+    params: true,
+    equipos: false,
+    ingenieria: false,
+    impuestos: false,
+    costeo: false,
+    propuesta: false,
+  });
+  const [kits, setKits] = useState<EquipmentKit[]>([]);
+  const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
 
   useEffect(() => {
     const items = loadInventory();
@@ -121,8 +167,32 @@ function CotizadorInner() {
     const client = searchParams.get("cliente");
     if (client) setClientName(client);
 
+    setKits(loadKits());
+    setSavedQuotes(loadSavedQuotes());
+    setTaxConfig(loadTaxConfig());
     setHydrated(true);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    setQty(
+      suggestQuantities(
+        systemKwp,
+        selection,
+        includeBattery,
+        batteryKwh,
+        12
+      )
+    );
+  }, [
+    hydrated,
+    systemKwp,
+    includeBattery,
+    batteryKwh,
+    selection.panel?.id,
+    selection.inverter?.id,
+    selection.battery?.id,
+  ]);
 
   // Sync structure when mount changes
   useEffect(() => {
@@ -148,8 +218,20 @@ function CotizadorInner() {
         mount,
         energyTariffCOP: energyTariff,
         selection,
-        softCostPercent,
-        marginPercent,
+        quantities: qty,
+        overheadPercent,
+        chargeIva,
+        engineeringSaleCOP,
+        engineeringCostCOP,
+        technicians,
+        dailyWageCOP,
+        laborDays: executionDays,
+        laborSaleCOP,
+        laborMarginPercent,
+        targetNetProfitCOP,
+        clientWithholds,
+        clientGranContribuyente,
+        taxConfig,
       }),
     [
       systemKwp,
@@ -159,31 +241,66 @@ function CotizadorInner() {
       mount,
       energyTariff,
       selection,
-      softCostPercent,
-      marginPercent,
+      qty,
+      overheadPercent,
+      chargeIva,
+      engineeringSaleCOP,
+      engineeringCostCOP,
+      technicians,
+      dailyWageCOP,
+      executionDays,
+      laborSaleCOP,
+      laborMarginPercent,
+      targetNetProfitCOP,
+      clientWithholds,
+      clientGranContribuyente,
+      taxConfig,
     ]
   );
 
-  const metrics: FinancialMetrics | null = useMemo(() => {
-    if (quote.totalCapexCOP <= 0 || quote.annualGenerationKWh <= 0) return null;
-    const input: SolarProjectInput = {
-      systemCostCOP: quote.totalCapexCOP,
-      annualGenerationKWh: quote.annualGenerationKWh,
-      currentEnergyTariffCOP: energyTariff,
-      energyTariffInflation: 0.05,
-      degradationRate: 0.005,
-      omCostAnnualCOP: Math.round(quote.totalCapexCOP * 0.01),
-      omInflation: 0.04,
-      discountRate: 0.12,
-      projectLifespanYears: 25,
-      companyTaxRate: 0.35,
-      applyTaxDeduction: applyLey1715 && toggles.showDeductionLey1715,
-      deductionYears: 5,
-      applyAcceleratedDepreciation: applyLey1715 && toggles.showDepreciacion,
-      depreciationYears: 5,
-    };
-    return ColombiaSolarFinancials.calculate(input);
-  }, [quote, energyTariff, applyLey1715, toggles]);
+  const liveProposal = useMemo(() => {
+    if (!hydrated) return null;
+    return buildEpcProposal({
+      id: "preview",
+      clientName,
+      clientCity,
+      systemKwp,
+      peakSunHours,
+      energyTariffCOP: energyTariff,
+      monthlyConsumptionKWh: monthlyConsumption,
+      includeBattery,
+      batteryKwh,
+      mount,
+      executionDays,
+      validUntilDays: 15,
+      advancePercent,
+      quote,
+      selection,
+      toggles,
+      applyLey1715,
+    });
+  }, [
+    hydrated,
+    clientName,
+    clientCity,
+    systemKwp,
+    peakSunHours,
+    energyTariff,
+    monthlyConsumption,
+    includeBattery,
+    batteryKwh,
+    mount,
+    executionDays,
+    advancePercent,
+    quote,
+    selection,
+    toggles,
+    applyLey1715,
+  ]);
+
+  useEffect(() => {
+    if (liveProposal) saveProposal(liveProposal);
+  }, [liveProposal]);
 
   const scaleLabel =
     systemKwp < 10
@@ -202,18 +319,151 @@ function CotizadorInner() {
     window.print();
   }
 
-  function handleCommercialLink() {
-    const url = new URL(window.location.href);
-    url.searchParams.set("kwp", String(systemKwp));
-    url.searchParams.set("tarifa", String(energyTariff));
-    url.searchParams.set("ley1715", applyLey1715 ? "1" : "0");
-    url.searchParams.set("cliente", clientName);
-    url.searchParams.set("preview", "1");
-    navigator.clipboard?.writeText(url.toString()).then(() => {
-      setLinkFlash("Enlace comercial copiado al portapapeles");
+  async function handleCommercialLink() {
+    if (!liveProposal) return;
+    const proposal = { ...liveProposal, id: crypto.randomUUID() };
+    saveProposal(proposal);
+    try {
+      const res = await fetch("/api/propuestas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(proposal),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setLinkFlash(
+          data.error ||
+            "No se pudo publicar en el servidor. Configure KV en Vercel."
+        );
+        return;
+      }
+    } catch {
+      setLinkFlash("No hay conexión con el servidor para publicar la cotización.");
+      return;
+    }
+    const url = `${window.location.origin}/propuesta/epc/${proposal.id}`;
+    navigator.clipboard?.writeText(url).then(() => {
+      setLinkFlash("Enlace comercial copiado · abriendo propuesta…");
       window.setTimeout(() => setLinkFlash(""), 2500);
     });
+    window.open(url, "_blank", "noopener,noreferrer");
   }
+
+  function applyKit(kit: EquipmentKit) {
+    const find = (id?: string) => inventory.find((i) => i.id === id) ?? null;
+    setSystemKwp(kit.systemKwp);
+    setPeakSunHours(kit.peakSunHours);
+    setIncludeBattery(kit.includeBattery);
+    setBatteryKwh(kit.batteryKwh);
+    setMount(kit.mount);
+    setTechnicians(kit.systemKwp < 10 ? 2 : kit.systemKwp < 50 ? 3 : 4);
+    setSelection({
+      panel: find(kit.equipment.panel),
+      inverter: find(kit.equipment.inverter),
+      battery: find(kit.equipment.battery),
+      structure: find(kit.equipment.structure),
+      cabling: find(kit.equipment.cabling),
+      protectionDc: find(kit.equipment.protectionDc),
+      protectionAc: find(kit.equipment.protectionAc),
+    });
+  }
+
+  function snapshotCurrent(name?: string): SavedQuote {
+    return {
+      id: crypto.randomUUID(),
+      name: name || `${clientName} · ${systemKwp} kWp`,
+      savedAt: new Date().toISOString(),
+      clientName,
+      clientCity,
+      systemKwp,
+      peakSunHours,
+      energyTariff,
+      includeBattery,
+      batteryKwh,
+      mount,
+      softCostPercent: overheadPercent,
+      overheadPercent,
+      engineeringSaleCOP,
+      engineeringCostCOP,
+      technicians,
+      dailyWageCOP,
+      laborSaleCOP,
+      laborMarginPercent,
+      targetNetProfitCOP,
+      clientWithholds,
+      clientGranContribuyente,
+      chargeIva,
+      applyLey1715,
+      monthlyConsumption,
+      executionDays,
+      advancePercent,
+      equipmentIds: idsFromSelection(selection),
+      qty,
+      toggles,
+    };
+  }
+
+  function persistQuote(q: SavedQuote) {
+    saveQuoteSnapshot(q);
+    setSavedQuotes(loadSavedQuotes());
+  }
+
+  function loadQuote(q: SavedQuote) {
+    const find = (id?: string) => inventory.find((i) => i.id === id) ?? null;
+    setClientName(q.clientName);
+    setClientCity(q.clientCity);
+    setSystemKwp(q.systemKwp);
+    setPeakSunHours(q.peakSunHours);
+    setEnergyTariff(q.energyTariff);
+    setIncludeBattery(q.includeBattery);
+    setBatteryKwh(q.batteryKwh);
+    setMount(q.mount);
+    setOverheadPercent(q.overheadPercent ?? q.softCostPercent ?? 3);
+    setEngineeringSaleCOP(q.engineeringSaleCOP ?? 0);
+    setEngineeringCostCOP(q.engineeringCostCOP ?? 0);
+    setTechnicians(q.technicians ?? 3);
+    setDailyWageCOP(q.dailyWageCOP ?? 90_000);
+    setLaborSaleCOP(q.laborSaleCOP ?? 0);
+    setLaborMarginPercent(q.laborMarginPercent ?? 25);
+    setTargetNetProfitCOP(q.targetNetProfitCOP ?? 0);
+    setClientWithholds(q.clientWithholds ?? true);
+    setClientGranContribuyente(q.clientGranContribuyente ?? false);
+    setChargeIva(q.chargeIva);
+    setApplyLey1715(q.applyLey1715);
+    setMonthlyConsumption(q.monthlyConsumption);
+    setExecutionDays(q.executionDays);
+    setAdvancePercent(q.advancePercent);
+    setQty(q.qty);
+    setToggles(q.toggles);
+    setSelection({
+      panel: find(q.equipmentIds.panel),
+      inverter: find(q.equipmentIds.inverter),
+      battery: find(q.equipmentIds.battery),
+      structure: find(q.equipmentIds.structure),
+      cabling: find(q.equipmentIds.cabling),
+      protectionDc: find(q.equipmentIds.protectionDc),
+      protectionAc: find(q.equipmentIds.protectionAc),
+    });
+  }
+
+  const marginRate = quote.pl?.netMarginPercent ?? 0;
+  const suggestedEngineering = Math.round(quote.pl.saleEquipmentCOP * 0.12);
+  const stockWarnings = quote.lines
+    .map((line) => {
+      const item = [
+        selection.panel,
+        selection.inverter,
+        selection.battery,
+        selection.structure,
+        selection.cabling,
+        selection.protectionDc,
+        selection.protectionAc,
+      ].find((i) => i && line.label.includes(i.brand) && line.qty > (i.stock ?? Infinity));
+      if (!item || item.stock == null) return null;
+      if (line.qty <= item.stock) return null;
+      return `${item.name}: pide ${line.qty}, stock ${item.stock} · lead ${item.leadTimeDays ?? "?"} días`;
+    })
+    .filter(Boolean) as string[];
 
   const panels = filterByCategory(inventory, "panel");
   const inverters = filterByCategory(inventory, "inverter");
@@ -247,13 +497,94 @@ function CotizadorInner() {
           <p className="text-sm font-semibold">{scaleLabel}</p>
         </div>
       </div>
+      <div className="mb-4 flex flex-wrap gap-2 print:hidden">
+        {kits.map((kit) => (
+          <button
+            key={kit.id}
+            type="button"
+            onClick={() => applyKit(kit)}
+            className="rounded-full bg-[#0f2a1f] px-3 py-1.5 text-left text-xs text-white hover:bg-[#163d2c]"
+            title={kit.hint}
+          >
+            <span className="font-semibold">{kit.name}</span>
+            <span className="mt-0.5 block text-[10px] text-[#b8e0cc]">{kit.hint}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => persistQuote(snapshotCurrent())}
+          className="rounded-full bg-[#d4b46a] px-3 py-1.5 text-xs font-semibold text-[#12241c]"
+        >
+          Guardar cotización
+        </button>
+        {savedQuotes[0] ? (
+          <button
+            type="button"
+            onClick={() => {
+              const copy = snapshotCurrent(`Copia · ${savedQuotes[0].name}`);
+              copy.clientName = `${copy.clientName} (copia)`;
+              persistQuote(copy);
+              loadQuote(copy);
+            }}
+            className="rounded-full ring-1 ring-[#d8d2c4] px-3 py-1.5 text-xs font-semibold"
+          >
+            Duplicar última
+          </button>
+        ) : null}
+      </div>
+      {marginRate < 12 ? (
+        <p className="mb-3 rounded-xl bg-[#fff4e5] px-4 py-2 text-sm text-[#9a5b00] print:hidden">
+          Alerta de utilidad neta: {numFmt.format(marginRate)}% sobre venta (objetivo
+          ≥ 12% después de ICA y renta). Ajuste márgenes, ingeniería o precio de
+          cuadrilla.
+        </p>
+      ) : null}
+      {stockWarnings.length > 0 ? (
+        <div className="mb-3 rounded-xl bg-[#fde8e8] px-4 py-2 text-sm text-[#9b2c2c] print:hidden">
+          {stockWarnings.map((w) => (
+            <p key={w}>{w}</p>
+          ))}
+        </div>
+      ) : null}
+      {savedQuotes.length > 0 ? (
+        <div className="mb-4 print:hidden">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#8a6b2a]">
+            Cotizaciones guardadas
+          </p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {savedQuotes.slice(0, 6).map((q) => (
+              <span key={q.id} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs ring-1 ring-[#d8d2c4]">
+                <button type="button" onClick={() => loadQuote(q)}>
+                  {q.name}
+                </button>
+                <button
+                  type="button"
+                  className="text-[#9b2c2c]"
+                  onClick={() => {
+                    deleteSavedQuote(q.id);
+                    setSavedQuotes(loadSavedQuotes());
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         {/* LEFT: inputs */}
-        <div className="space-y-6">
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h3 className="text-lg font-semibold">Parámetros del proyecto</h3>
-            <div className="mt-4 space-y-4">
+        <div className="space-y-3">
+          <QuoteFold
+            title="Parámetros del proyecto"
+            summary={`${numFmt.format(systemKwp)} kWp · ${clientCity} · ${executionDays} días`}
+            open={openFolds.params}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, params: !s.params }))
+            }
+          >
+            <div className="space-y-4">
               <label className="block">
                 <div className="mb-1.5 flex justify-between text-sm">
                   <span className="font-medium">Potencia (kWp)</span>
@@ -320,6 +651,45 @@ function CotizadorInner() {
                   onChange={(e) => setClientName(e.target.value)}
                 />
               </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">Ciudad</span>
+                  <input
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={clientCity}
+                    onChange={(e) => setClientCity(e.target.value)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">Consumo (kWh/mes)</span>
+                  <input
+                    type="number"
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={monthlyConsumption}
+                    onChange={(e) =>
+                      setMonthlyConsumption(Number(e.target.value) || 0)
+                    }
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">Ejecución (días hábiles)</span>
+                  <input
+                    type="number"
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={executionDays}
+                    onChange={(e) => setExecutionDays(Number(e.target.value) || 7)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">Anticipo (%)</span>
+                  <input
+                    type="number"
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={advancePercent}
+                    onChange={(e) => setAdvancePercent(Number(e.target.value) || 70)}
+                  />
+                </label>
+              </div>
 
               <fieldset>
                 <legend className="mb-2 text-sm font-medium">Montaje</legend>
@@ -349,22 +719,29 @@ function CotizadorInner() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium">Soft costs EPC %</span>
+                  <span className="mb-1 block font-medium">
+                    Gastos de obra / logística %
+                  </span>
                   <input
                     type="number"
                     className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                    value={softCostPercent}
-                    onChange={(e) => setSoftCostPercent(Number(e.target.value) || 0)}
+                    value={overheadPercent}
+                    onChange={(e) =>
+                      setOverheadPercent(Number(e.target.value) || 0)
+                    }
                   />
+                  <span className="mt-1 block text-[11px] text-[#6d7c74]">
+                    Costo interno (viáticos, grúa, fletes). No se suma como línea
+                    extra al cliente.
+                  </span>
                 </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">Margen %</span>
+                <label className="flex items-end gap-2 pb-2 text-sm font-medium">
                   <input
-                    type="number"
-                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                    value={marginPercent}
-                    onChange={(e) => setMarginPercent(Number(e.target.value) || 0)}
+                    type="checkbox"
+                    checked={chargeIva}
+                    onChange={(e) => setChargeIva(e.target.checked)}
                   />
+                  Cobrar IVA 19% (interno)
                 </label>
               </div>
 
@@ -399,99 +776,581 @@ function CotizadorInner() {
                 Proyecto elegible Ley 1715 / 2099
               </label>
             </div>
-          </section>
+          </QuoteFold>
 
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h3 className="text-lg font-semibold">Equipos desde inventario</h3>
-            <p className="mt-1 text-xs text-[#6d7c74]">
-              Selección dinámica · defaults del catálogo precargados
+          <QuoteFold
+            title="Equipos y cantidades"
+            summary={`${qty.panels} paneles · ${qty.inverters} inversor(es)`}
+            open={openFolds.equipos}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, equipos: !s.equipos }))
+            }
+          >
+            <p className="text-xs text-[#6d7c74]">
+              La cantidad se sugiere según kWp; usted la puede cambiar. El cliente no
+              ve costos unitarios ni márgenes.
             </p>
             <div className="mt-4 space-y-3">
-              <EquipSelect
+              <EquipRow
                 label="Panel"
                 items={panels}
                 value={selection.panel?.id}
+                qty={qty.panels}
+                unit="módulos"
                 onChange={(id) =>
                   setSelection((s) => ({
                     ...s,
                     panel: panels.find((p) => p.id === id) ?? null,
                   }))
                 }
+                onQty={(n) => setQty((q) => ({ ...q, panels: n }))}
               />
-              <EquipSelect
+              <EquipRow
                 label="Inversor"
                 items={inverters}
                 value={selection.inverter?.id}
+                qty={qty.inverters}
+                unit="und"
                 onChange={(id) =>
                   setSelection((s) => ({
                     ...s,
                     inverter: inverters.find((p) => p.id === id) ?? null,
                   }))
                 }
+                onQty={(n) => setQty((q) => ({ ...q, inverters: n }))}
               />
               {includeBattery ? (
-                <EquipSelect
+                <EquipRow
                   label="Batería"
                   items={batteries}
                   value={selection.battery?.id}
+                  qty={qty.batteries}
+                  unit="und"
                   onChange={(id) =>
                     setSelection((s) => ({
                       ...s,
                       battery: batteries.find((p) => p.id === id) ?? null,
                     }))
                   }
+                  onQty={(n) => setQty((q) => ({ ...q, batteries: n }))}
                 />
               ) : null}
-              <EquipSelect
+              <EquipRow
                 label={`Estructura (${mount})`}
                 items={structures}
                 value={selection.structure?.id}
+                qty={qty.structure}
+                unit="und"
                 onChange={(id) =>
                   setSelection((s) => ({
                     ...s,
                     structure: structures.find((p) => p.id === id) ?? null,
                   }))
                 }
+                onQty={(n) => setQty((q) => ({ ...q, structure: n }))}
               />
-              <EquipSelect
+              <EquipRow
                 label="Cableado"
                 items={cabling}
                 value={selection.cabling?.id}
+                qty={qty.cabling}
+                unit="m"
                 onChange={(id) =>
                   setSelection((s) => ({
                     ...s,
                     cabling: cabling.find((p) => p.id === id) ?? null,
                   }))
                 }
+                onQty={(n) => setQty((q) => ({ ...q, cabling: n }))}
               />
-              <EquipSelect
+              <EquipRow
                 label="Protección DC"
                 items={protections}
                 value={selection.protectionDc?.id}
+                qty={qty.protectionDc}
+                unit="und"
                 onChange={(id) =>
                   setSelection((s) => ({
                     ...s,
                     protectionDc: protections.find((p) => p.id === id) ?? null,
                   }))
                 }
+                onQty={(n) => setQty((q) => ({ ...q, protectionDc: n }))}
               />
-              <EquipSelect
+              <EquipRow
                 label="Protección AC"
                 items={protections}
                 value={selection.protectionAc?.id}
+                qty={qty.protectionAc}
+                unit="und"
                 onChange={(id) =>
                   setSelection((s) => ({
                     ...s,
                     protectionAc: protections.find((p) => p.id === id) ?? null,
                   }))
                 }
+                onQty={(n) => setQty((q) => ({ ...q, protectionAc: n }))}
               />
             </div>
-          </section>
+          </QuoteFold>
 
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5 print:hidden">
-            <h3 className="text-lg font-semibold">Panel de control · Propuesta</h3>
-            <p className="mt-1 text-xs text-[#6d7c74]">
+          <QuoteFold
+            title="Ingeniería y cuadrilla"
+            summary={`${technicians} técnicos · ${copFmt.format(quote.labor.costCOP)} costo`}
+            open={openFolds.ingenieria}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, ingenieria: !s.ingenieria }))
+            }
+          >
+            <p className="text-xs text-[#6d7c74]">
+              Valor de ingeniería y jornales con prestaciones de ley. El cliente ve
+              el total del proyecto; el desglose de costo es interno.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Ingeniería al cliente (COP)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={engineeringSaleCOP}
+                  onChange={(e) =>
+                    setEngineeringSaleCOP(Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+                <button
+                  type="button"
+                  className="mt-1 text-[11px] font-medium text-[#1f6b45] underline"
+                  onClick={() => setEngineeringSaleCOP(suggestedEngineering)}
+                >
+                  Usar sugerido {copFmt.format(suggestedEngineering)} (12% equipos)
+                </button>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Costo ingeniería interna (COP)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={engineeringCostCOP}
+                  onChange={(e) =>
+                    setEngineeringCostCOP(Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+                <span className="mt-1 block text-[11px] text-[#6d7c74]">
+                  Horas de diseño, RETIE, visitas. Si es 0, se asume margen 100%.
+                </span>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Técnicos en obra</span>
+                <input
+                  type="number"
+                  min={0}
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={technicians}
+                  onChange={(e) =>
+                    setTechnicians(Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Jornal diario bruto (COP)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={dailyWageCOP}
+                  onChange={(e) =>
+                    setDailyWageCOP(Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+                <span className="mt-1 block text-[11px] text-[#6d7c74]">
+                  Días = ejecución ({executionDays}). Costo cargado ×{" "}
+                  {numFmt.format(quote.labor.factor)}.
+                </span>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">
+                  % ganancia cuadrilla (si no fija venta)
+                </span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={laborMarginPercent}
+                  onChange={(e) =>
+                    setLaborMarginPercent(Number(e.target.value) || 0)
+                  }
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">
+                  Venta cuadrilla al cliente (0 = auto)
+                </span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={laborSaleCOP}
+                  onChange={(e) =>
+                    setLaborSaleCOP(Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+              </label>
+            </div>
+            <div className="mt-3 rounded-xl bg-[#fbfaf6] px-3 py-2 text-xs text-[#4d5c55]">
+              <p>
+                Salario: {copFmt.format(quote.labor.salaryBaseCOP)} · Prestaciones:{" "}
+                {copFmt.format(quote.labor.prestacionesCOP)} · Aportes (pensión,
+                caja, ARL
+                {taxConfig.applyExoneracion114 ? "" : ", salud, SENA, ICBF"}):{" "}
+                {copFmt.format(quote.labor.aportesCOP)}
+                {quote.labor.auxilioCOP > 0
+                  ? ` · Auxilio transporte: ${copFmt.format(quote.labor.auxilioCOP)}`
+                  : ""}
+              </p>
+              <p className="mt-1 font-medium">
+                Costo real cuadrilla: {copFmt.format(quote.labor.costCOP)} · Se
+                cobra: {copFmt.format(quote.labor.saleCOP)}
+              </p>
+            </div>
+          </QuoteFold>
+
+          <QuoteFold
+            title="Impuestos Colombia (interno)"
+            summary={`ICA ${taxConfig.icaComercioPerMil}‰ / ${taxConfig.icaServiciosPerMil}‰ · renta ${taxConfig.rentaPercent}%`}
+            open={openFolds.impuestos}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, impuestos: !s.impuestos }))
+            }
+            printHidden
+          >
+            <p className="text-xs text-[#6d7c74]">
+              ICA es el impuesto municipal real. ReteFuente, ReteICA y ReteIVA las
+              retiene el cliente: bajan la caja, no la utilidad (se descuentan en
+              la declaración). Renta del 35% se estima sobre la utilidad después
+              de ICA. Confirme tasas con su contador; ICA cambia por ciudad.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-full bg-[#0f2a1f] px-3 py-1.5 text-xs text-white"
+                onClick={() => {
+                  const next = applyCityPreset(taxConfig, clientCity);
+                  setTaxConfig(next);
+                  saveTaxConfig(next);
+                }}
+              >
+                Usar ICA de {clientCity || "la ciudad"}
+              </button>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ["icaComercioPerMil", "ICA equipos (‰)"],
+                  ["icaServiciosPerMil", "ICA servicios (‰)"],
+                  ["reteIcaOfIcaPercent", "ReteICA (% del ICA)"],
+                  ["reteFuenteBienesPercent", "ReteFuente bienes %"],
+                  ["reteFuenteServiciosPercent", "ReteFuente servicios %"],
+                  ["reteIvaPercent", "ReteIVA % del IVA"],
+                  ["rentaPercent", "Renta sociedades %"],
+                  ["smmlvCOP", "SMMLV (COP)"],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="block text-sm">
+                  <span className="mb-1 block font-medium">{label}</span>
+                  <input
+                    type="number"
+                    step="any"
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={taxConfig[key]}
+                    onChange={(e) => {
+                      const next = {
+                        ...taxConfig,
+                        [key]: Number(e.target.value) || 0,
+                      };
+                      setTaxConfig(next);
+                      saveTaxConfig(next);
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+            <fieldset className="mt-3">
+              <legend className="mb-1 text-sm font-medium">ARL cuadrilla</legend>
+              <div className="flex flex-wrap gap-1">
+                {(["I", "II", "III", "IV", "V"] as const).map((cls) => (
+                  <button
+                    key={cls}
+                    type="button"
+                    onClick={() => {
+                      const next = { ...taxConfig, arlClass: cls };
+                      setTaxConfig(next);
+                      saveTaxConfig(next);
+                    }}
+                    className={`rounded-lg px-2 py-1 text-xs font-semibold ${
+                      taxConfig.arlClass === cls
+                        ? "bg-[#1f6b45] text-white"
+                        : "bg-[#fbfaf6] ring-1 ring-[#d8d2c4]"
+                    }`}
+                  >
+                    Clase {cls}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-[#6d7c74]">
+                Instalación en altura / cubierta suele ser IV o V.
+              </p>
+            </fieldset>
+            <label className="mt-3 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={taxConfig.applyExoneracion114}
+                onChange={(e) => {
+                  const next = {
+                    ...taxConfig,
+                    applyExoneracion114: e.target.checked,
+                  };
+                  setTaxConfig(next);
+                  saveTaxConfig(next);
+                }}
+              />
+              Exoneración art. 114-1 (sin salud/SENA/ICBF si salario menor a 10 SMMLV)
+            </label>
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={clientWithholds}
+                onChange={(e) => setClientWithholds(e.target.checked)}
+              />
+              Cliente agente retenedor (ReteFuente y ReteICA)
+            </label>
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={clientGranContribuyente}
+                onChange={(e) => setClientGranContribuyente(e.target.checked)}
+              />
+              Cliente gran contribuyente (ReteIVA)
+            </label>
+            <label className="mt-3 block text-sm">
+              <span className="mb-1 block font-medium">
+                Utilidad neta mínima que quiere ganar (COP)
+              </span>
+              <input
+                type="number"
+                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                value={targetNetProfitCOP}
+                onChange={(e) =>
+                  setTargetNetProfitCOP(Math.max(0, Number(e.target.value) || 0))
+                }
+              />
+              <span className="mt-1 block text-[11px] text-[#6d7c74]">
+                0 = 12% sobre costos. El sistema calcula el piso de venta.
+              </span>
+            </label>
+          </QuoteFold>
+
+          <QuoteFold
+            title="Costeo y utilidad"
+            kicker="Solo interno · no va al cliente"
+            summary={`Neto ${copFmt.format(quote.pl.netProfitCOP)} · cliente ${copFmt.format(quote.pl.totalClientCOP)}`}
+            open={openFolds.costeo}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, costeo: !s.costeo }))
+            }
+            dark
+            printHidden
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="text-[#8aa398]">
+                  <tr>
+                    <th className="py-1 pr-2 font-medium">Ítem</th>
+                    <th className="py-1 pr-2 font-medium">Cant.</th>
+                    <th className="py-1 pr-2 font-medium">Costo</th>
+                    <th className="py-1 pr-2 font-medium">%</th>
+                    <th className="py-1 pr-2 font-medium">Venta</th>
+                    <th className="py-1 font-medium">IVA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quote.lines.map((line) => (
+                    <tr key={line.key} className="border-t border-[#1f4636]">
+                      <td className="py-1.5 pr-2">{line.label}</td>
+                      <td className="py-1.5 pr-2">
+                        {line.qty} {line.unit}
+                      </td>
+                      <td className="py-1.5 pr-2">{copFmt.format(line.costTotalCOP)}</td>
+                      <td className="py-1.5 pr-2">{line.marginPercent}%</td>
+                      <td className="py-1.5 pr-2">{copFmt.format(line.saleTotalCOP)}</td>
+                      <td className="py-1.5">{copFmt.format(line.ivaTotalCOP)}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-[#1f4636]">
+                    <td className="py-1.5 pr-2">Ingeniería</td>
+                    <td className="py-1.5 pr-2">1 gl</td>
+                    <td className="py-1.5 pr-2">
+                      {copFmt.format(quote.pl.costEngineeringCOP)}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {quote.pl.saleEngineeringCOP
+                        ? numFmt.format(
+                            ((quote.pl.saleEngineeringCOP -
+                              quote.pl.costEngineeringCOP) /
+                              quote.pl.saleEngineeringCOP) *
+                              100
+                          )
+                        : 0}
+                      %
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {copFmt.format(quote.pl.saleEngineeringCOP)}
+                    </td>
+                    <td className="py-1.5">
+                      {copFmt.format(
+                        chargeIva ? Math.round(quote.pl.saleEngineeringCOP * 0.19) : 0
+                      )}
+                    </td>
+                  </tr>
+                  <tr className="border-t border-[#1f4636]">
+                    <td className="py-1.5 pr-2">Cuadrilla</td>
+                    <td className="py-1.5 pr-2">
+                      {quote.labor.technicians} × {quote.labor.days} d
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {copFmt.format(quote.labor.costCOP)}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {quote.labor.saleCOP
+                        ? numFmt.format(
+                            ((quote.labor.saleCOP - quote.labor.costCOP) /
+                              quote.labor.saleCOP) *
+                              100
+                          )
+                        : 0}
+                      %
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {copFmt.format(quote.labor.saleCOP)}
+                    </td>
+                    <td className="py-1.5">{copFmt.format(quote.labor.ivaCOP)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 text-sm text-[#c9d7cf]">
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold tracking-wide text-[#d4b46a] uppercase">
+                  Qué se cobra
+                </p>
+                <p>Equipos: {copFmt.format(quote.pl.saleEquipmentCOP)}</p>
+                <p>Ingeniería: {copFmt.format(quote.pl.saleEngineeringCOP)}</p>
+                <p>Cuadrilla: {copFmt.format(quote.pl.saleLaborCOP)}</p>
+                <p>Subtotal: {copFmt.format(quote.pl.saleNetCOP)}</p>
+                <p>IVA: {copFmt.format(quote.pl.ivaCOP)}</p>
+                <p className="font-semibold text-white">
+                  Total cliente: {copFmt.format(quote.pl.totalClientCOP)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold tracking-wide text-[#d4b46a] uppercase">
+                  En qué sale
+                </p>
+                <p>Costo equipos: {copFmt.format(quote.pl.costEquipmentCOP)}</p>
+                <p>Costo ingeniería: {copFmt.format(quote.pl.costEngineeringCOP)}</p>
+                <p>Costo cuadrilla: {copFmt.format(quote.pl.costLaborCOP)}</p>
+                <p>Logística ({overheadPercent}%): {copFmt.format(quote.pl.overheadCOP)}</p>
+                <p className="font-medium text-white">
+                  Costo total: {copFmt.format(quote.pl.totalCostCOP)}
+                </p>
+                <p>Utilidad bruta: {copFmt.format(quote.pl.grossProfitCOP)}</p>
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl bg-[#0a1f17] p-3 text-sm">
+              <p className="text-[10px] font-semibold tracking-wide text-[#d4b46a] uppercase">
+                Impuestos y caja
+              </p>
+              <div className="mt-2 grid gap-1 text-[#c9d7cf] sm:grid-cols-2">
+                <p>
+                  ICA equipos ({taxConfig.icaComercioPerMil}‰):{" "}
+                  {copFmt.format(quote.pl.taxes.icaBienesCOP)}
+                </p>
+                <p>
+                  ICA servicios ({taxConfig.icaServiciosPerMil}‰):{" "}
+                  {copFmt.format(quote.pl.taxes.icaServiciosCOP)}
+                </p>
+                <p>ICA a pagar: {copFmt.format(quote.pl.taxes.icaCOP)}</p>
+                <p>ReteICA (caja): {copFmt.format(quote.pl.taxes.reteIcaCOP)}</p>
+                <p>
+                  ReteFuente bienes: {copFmt.format(quote.pl.taxes.reteFuenteBienesCOP)}
+                </p>
+                <p>
+                  ReteFuente servicios:{" "}
+                  {copFmt.format(quote.pl.taxes.reteFuenteServiciosCOP)}
+                </p>
+                <p>ReteIVA (caja): {copFmt.format(quote.pl.taxes.reteIvaCOP)}</p>
+                <p>
+                  Renta {taxConfig.rentaPercent}%:{" "}
+                  {copFmt.format(quote.pl.taxes.rentaCOP)}
+                </p>
+              </div>
+              <p className="mt-3 text-base font-semibold text-white">
+                Ganancia neta: {copFmt.format(quote.pl.netProfitCOP)} (
+                {numFmt.format(quote.pl.netMarginPercent)}%)
+              </p>
+              <p className="mt-1 text-xs text-[#8aa398]">
+                El cliente paga {copFmt.format(quote.pl.totalClientCOP)} y retiene{" "}
+                {copFmt.format(quote.pl.taxes.withholdingsCOP)}. Caja que entra:{" "}
+                {copFmt.format(quote.pl.cashFromClientCOP)}. Después de costos e IVA
+                a DIAN: {copFmt.format(quote.pl.cashAfterCostsCOP)}.
+              </p>
+              <p className="mt-2 text-sm text-[#e8d9a8]">
+                Directriz: para ganar al menos{" "}
+                {copFmt.format(
+                  targetNetProfitCOP || Math.round(quote.pl.totalCostCOP * 0.12)
+                )}{" "}
+                netos, el subtotal de venta no debería bajar de{" "}
+                <span className="font-semibold">
+                  {copFmt.format(quote.pl.minSaleForTargetNetCOP)}
+                </span>
+                {quote.pl.saleNetCOP < quote.pl.minSaleForTargetNetCOP
+                  ? " — hoy está por debajo; suba ingeniería, cuadrilla o márgenes de estructura/cable."
+                  : " — esta cotización sí cubre el piso."}
+              </p>
+            </div>
+            <div className="mt-4 space-y-2">
+              <p className="text-[10px] font-semibold tracking-wide text-[#d4b46a] uppercase">
+                A qué sí subir precio (y a qué no)
+              </p>
+              {quote.tactics.map((t) => (
+                <div
+                  key={t.category}
+                  className="rounded-lg bg-[#0a1f17] px-3 py-2 text-xs"
+                >
+                  <p className="font-semibold text-white">
+                    {t.label}: {numFmt.format(t.currentPercent)}%{" "}
+                    <span className="font-normal text-[#8aa398]">
+                      (banda {t.minPercent}–{t.maxPercent}%)
+                    </span>{" "}
+                    {t.status === "bajo"
+                      ? "· bajo"
+                      : t.status === "alto"
+                        ? "· alto"
+                        : "· ok"}
+                    {t.canRaise ? " · puede subir" : ""}
+                  </p>
+                  <p className="mt-0.5 text-[#c9d7cf]">{t.advice}</p>
+                </div>
+              ))}
+            </div>
+          </QuoteFold>
+
+          <QuoteFold
+            title="Panel de control · Propuesta"
+            summary="TIR, ROI, Ley 1715 y gráficos para el cliente"
+            open={openFolds.propuesta}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, propuesta: !s.propuesta }))
+            }
+            printHidden
+          >
+            <p className="text-xs text-[#6d7c74]">
               Interruptores ACTIVABLE / DESACTIVABLE para personalizar la vista del cliente
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -532,125 +1391,28 @@ function CotizadorInner() {
                 description="Visualización ejecutiva"
               />
             </div>
-          </section>
+          </QuoteFold>
         </div>
 
-        {/* RIGHT: preview */}
+        {/* RIGHT: misma propuesta estilo Vercel, en vivo */}
         <div className="space-y-4">
+          <p className="print:hidden text-sm text-[#4d5c55]">
+            Esta es la misma cotización que enviabas antes (estilo oscuro EPC). Lo que
+            cambias a la izquierda se refleja aquí. El enlace comercial abre esta
+            página completa para el cliente.
+          </p>
           <section
             id="propuesta-comercial"
-            className="overflow-hidden rounded-2xl border border-[#1a3d2e] bg-white shadow-[0_20px_50px_rgba(15,42,31,0.12)]"
+            className="overflow-hidden rounded-2xl ring-1 ring-[#1e2d4a] shadow-[0_20px_50px_rgba(7,11,22,0.25)]"
           >
-            <div className="bg-gradient-to-br from-[#0f2a1f] via-[#163d2c] to-[#0f2a1f] px-6 py-6 text-white">
-              <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d4b46a] uppercase">
-                Genera Solutions SAS · Propuesta comercial
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold">{clientName}</h3>
-              <p className="mt-1 text-sm text-[#c9d7cf]">
-                Sistema {numFmt.format(systemKwp)} kWp · {quote.moduleCount} módulos ·{" "}
-                {quote.inverterCount} inversor(es) · Montaje {mount}
-              </p>
-              <p className="mt-4 text-3xl font-semibold tracking-tight">
-                {copFmt.format(quote.totalCapexCOP)}
-              </p>
-              <p className="text-sm text-[#a8c4b6]">
-                CAPEX total · Generación año 1:{" "}
-                {numFmt.format(quote.annualGenerationKWh)} kWh
-              </p>
-            </div>
-
-            <div className="space-y-5 p-6">
-              {metrics && toggles.showRoiPayback ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <MetricCard
-                    label="ROI 25 años"
-                    value={`${numFmt.format(metrics.roiPercentage)}%`}
-                  />
-                  <MetricCard
-                    label="Payback simple"
-                    value={`${numFmt.format(metrics.paybackYearsSimple)} años`}
-                  />
+            <div className="max-h-[85vh] overflow-y-auto print:max-h-none">
+              {liveProposal ? (
+                <EpcProposalView proposal={liveProposal} embedded />
+              ) : (
+                <div className="bg-[#070b16] p-10 text-center text-[#8aa0c2]">
+                  Cargando propuesta…
                 </div>
-              ) : null}
-
-              {metrics && toggles.showTir ? (
-                <MetricCard
-                  label="TIR (Tasa Interna de Retorno)"
-                  value={`${numFmt.format(metrics.irrPercentage)}%`}
-                  emphasize
-                />
-              ) : null}
-
-              {metrics ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <MetricCard label="VAN @ 12%" value={copFmt.format(metrics.npvCOP)} />
-                  {(toggles.showDeductionLey1715 || toggles.showDepreciacion) &&
-                  applyLey1715 ? (
-                    <MetricCard
-                      label="Ahorro fiscal acumulado"
-                      value={copFmt.format(metrics.totalTaxSavingsCOP)}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-
-              {(toggles.showDeductionLey1715 ||
-                toggles.showIvaAranceles ||
-                toggles.showDepreciacion) &&
-              applyLey1715 ? (
-                <div className="rounded-xl bg-[#f7f4ee] p-4">
-                  <p className="text-xs font-semibold tracking-[0.18em] text-[#8a6b2a] uppercase">
-                    Beneficios Ley 1715 / 2099
-                  </p>
-                  <ul className="mt-2 space-y-1.5 text-sm text-[#4d5c55]">
-                    {toggles.showDeductionLey1715 ? (
-                      <li>✓ Deducción del 50% de la inversión en renta (hasta 5–15 años)</li>
-                    ) : null}
-                    {toggles.showIvaAranceles ? (
-                      <li>✓ Exención de IVA y aranceles en equipos (sujeto a certificación UPME)</li>
-                    ) : null}
-                    {toggles.showDepreciacion ? (
-                      <li>✓ Depreciación acelerada de activos (mín. 3–5 años)</li>
-                    ) : null}
-                  </ul>
-                </div>
-              ) : null}
-
-              {toggles.showCharts && metrics ? (
-                <CashFlowChart cashFlows={metrics.cashFlows} />
-              ) : null}
-
-              <div>
-                <p className="text-xs font-semibold tracking-[0.18em] text-[#8a6b2a] uppercase">
-                  Desglose de inversión
-                </p>
-                <ul className="mt-2 divide-y divide-[#eee8dc] text-sm">
-                  {quote.lines.map((line) => (
-                    <li
-                      key={line.key}
-                      className="flex items-start justify-between gap-3 py-2"
-                    >
-                      <span>
-                        <span className="font-medium text-[#12241c]">{line.label}</span>
-                        <span className="mt-0.5 block text-xs text-[#6d7c74]">
-                          {line.qty} {line.unit} × {copFmt.format(line.unitPriceCOP)}
-                        </span>
-                      </span>
-                      <span className="shrink-0 font-medium">
-                        {copFmt.format(line.totalCOP)}
-                      </span>
-                    </li>
-                  ))}
-                  <li className="flex justify-between py-2 text-[#4d5c55]">
-                    <span>Ingeniería / EPC / trámites ({softCostPercent}%)</span>
-                    <span>{copFmt.format(quote.softCostCOP)}</span>
-                  </li>
-                  <li className="flex justify-between py-2 text-[#4d5c55]">
-                    <span>Margen comercial ({marginPercent}%)</span>
-                    <span>{copFmt.format(quote.marginCOP)}</span>
-                  </li>
-                </ul>
-              </div>
+              )}
             </div>
           </section>
 
@@ -688,64 +1450,121 @@ function CotizadorInner() {
   );
 }
 
-function EquipSelect({
+function QuoteFold({
+  title,
+  summary,
+  kicker,
+  open,
+  onToggle,
+  dark,
+  printHidden,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  kicker?: string;
+  open: boolean;
+  onToggle: () => void;
+  dark?: boolean;
+  printHidden?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={`rounded-2xl border p-4 ${
+        dark
+          ? "border-[#1a3d2e] bg-[#0f2a1f] text-white"
+          : "border-[#ddd6c8] bg-white"
+      } ${printHidden ? "print:hidden" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-start justify-between gap-3 text-left"
+      >
+        <div className="min-w-0">
+          {kicker ? (
+            <p
+              className={`text-[10px] font-semibold tracking-[0.2em] uppercase ${
+                dark ? "text-[#d4b46a]" : "text-[#8a6b2a]"
+              }`}
+            >
+              {kicker}
+            </p>
+          ) : null}
+          <h3 className="text-lg font-semibold">{title}</h3>
+          {!open && summary ? (
+            <p
+              className={`mt-0.5 truncate text-xs ${
+                dark ? "text-[#8aa398]" : "text-[#6d7c74]"
+              }`}
+            >
+              {summary}
+            </p>
+          ) : null}
+        </div>
+        <span
+          aria-hidden
+          className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-lg font-semibold ${
+            dark ? "bg-[#163d2c] text-[#d4b46a]" : "bg-[#fbfaf6] text-[#1f6b45]"
+          }`}
+        >
+          {open ? "−" : "+"}
+        </span>
+      </button>
+      {open ? <div className="mt-4">{children}</div> : null}
+    </section>
+  );
+}
+
+function EquipRow({
   label,
   items,
   value,
+  qty,
+  unit,
   onChange,
+  onQty,
 }: {
   label: string;
   items: InventoryItem[];
   value?: string;
+  qty: number;
+  unit: string;
   onChange: (id: string) => void;
+  onQty: (n: number) => void;
 }) {
   return (
-    <label className="block text-sm">
-      <span className="mb-1 block font-medium">{label}</span>
-      <select
-        className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="" disabled>
-          Seleccionar…
-        </option>
-        {items.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.brand} {item.model || item.name}
-            {item.isDefault ? " ★" : ""}
+    <div className="grid grid-cols-[1fr_88px] gap-2 text-sm">
+      <label className="block">
+        <span className="mb-1 block font-medium">{label}</span>
+        <select
+          className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value="" disabled>
+            Seleccionar…
           </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  emphasize,
-}: {
-  label: string;
-  value: string;
-  emphasize?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-xl p-4 ${
-        emphasize
-          ? "bg-[#0f2a1f] text-white"
-          : "bg-[#f7f4ee] ring-1 ring-[#eee8dc]"
-      }`}
-    >
-      <p
-        className={`text-[10px] tracking-[0.18em] uppercase ${
-          emphasize ? "text-[#d4b46a]" : "text-[#8a6b2a]"
-        }`}
-      >
-        {label}
-      </p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
+          {items.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.brand} {item.model || item.name}
+              {item.isDefault ? " ★" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block">
+        <span className="mb-1 block font-medium">Cant. ({unit})</span>
+        <input
+          type="number"
+          min={0}
+          className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-2 py-2.5"
+          value={qty}
+          onChange={(e) => onQty(Math.max(0, Number(e.target.value) || 0))}
+        />
+      </label>
     </div>
   );
 }

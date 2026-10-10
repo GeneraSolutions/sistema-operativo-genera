@@ -15,7 +15,17 @@ body {
 }
 
 @media print {
-  body {
+  .proposal-print {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    background: #070b16 !important;
+  }
+
+  body:has(.proposal-print) {
+    background: #070b16 !important;
+  }
+
+  body:not(:has(.proposal-print)) {
     background: white !important;
   }
 
