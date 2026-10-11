@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import {
-  CATEGORY_LABELS,
   MOUNT_LABELS,
+  slugCategory,
   type EquipmentCategory,
   type InventoryItem,
   type StructureMountType,
@@ -14,16 +14,18 @@ import { saveDatasheetFile } from "@/lib/datasheets";
 import { getPriceHistory, recordPrice } from "@/lib/price-history";
 import { saleUnitCOP } from "@/lib/pricing";
 import {
+  allCategoryIds,
+  categoryLabel,
   copToUsd,
+  loadCustomCategories,
   loadInventory,
   loadTrm,
   restoreOfficialCatalog,
+  saveCustomCategories,
   saveInventory,
   saveTrm,
   usdToCop,
 } from "@/lib/inventory";
-
-const CATEGORIES = Object.keys(CATEGORY_LABELS) as EquipmentCategory[];
 
 const copFmt = new Intl.NumberFormat("es-CO", {
   style: "currency",
@@ -67,9 +69,15 @@ export default function InventarioPage() {
   const [priceEditMode, setPriceEditMode] = useState<"COP" | "USD">("COP");
   const [savedFlash, setSavedFlash] = useState("");
   const [query, setQuery] = useState("");
-  const [openCats, setOpenCats] = useState<Partial<Record<EquipmentCategory, boolean>>>(
+  const [openCats, setOpenCats] = useState<Partial<Record<string, boolean>>>(
     {}
   );
+  const [customCats, setCustomCats] = useState<{ id: string; label: string }[]>(
+    []
+  );
+  const [newGroupName, setNewGroupName] = useState("");
+
+  const CATEGORIES = allCategoryIds(customCats);
 
   useEffect(() => {
     const inv = loadInventory();
@@ -77,6 +85,7 @@ export default function InventarioPage() {
     setItems(inv);
     setTrm(t);
     setTrmInput(String(t.trm));
+    setCustomCats(loadCustomCategories());
   }, []);
 
   const filtered = useMemo(() => {
@@ -94,7 +103,7 @@ export default function InventarioPage() {
         category,
         items: filtered.filter((i) => i.category === category),
       })).filter((g) => (filter === "all" ? true : g.category === filter)),
-    [filtered, filter]
+    [filtered, filter, customCats]
   );
 
   function isCatOpen(category: EquipmentCategory) {
@@ -345,6 +354,40 @@ export default function InventarioPage() {
           <h3 className="text-lg font-semibold">
             {editingId ? "Editar equipo" : "Nuevo equipo"}
           </h3>
+          <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-[#f7f4ee] p-3">
+            <label className="min-w-[180px] flex-1 text-sm">
+              <span className="mb-1 block font-medium">Nuevo grupo</span>
+              <input
+                className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2"
+                placeholder="Ej. Iluminación LED"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="rounded-xl bg-[#0f3d2e] px-3 py-2 text-sm font-semibold text-white"
+              onClick={() => {
+                const label = newGroupName.trim();
+                if (!label) return;
+                const id = slugCategory(label);
+                if (CATEGORIES.includes(id)) {
+                  setForm((f) => ({ ...f, category: id as EquipmentCategory }));
+                  setNewGroupName("");
+                  return;
+                }
+                const next = [...customCats, { id, label }];
+                setCustomCats(next);
+                saveCustomCategories(next);
+                setForm((f) => ({ ...f, category: id as EquipmentCategory }));
+                setOpenCats((s) => ({ ...s, [id]: true }));
+                setNewGroupName("");
+                setSavedFlash("Grupo creado");
+              }}
+            >
+              Agregar grupo
+            </button>
+          </div>
           <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Categoría</span>
@@ -360,7 +403,7 @@ export default function InventarioPage() {
               >
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
-                    {CATEGORY_LABELS[c]}
+                    {categoryLabel(c, customCats)}
                   </option>
                 ))}
               </select>
@@ -623,8 +666,8 @@ export default function InventarioPage() {
               <FilterChip
                 key={c}
                 active={filter === c}
-                onClick={() => setFilter(c)}
-                label={CATEGORY_LABELS[c]}
+                onClick={() => setFilter(c as EquipmentCategory)}
+                label={categoryLabel(c, customCats)}
               />
             ))}
           </div>
@@ -650,7 +693,7 @@ export default function InventarioPage() {
                   >
                     <div>
                       <h3 className="text-base font-semibold">
-                        {CATEGORY_LABELS[group.category]}
+                        {categoryLabel(group.category, customCats)}
                       </h3>
                       <p className="text-xs text-[#6d7c74]">
                         {group.items.length} equipo
@@ -688,7 +731,7 @@ export default function InventarioPage() {
                                 <p className="text-[10px] font-semibold tracking-[0.18em] text-[#8a6b2a] uppercase">
                                   {item.mountType
                                     ? MOUNT_LABELS[item.mountType]
-                                    : CATEGORY_LABELS[item.category]}
+                                    : categoryLabel(item.category, customCats)}
                                 </p>
                                 <h4 className="mt-0.5 text-base font-semibold">
                                   {item.name}

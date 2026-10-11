@@ -7,7 +7,7 @@ import {
   type MarginTactic,
   type ProjectPL,
 } from "@/lib/colombia-tax";
-import { IVA_RATE, ivaUnitCOP, saleUnitCOP } from "@/lib/pricing";
+import { IVA_RATE } from "@/lib/pricing";
 import type { InventoryItem } from "@/types/inventory";
 
 export type MountPreference = "cubierta" | "suelo" | "pergola";
@@ -20,6 +20,15 @@ export interface QuoteEquipmentSelection {
   cabling: InventoryItem | null;
   protectionDc: InventoryItem | null;
   protectionAc: InventoryItem | null;
+}
+
+export interface QuoteLineInput {
+  key: string;
+  itemId: string;
+  qty: number;
+  marginPercent: number;
+  applyIva: boolean;
+  costUnitCOP: number;
 }
 
 export interface QuoteQuantities {
@@ -42,6 +51,8 @@ export interface QuoteParams {
   energyTariffCOP: number;
   selection: QuoteEquipmentSelection;
   quantities: QuoteQuantities;
+  quoteLines?: QuoteLineInput[];
+  inventory?: InventoryItem[];
   /** Gastos indirectos de obra (% sobre venta de equipos) — costo interno, no se cobra aparte */
   overheadPercent: number;
   chargeIva: boolean;
@@ -131,12 +142,22 @@ function makeLine(
   qty: number,
   unit: string,
   chargeIva: boolean,
-  label?: string
+  label?: string,
+  overrides?: {
+    marginPercent?: number;
+    applyIva?: boolean;
+    costUnitCOP?: number;
+  }
 ): QuoteBreakdownLine {
   const safeQty = Math.max(0, qty);
-  const costUnit = item.priceCOP;
-  const saleUnit = saleUnitCOP(item);
-  const ivaUnit = ivaUnitCOP(item, chargeIva);
+  const costUnit = overrides?.costUnitCOP ?? item.priceCOP;
+  const margin =
+    overrides?.marginPercent ??
+    (Number.isFinite(item.marginPercent) ? item.marginPercent : 0);
+  const applyIva = overrides?.applyIva ?? Boolean(item.applyIva);
+  const saleUnit = Math.round(costUnit * (1 + margin / 100));
+  const ivaUnit =
+    chargeIva && applyIva ? Math.round(saleUnit * IVA_RATE) : 0;
   const costTotal = Math.round(costUnit * safeQty);
   const saleTotal = Math.round(saleUnit * safeQty);
   const ivaTotal = Math.round(ivaUnit * safeQty);
@@ -146,16 +167,53 @@ function makeLine(
     qty: safeQty,
     unit,
     costUnitCOP: costUnit,
-    marginPercent: item.marginPercent ?? 0,
+    marginPercent: margin,
     saleUnitCOP: saleUnit,
     ivaUnitCOP: ivaUnit,
     costTotalCOP: costTotal,
     saleTotalCOP: saleTotal,
     ivaTotalCOP: ivaTotal,
     profitCOP: saleTotal - costTotal,
-    applyIva: Boolean(item.applyIva) && chargeIva,
+    applyIva: applyIva && chargeIva,
     unitPriceCOP: saleUnit,
     totalCOP: saleTotal,
+  };
+}
+
+export function lineFromItem(
+  key: string,
+  item: InventoryItem,
+  qty: number
+): QuoteLineInput {
+  return {
+    key,
+    itemId: item.id,
+    qty,
+    marginPercent: item.marginPercent ?? 0,
+    applyIva: item.applyIva ?? item.category !== "panel",
+    costUnitCOP: item.priceCOP,
+  };
+}
+
+export function selectionFromLines(
+  lines: QuoteLineInput[],
+  inventory: InventoryItem[]
+): QuoteEquipmentSelection {
+  const findCat = (cat: string) => {
+    const line = lines.find((l) => {
+      const it = inventory.find((i) => i.id === l.itemId);
+      return it?.category === cat;
+    });
+    return inventory.find((i) => i.id === line?.itemId) ?? null;
+  };
+  return {
+    panel: findCat("panel"),
+    inverter: findCat("inverter") ?? findCat("microinverter"),
+    battery: findCat("battery"),
+    structure: findCat("structure"),
+    cabling: findCat("cabling"),
+    protectionDc: findCat("protection_dc"),
+    protectionAc: findCat("protection_ac"),
   };
 }
 
@@ -163,6 +221,30 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
   const { selection, quantities: q, chargeIva } = params;
   const lines: QuoteBreakdownLine[] = [];
 
+  if (params.quoteLines?.length && params.inventory?.length) {
+    for (const slot of params.quoteLines) {
+      if (slot.qty <= 0) continue;
+      const item = params.inventory.find((i) => i.id === slot.itemId);
+      if (!item) continue;
+      lines.push(
+        makeLine(
+          slot.key,
+          item,
+          slot.qty,
+          item.unit || "unidad",
+          chargeIva,
+          item.category === "structure"
+            ? `${item.name} (${params.mount})`
+            : undefined,
+          {
+            marginPercent: slot.marginPercent,
+            applyIva: slot.applyIva,
+            costUnitCOP: slot.costUnitCOP,
+          }
+        )
+      );
+    }
+  } else {
   if (selection.panel && q.panels > 0) {
     lines.push(
       makeLine("panels", selection.panel, q.panels, "módulo", chargeIva)
@@ -229,6 +311,7 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
       )
     );
   }
+  }
 
   const equipmentSale = lines.reduce((acc, l) => acc + l.saleTotalCOP, 0);
   const equipmentCost = lines.reduce((acc, l) => acc + l.costTotalCOP, 0);
@@ -286,12 +369,17 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
 
   const LINE_TACTIC_KEY: Record<string, string> = {
     panels: "panel",
+    panel: "panel",
     inverters: "inverter",
+    inverter: "inverter",
     batteries: "battery",
+    battery: "battery",
     structure: "structure",
     cabling: "cabling",
     "prot-dc": "protection",
     "prot-ac": "protection",
+    protection_dc: "protection",
+    protection_ac: "protection",
   };
 
   const tactics = buildMarginTactics([
@@ -337,9 +425,13 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
     ivaCOP,
     totalCapexCOP,
     annualGenerationKWh,
-    moduleCount: q.panels,
-    inverterCount: q.inverters,
-    batteryCount: q.batteries,
+    moduleCount:
+      params.quoteLines?.find((l) => l.key === "panel")?.qty ?? q.panels,
+    inverterCount:
+      params.quoteLines?.find((l) => l.key === "inverter" || l.key === "microinverter")
+        ?.qty ?? q.inverters,
+    batteryCount:
+      params.quoteLines?.find((l) => l.key === "battery")?.qty ?? q.batteries,
     labor,
     pl,
     tactics,

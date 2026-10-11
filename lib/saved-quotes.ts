@@ -1,4 +1,9 @@
-import type { MountPreference, QuoteEquipmentSelection, QuoteQuantities } from "@/lib/quote-engine";
+import type {
+  MountPreference,
+  QuoteEquipmentSelection,
+  QuoteLineInput,
+  QuoteQuantities,
+} from "@/lib/quote-engine";
 import type { PaymentKind, ProposalToggles } from "@/types/proposal";
 
 export interface SavedQuote {
@@ -54,6 +59,7 @@ export interface SavedQuote {
     protectionAc?: string;
   };
   qty: QuoteQuantities;
+  quoteLines?: QuoteLineInput[];
   toggles: ProposalToggles;
 }
 

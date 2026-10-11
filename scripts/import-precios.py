@@ -46,6 +46,8 @@ def map_category(section: str, name: str) -> tuple[str, str | None, str, str | N
 
     if "PANEL" in sec:
         cat, unit = "panel", "módulo"
+    elif "MICROINVERSOR" in sec:
+        cat, notes = "microinverter", "Microinversor"
     elif sec.startswith("INVERSOR"):
         cat = "inverter"
     elif "BATER" in sec:
@@ -54,22 +56,33 @@ def map_category(section: str, name: str) -> tuple[str, str | None, str, str | N
         cat, mount = "structure", "cubierta"
         if "STACK" in n:
             mount = "suelo"
-    elif "PROTECCIONES DC" in sec or sec == "DPS" or "COMBINER" in sec:
-        cat, notes = "protection", "DC"
-    elif "PROTECCIONES AC" in sec or "CAJA PROTECC" in sec:
-        cat, notes = "protection", "AC"
+    elif "COMBINER" in sec:
+        cat, notes = "combiner", "DC"
+    elif sec == "DPS" or sec.startswith("DPS"):
+        cat = "dps"
+    elif "PROTECCIONES DC" in sec:
+        cat, notes = "protection_dc", "DC"
+    elif "PROTECCIONES AC" in sec:
+        cat, notes = "protection_ac", "AC"
+    elif "CAJA PROTECC" in sec or "CAJA DE PROTECC" in sec:
+        cat, notes = "protection_box", "AC"
     elif "VARILLA" in sec:
-        cat = "protection"
-    elif "MICROINVERSOR" in sec:
-        if any(k in n for k in ("DS3", "QT2", "HMS", "DEYE 2000", "DEYE 1600")):
-            cat, notes = "inverter", "Microinversor"
-        else:
-            cat, notes = "cabling", "Monitoreo / accesorio"
+        cat = "ground_rod"
     elif "CARGADOR" in sec:
-        cat, notes, unit = "cabling", "Cargador EV", "unidad"
-    elif "CABLE" in sec or "CORAZA" in sec or "CANALETA" in sec or sec == "MC4":
+        cat, notes = "ev_charger", "Cargador EV"
+    elif sec == "MC4" or sec.startswith("MC4"):
+        cat = "mc4"
+    elif "CORAZA" in sec or "HALOGEN" in sec:
+        cat, unit = "lszh_sheath", "metro"
+    elif "CANALETA" in sec:
+        cat, unit = "metal_channel", "metro"
+    elif "CABLE AC" in sec or "CABLEADO AC" in sec:
+        cat, unit = "ac_cable", "metro"
+    elif "TIERRA" in sec:
+        cat, unit = "ground_cable", "metro"
+    elif "CABLE" in sec:
         cat = "cabling"
-        unit = "metro" if any(k in n for k in ("MM", "CABLE", "CORAZA", "ELECTROSTATICA", "CANALETA")) else "unidad"
+        unit = "metro" if any(k in n for k in ("MM", "CABLE", "AWG")) else "unidad"
     else:
         cat = "cabling"
 
@@ -152,7 +165,8 @@ def main() -> None:
         "battery": lambda i: i["name"].upper().replace(" ", "") == "10KW-LV" and "Felicity" in i["brand"],
         "structure": lambda i: i["name"].lower().startswith("riel 4.80") and "Improinde" in i["brand"],
         "cabling": lambda i: i["name"] == "6mm" and i["brand"] == "Kibor",
-        "protection": lambda i: "20A" in i["name"] and "YRO" in i["brand"],
+        "protection_dc": lambda i: "20A" in i["name"] and "YRO" in i["brand"],
+        "protection_ac": lambda i: "31A" in i["name"] and "Voltio" in i["brand"],
     }
     have = {c: False for c in defaults_needed}
     for i in items:
@@ -190,6 +204,8 @@ def main() -> None:
         "    isDefault: false,",
         "    active: true,",
         "    updatedAt: NOW,",
+        "    marginPercent: 0,",
+        '    applyIva: input.category !== "panel",',
         "    ...input,",
         "    priceUSD: Number((input.priceCOP / TRM).toFixed(2)),",
         "  };",
@@ -224,7 +240,26 @@ def main() -> None:
     lines.append("")
     OUT.write_text("\n".join(lines), encoding="utf-8")
     print(f"Wrote {len(items)} items to {OUT}")
-    for cat in ("panel", "inverter", "battery", "structure", "cabling", "protection"):
+    for cat in (
+        "panel",
+        "inverter",
+        "microinverter",
+        "battery",
+        "structure",
+        "cabling",
+        "protection_dc",
+        "protection_ac",
+        "dps",
+        "ground_rod",
+        "lszh_sheath",
+        "metal_channel",
+        "mc4",
+        "ac_cable",
+        "protection_box",
+        "combiner",
+        "ground_cable",
+        "ev_charger",
+    ):
         d = [i for i in items if i["category"] == cat and i["isDefault"]]
         print(cat, "count", sum(1 for i in items if i["category"] == cat), "default", d[0]["name"] if d else "NONE")
 

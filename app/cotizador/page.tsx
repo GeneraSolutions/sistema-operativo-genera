@@ -8,16 +8,20 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
 import { Toggle } from "@/components/Toggle";
 import {
+  categoryLabel,
   filterByCategory,
   getDefaultsByCategory,
+  loadCustomCategories,
   loadInventory,
 } from "@/lib/inventory";
 import {
   calculateParametricQuote,
+  lineFromItem,
+  selectionFromLines,
   suggestQuantities,
   type MountPreference,
+  type QuoteLineInput,
   type QuoteEquipmentSelection,
-  type QuoteQuantities,
 } from "@/lib/quote-engine";
 import { loadKits, type EquipmentKit } from "@/lib/kits";
 import {
@@ -126,24 +130,8 @@ function CotizadorInner() {
   const [clientWithholds, setClientWithholds] = useState(true);
   const [clientGranContribuyente, setClientGranContribuyente] = useState(false);
   const [taxConfig, setTaxConfig] = useState<ColombiaTaxConfig>(DEFAULT_TAX_CONFIG);
-  const [qty, setQty] = useState<QuoteQuantities>({
-    panels: 1,
-    inverters: 1,
-    batteries: 0,
-    structure: 1,
-    cabling: 12,
-    protectionDc: 1,
-    protectionAc: 1,
-  });
-  const [selection, setSelection] = useState<QuoteEquipmentSelection>({
-    panel: null,
-    inverter: null,
-    battery: null,
-    structure: null,
-    cabling: null,
-    protectionDc: null,
-    protectionAc: null,
-  });
+  const [quoteLines, setQuoteLines] = useState<QuoteLineInput[]>([]);
+  const [addItemId, setAddItemId] = useState("");
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
   const [applyLey1715, setApplyLey1715] = useState(true);
   const [clientName, setClientName] = useState("Cliente Corporativo");
@@ -178,10 +166,31 @@ function CotizadorInner() {
   });
   const [kits, setKits] = useState<EquipmentKit[]>([]);
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
+  const [customCats, setCustomCats] = useState<
+    { id: string; label: string }[]
+  >([]);
+
+  const selection = useMemo(
+    () => selectionFromLines(quoteLines, inventory),
+    [quoteLines, inventory]
+  );
+  const qty = useMemo(
+    () => ({
+      panels: quoteLines.find((l) => l.key === "panel")?.qty ?? 0,
+      inverters: quoteLines.find((l) => l.key === "inverter")?.qty ?? 0,
+      batteries: quoteLines.find((l) => l.key === "battery")?.qty ?? 0,
+      structure: quoteLines.find((l) => l.key === "structure")?.qty ?? 0,
+      cabling: quoteLines.find((l) => l.key === "cabling")?.qty ?? 0,
+      protectionDc: quoteLines.find((l) => l.key === "protection_dc")?.qty ?? 0,
+      protectionAc: quoteLines.find((l) => l.key === "protection_ac")?.qty ?? 0,
+    }),
+    [quoteLines]
+  );
 
   useEffect(() => {
     const items = loadInventory();
     setInventory(items);
+    setCustomCats(loadCustomCategories());
     const defaults = getDefaultsByCategory(items);
     const structures = filterByCategory(items, "structure");
     const mountDefault =
@@ -189,26 +198,26 @@ function CotizadorInner() {
       structures.find((s) => s.isDefault) ||
       structures[0] ||
       null;
-    const protections = filterByCategory(items, "protection");
     const dc =
-      protections.find((p) => p.id.includes("dc") || p.name.toLowerCase().includes("dc")) ||
-      protections[0] ||
+      defaults.protection_dc ||
+      filterByCategory(items, "protection_dc")[0] ||
       null;
     const ac =
-      protections.find((p) => p.id.includes("ac") || p.name.toLowerCase().includes("ac")) ||
-      protections[1] ||
-      protections[0] ||
+      defaults.protection_ac ||
+      filterByCategory(items, "protection_ac")[0] ||
       null;
 
-    setSelection({
-      panel: defaults.panel ?? null,
-      inverter: defaults.inverter ?? null,
-      battery: defaults.battery ?? null,
-      structure: mountDefault,
-      cabling: defaults.cabling ?? null,
-      protectionDc: dc,
-      protectionAc: ac,
-    });
+    const initial: QuoteLineInput[] = [];
+    const push = (key: string, item: InventoryItem | null, n: number) => {
+      if (item) initial.push(lineFromItem(key, item, n));
+    };
+    push("panel", defaults.panel ?? null, 1);
+    push("inverter", defaults.inverter ?? null, 1);
+    push("structure", mountDefault, 1);
+    push("cabling", defaults.cabling ?? null, 12);
+    push("protection_dc", dc, 1);
+    push("protection_ac", ac, 1);
+    setQuoteLines(initial);
 
     const kwpParam = searchParams.get("kwp");
     if (kwpParam) {
@@ -233,15 +242,36 @@ function CotizadorInner() {
 
   useEffect(() => {
     if (!hydrated) return;
-    setQty(
-      suggestQuantities(
-        systemKwp,
-        selection,
-        includeBattery,
-        batteryKwh,
-        12
-      )
+    const suggested = suggestQuantities(
+      systemKwp,
+      selection,
+      includeBattery,
+      batteryKwh,
+      12
     );
+    setQuoteLines((lines) => {
+      const qtyByKey: Record<string, number> = {
+        panel: suggested.panels,
+        inverter: suggested.inverters,
+        battery: suggested.batteries,
+        structure: suggested.structure,
+        cabling: suggested.cabling,
+        protection_dc: suggested.protectionDc,
+        protection_ac: suggested.protectionAc,
+      };
+      let next = lines.map((l) =>
+        qtyByKey[l.key] != null ? { ...l, qty: qtyByKey[l.key] } : l
+      );
+      const bat = getDefaultsByCategory(inventory).battery;
+      const hasBat = next.some((l) => l.key === "battery");
+      if (includeBattery && bat && !hasBat) {
+        next = [...next, lineFromItem("battery", bat, suggested.batteries)];
+      }
+      if (!includeBattery && hasBat) {
+        next = next.filter((l) => l.key !== "battery");
+      }
+      return next;
+    });
   }, [
     hydrated,
     systemKwp,
@@ -252,7 +282,6 @@ function CotizadorInner() {
     selection.battery?.id,
   ]);
 
-  // Sync structure when mount changes
   useEffect(() => {
     if (!hydrated) return;
     const match =
@@ -260,9 +289,12 @@ function CotizadorInner() {
         (s) => s.mountType === mount && s.isDefault
       ) ||
       filterByCategory(inventory, "structure").find((s) => s.mountType === mount);
-    if (match) {
-      setSelection((sel) => ({ ...sel, structure: match }));
-    }
+    if (!match) return;
+    setQuoteLines((lines) =>
+      lines.map((l) =>
+        l.key === "structure" ? lineFromItem("structure", match, l.qty) : l
+      )
+    );
   }, [mount, inventory, hydrated]);
 
   const irradiance = useMemo(
@@ -294,6 +326,8 @@ function CotizadorInner() {
         energyTariffCOP: energyTariff,
         selection,
         quantities: qty,
+        quoteLines,
+        inventory,
         overheadPercent,
         chargeIva,
         engineeringSaleCOP,
@@ -318,6 +352,8 @@ function CotizadorInner() {
       energyTariff,
       selection,
       qty,
+      quoteLines,
+      inventory,
       overheadPercent,
       chargeIva,
       engineeringSaleCOP,
@@ -467,7 +503,7 @@ function CotizadorInner() {
     setBatteryKwh(kit.batteryKwh);
     setMount(kit.mount);
     setTechnicians(kit.systemKwp < 10 ? 2 : kit.systemKwp < 50 ? 3 : 4);
-    setSelection({
+    const sel: QuoteEquipmentSelection = {
       panel: find(kit.equipment.panel),
       inverter: find(kit.equipment.inverter),
       battery: find(kit.equipment.battery),
@@ -475,7 +511,26 @@ function CotizadorInner() {
       cabling: find(kit.equipment.cabling),
       protectionDc: find(kit.equipment.protectionDc),
       protectionAc: find(kit.equipment.protectionAc),
-    });
+    };
+    const suggested = suggestQuantities(
+      kit.systemKwp,
+      sel,
+      kit.includeBattery,
+      kit.batteryKwh,
+      12
+    );
+    const next: QuoteLineInput[] = [];
+    const add = (key: string, item: InventoryItem | null, n: number) => {
+      if (item) next.push(lineFromItem(key, item, n));
+    };
+    add("panel", sel.panel, suggested.panels);
+    add("inverter", sel.inverter, suggested.inverters);
+    add("structure", sel.structure, suggested.structure);
+    add("cabling", sel.cabling, suggested.cabling);
+    add("protection_dc", sel.protectionDc, suggested.protectionDc);
+    add("protection_ac", sel.protectionAc, suggested.protectionAc);
+    if (kit.includeBattery) add("battery", sel.battery, suggested.batteries);
+    setQuoteLines(next);
   }
 
   function snapshotCurrent(name?: string): SavedQuote {
@@ -524,6 +579,7 @@ function CotizadorInner() {
       siteLon,
       equipmentIds: idsFromSelection(selection),
       qty,
+      quoteLines,
       toggles,
     };
   }
@@ -572,46 +628,45 @@ function CotizadorInner() {
     setPpaPricePerKWh(q.ppaPricePerKWhCOP ?? 650);
     setSiteLat(q.siteLat ?? 4.71);
     setSiteLon(q.siteLon ?? -74.15);
-    setQty(q.qty);
     setToggles(q.toggles);
-    setSelection({
-      panel: find(q.equipmentIds.panel),
-      inverter: find(q.equipmentIds.inverter),
-      battery: find(q.equipmentIds.battery),
-      structure: find(q.equipmentIds.structure),
-      cabling: find(q.equipmentIds.cabling),
-      protectionDc: find(q.equipmentIds.protectionDc),
-      protectionAc: find(q.equipmentIds.protectionAc),
-    });
+    if (q.quoteLines?.length) {
+      setQuoteLines(q.quoteLines);
+    } else {
+      const next: QuoteLineInput[] = [];
+      const add = (key: string, id: string | undefined, n: number) => {
+        const item = find(id);
+        if (item) next.push(lineFromItem(key, item, n));
+      };
+      add("panel", q.equipmentIds.panel, q.qty.panels);
+      add("inverter", q.equipmentIds.inverter, q.qty.inverters);
+      add("structure", q.equipmentIds.structure, q.qty.structure);
+      add("cabling", q.equipmentIds.cabling, q.qty.cabling);
+      add("protection_dc", q.equipmentIds.protectionDc, q.qty.protectionDc);
+      add("protection_ac", q.equipmentIds.protectionAc, q.qty.protectionAc);
+      if (q.includeBattery) {
+        add("battery", q.equipmentIds.battery, q.qty.batteries);
+      }
+      setQuoteLines(next);
+    }
   }
 
   const marginRate = quote.pl?.netMarginPercent ?? 0;
   const suggestedEngineering = Math.round(quote.pl.saleEquipmentCOP * 0.12);
   const stockWarnings = quote.lines
     .map((line) => {
-      const item = [
-        selection.panel,
-        selection.inverter,
-        selection.battery,
-        selection.structure,
-        selection.cabling,
-        selection.protectionDc,
-        selection.protectionAc,
-      ].find((i) => i && line.label.includes(i.brand) && line.qty > (i.stock ?? Infinity));
+      const item = inventory.find(
+        (i) =>
+          i.stock != null &&
+          line.label.includes(i.brand) &&
+          line.qty > (i.stock ?? Infinity)
+      );
       if (!item || item.stock == null) return null;
       if (line.qty <= item.stock) return null;
       return `${item.name}: pide ${line.qty}, stock ${item.stock} · lead ${item.leadTimeDays ?? "?"} días`;
     })
     .filter(Boolean) as string[];
 
-  const panels = filterByCategory(inventory, "panel");
-  const inverters = filterByCategory(inventory, "inverter");
-  const batteries = filterByCategory(inventory, "battery");
-  const cabling = filterByCategory(inventory, "cabling");
-  const structures = filterByCategory(inventory, "structure").filter(
-    (s) => !s.mountType || s.mountType === mount
-  );
-  const protections = filterByCategory(inventory, "protection");
+  const activeInventory = inventory.filter((i) => i.active);
 
   return (
     <AppShell
@@ -1290,110 +1345,191 @@ function CotizadorInner() {
             }
           >
             <p className="text-xs text-[#6d7c74]">
-              La cantidad se sugiere según kWp; usted la puede cambiar. El cliente no
-              ve costos unitarios ni márgenes.
+              Precio base del inventario, con margen e IVA por línea. Puede agregar o
+              quitar productos; el cliente no ve este desglose.
             </p>
             <div className="mt-4 space-y-3">
-              <EquipRow
-                label="Panel"
-                items={panels}
-                value={selection.panel?.id}
-                qty={qty.panels}
-                unit="módulos"
-                onChange={(id) =>
-                  setSelection((s) => ({
-                    ...s,
-                    panel: panels.find((p) => p.id === id) ?? null,
-                  }))
-                }
-                onQty={(n) => setQty((q) => ({ ...q, panels: n }))}
-              />
-              <EquipRow
-                label="Inversor"
-                items={inverters}
-                value={selection.inverter?.id}
-                qty={qty.inverters}
-                unit="und"
-                onChange={(id) =>
-                  setSelection((s) => ({
-                    ...s,
-                    inverter: inverters.find((p) => p.id === id) ?? null,
-                  }))
-                }
-                onQty={(n) => setQty((q) => ({ ...q, inverters: n }))}
-              />
-              {includeBattery ? (
-                <EquipRow
-                  label="Batería"
-                  items={batteries}
-                  value={selection.battery?.id}
-                  qty={qty.batteries}
-                  unit="und"
-                  onChange={(id) =>
-                    setSelection((s) => ({
-                      ...s,
-                      battery: batteries.find((p) => p.id === id) ?? null,
-                    }))
-                  }
-                  onQty={(n) => setQty((q) => ({ ...q, batteries: n }))}
-                />
-              ) : null}
-              <EquipRow
-                label={`Estructura (${mount})`}
-                items={structures}
-                value={selection.structure?.id}
-                qty={qty.structure}
-                unit="und"
-                onChange={(id) =>
-                  setSelection((s) => ({
-                    ...s,
-                    structure: structures.find((p) => p.id === id) ?? null,
-                  }))
-                }
-                onQty={(n) => setQty((q) => ({ ...q, structure: n }))}
-              />
-              <EquipRow
-                label="Cableado"
-                items={cabling}
-                value={selection.cabling?.id}
-                qty={qty.cabling}
-                unit="m"
-                onChange={(id) =>
-                  setSelection((s) => ({
-                    ...s,
-                    cabling: cabling.find((p) => p.id === id) ?? null,
-                  }))
-                }
-                onQty={(n) => setQty((q) => ({ ...q, cabling: n }))}
-              />
-              <EquipRow
-                label="Protección DC"
-                items={protections}
-                value={selection.protectionDc?.id}
-                qty={qty.protectionDc}
-                unit="und"
-                onChange={(id) =>
-                  setSelection((s) => ({
-                    ...s,
-                    protectionDc: protections.find((p) => p.id === id) ?? null,
-                  }))
-                }
-                onQty={(n) => setQty((q) => ({ ...q, protectionDc: n }))}
-              />
-              <EquipRow
-                label="Protección AC"
-                items={protections}
-                value={selection.protectionAc?.id}
-                qty={qty.protectionAc}
-                unit="und"
-                onChange={(id) =>
-                  setSelection((s) => ({
-                    ...s,
-                    protectionAc: protections.find((p) => p.id === id) ?? null,
-                  }))
-                }
-                onQty={(n) => setQty((q) => ({ ...q, protectionAc: n }))}
-              />
+              {quoteLines.map((line) => {
+                const item = inventory.find((i) => i.id === line.itemId);
+                const options = item
+                  ? activeInventory.filter((i) => i.category === item.category)
+                  : activeInventory;
+                return (
+                  <div
+                    key={line.key}
+                    className="rounded-2xl border border-[#e4dfd4] bg-[#fbfaf6] p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold tracking-wide text-[#6b6458] uppercase">
+                        {item
+                          ? categoryLabel(item.category, customCats)
+                          : "Equipo"}
+                      </p>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-[#9a3b2f] underline"
+                        onClick={() =>
+                          setQuoteLines((rows) =>
+                            rows.filter((r) => r.key !== line.key)
+                          )
+                        }
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                    <label className="mt-2 block text-sm">
+                      <span className="mb-1 block font-medium">Producto</span>
+                      <select
+                        className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2"
+                        value={line.itemId}
+                        onChange={(e) => {
+                          const next = inventory.find((i) => i.id === e.target.value);
+                          if (!next) return;
+                          setQuoteLines((rows) =>
+                            rows.map((r) =>
+                              r.key === line.key
+                                ? lineFromItem(line.key, next, r.qty)
+                                : r
+                            )
+                          );
+                        }}
+                      >
+                        {options.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.brand} {opt.model || opt.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium">
+                          Cant. ({item?.unit || "und"})
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-full rounded-xl border border-[#d8d2c4] bg-white px-2 py-2"
+                          value={line.qty}
+                          onChange={(e) => {
+                            const n = Math.max(0, Number(e.target.value) || 0);
+                            setQuoteLines((rows) =>
+                              rows.map((r) =>
+                                r.key === line.key ? { ...r, qty: n } : r
+                              )
+                            );
+                          }}
+                        />
+                      </label>
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium">Costo COP</span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-full rounded-xl border border-[#d8d2c4] bg-white px-2 py-2"
+                          value={line.costUnitCOP}
+                          onChange={(e) => {
+                            const n = Math.max(0, Number(e.target.value) || 0);
+                            setQuoteLines((rows) =>
+                              rows.map((r) =>
+                                r.key === line.key ? { ...r, costUnitCOP: n } : r
+                              )
+                            );
+                          }}
+                        />
+                        {item && item.priceCOP !== line.costUnitCOP ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] text-[#1f6b45] underline"
+                            onClick={() =>
+                              setQuoteLines((rows) =>
+                                rows.map((r) =>
+                                  r.key === line.key
+                                    ? { ...r, costUnitCOP: item.priceCOP }
+                                    : r
+                                )
+                              )
+                            }
+                          >
+                            Base {copFmt.format(item.priceCOP)}
+                          </button>
+                        ) : (
+                          <span className="mt-1 block text-[11px] text-[#6b6458]">
+                            Precio inventario
+                          </span>
+                        )}
+                      </label>
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium">Ganancia %</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          className="w-full rounded-xl border border-[#d8d2c4] bg-white px-2 py-2"
+                          value={line.marginPercent}
+                          onChange={(e) => {
+                            const n = Math.max(0, Number(e.target.value) || 0);
+                            setQuoteLines((rows) =>
+                              rows.map((r) =>
+                                r.key === line.key ? { ...r, marginPercent: n } : r
+                              )
+                            );
+                          }}
+                        />
+                      </label>
+                      <label className="flex items-end gap-2 pb-2 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          checked={line.applyIva}
+                          onChange={(e) =>
+                            setQuoteLines((rows) =>
+                              rows.map((r) =>
+                                r.key === line.key
+                                  ? { ...r, applyIva: e.target.checked }
+                                  : r
+                              )
+                            )
+                          }
+                        />
+                        IVA 19%
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-[#d8d2c4] p-3">
+                <label className="min-w-[220px] flex-1 text-sm">
+                  <span className="mb-1 block font-medium">Agregar del inventario</span>
+                  <select
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2"
+                    value={addItemId}
+                    onChange={(e) => setAddItemId(e.target.value)}
+                  >
+                    <option value="">Seleccionar producto…</option>
+                    {activeInventory.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {categoryLabel(opt.category, customCats)} · {opt.brand}{" "}
+                        {opt.model || opt.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="rounded-xl bg-[#0f3d2e] px-4 py-2 text-sm font-semibold text-white"
+                  onClick={() => {
+                    const item = inventory.find((i) => i.id === addItemId);
+                    if (!item) return;
+                    setQuoteLines((rows) => [
+                      ...rows,
+                      lineFromItem(`extra-${item.id}-${Date.now()}`, item, 1),
+                    ]);
+                    setAddItemId("");
+                  }}
+                >
+                  Agregar producto
+                </button>
+              </div>
             </div>
           </QuoteFold>
 
@@ -2018,57 +2154,6 @@ function QuoteFold({
       </button>
       {open ? <div className="mt-4">{children}</div> : null}
     </section>
-  );
-}
-
-function EquipRow({
-  label,
-  items,
-  value,
-  qty,
-  unit,
-  onChange,
-  onQty,
-}: {
-  label: string;
-  items: InventoryItem[];
-  value?: string;
-  qty: number;
-  unit: string;
-  onChange: (id: string) => void;
-  onQty: (n: number) => void;
-}) {
-  return (
-    <div className="grid grid-cols-[1fr_88px] gap-2 text-sm">
-      <label className="block">
-        <span className="mb-1 block font-medium">{label}</span>
-        <select
-          className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-          value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          <option value="" disabled>
-            Seleccionar…
-          </option>
-          {items.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.brand} {item.model || item.name}
-              {item.isDefault ? " ★" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block">
-        <span className="mb-1 block font-medium">Cant. ({unit})</span>
-        <input
-          type="number"
-          min={0}
-          className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-2 py-2.5"
-          value={qty}
-          onChange={(e) => onQty(Math.max(0, Number(e.target.value) || 0))}
-        />
-      </label>
-    </div>
   );
 }
 
