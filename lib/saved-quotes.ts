@@ -28,6 +28,10 @@ export interface SavedQuote {
   applyLey1715: boolean;
   monthlyConsumption: number;
   executionDays: number;
+  validUntilDays?: number;
+  issuedAt?: string;
+  siteImageDataUrl?: string;
+  logoHeight?: number;
   advancePercent: number;
   equipmentIds: {
     panel?: string;

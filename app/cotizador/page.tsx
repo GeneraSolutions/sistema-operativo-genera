@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
+import { BrandLogo } from "@/components/BrandLogo";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
 import { Toggle } from "@/components/Toggle";
 import {
@@ -43,6 +44,40 @@ const copFmt = new Intl.NumberFormat("es-CO", {
   currency: "COP",
   maximumFractionDigits: 0,
 });
+
+function localISODate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function compressSiteImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const max = 1400;
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      URL.revokeObjectURL(url);
+      if (!ctx) {
+        reject(new Error("canvas"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.78));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("image"));
+    };
+    img.src = url;
+  });
+}
 
 export interface ProposalToggles {
   showTir: boolean;
@@ -107,6 +142,10 @@ function CotizadorInner() {
   const [clientCity, setClientCity] = useState("Bogotá");
   const [monthlyConsumption, setMonthlyConsumption] = useState(800);
   const [executionDays, setExecutionDays] = useState(7);
+  const [validUntilDays, setValidUntilDays] = useState(15);
+  const [issuedAt, setIssuedAt] = useState(() => localISODate());
+  const [siteImageDataUrl, setSiteImageDataUrl] = useState("");
+  const [logoHeight, setLogoHeight] = useState(80);
   const [advancePercent, setAdvancePercent] = useState(70);
   const [linkFlash, setLinkFlash] = useState("");
   const [hydrated, setHydrated] = useState(false);
@@ -272,7 +311,10 @@ function CotizadorInner() {
       batteryKwh,
       mount,
       executionDays,
-      validUntilDays: 15,
+      validUntilDays,
+      issuedAt,
+      siteImageDataUrl: siteImageDataUrl || undefined,
+      logoHeight,
       advancePercent,
       quote,
       selection,
@@ -291,6 +333,10 @@ function CotizadorInner() {
     batteryKwh,
     mount,
     executionDays,
+    validUntilDays,
+    issuedAt,
+    siteImageDataUrl,
+    logoHeight,
     advancePercent,
     quote,
     selection,
@@ -396,6 +442,10 @@ function CotizadorInner() {
       applyLey1715,
       monthlyConsumption,
       executionDays,
+      validUntilDays,
+      issuedAt,
+      siteImageDataUrl,
+      logoHeight,
       advancePercent,
       equipmentIds: idsFromSelection(selection),
       qty,
@@ -432,6 +482,10 @@ function CotizadorInner() {
     setApplyLey1715(q.applyLey1715);
     setMonthlyConsumption(q.monthlyConsumption);
     setExecutionDays(q.executionDays);
+    setValidUntilDays(q.validUntilDays ?? 15);
+    setIssuedAt(q.issuedAt || localISODate());
+    setSiteImageDataUrl(q.siteImageDataUrl ?? "");
+    setLogoHeight(q.logoHeight ?? 80);
     setAdvancePercent(q.advancePercent);
     setQty(q.qty);
     setToggles(q.toggles);
@@ -578,7 +632,7 @@ function CotizadorInner() {
         <div className="space-y-3">
           <QuoteFold
             title="Parámetros del proyecto"
-            summary={`${numFmt.format(systemKwp)} kWp · ${clientCity} · ${executionDays} días`}
+            summary={`${numFmt.format(systemKwp)} kWp · ${clientCity} · vigencia ${validUntilDays} d`}
             open={openFolds.params}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, params: !s.params }))
@@ -689,6 +743,114 @@ function CotizadorInner() {
                     onChange={(e) => setAdvancePercent(Number(e.target.value) || 70)}
                   />
                 </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">Fecha de envío</span>
+                  <input
+                    type="date"
+                    max={localISODate()}
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={issuedAt}
+                    onChange={(e) => setIssuedAt(e.target.value || localISODate())}
+                  />
+                  <span className="mt-1 block text-xs text-[#6b6458]">
+                    Por defecto hoy. Puedes elegir una fecha anterior.
+                  </span>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">
+                    Vigencia de la propuesta ({validUntilDays} días)
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={45}
+                    className="w-full accent-[#0f3d2e]"
+                    value={validUntilDays}
+                    onChange={(e) => setValidUntilDays(Number(e.target.value))}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    max={45}
+                    className="mt-2 w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={validUntilDays}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setValidUntilDays(
+                        Number.isFinite(n) ? Math.min(45, Math.max(1, n)) : 15
+                      );
+                    }}
+                  />
+                  <span className="mt-1 block text-xs text-[#6b6458]">
+                    De 1 a 45 días calendario.
+                  </span>
+                </label>
+              </div>
+
+              <div className="rounded-2xl border border-[#e4dfd4] bg-[#f7f4ee] p-3">
+                <p className="text-sm font-medium">Foto del lugar</p>
+                <p className="mt-0.5 text-xs text-[#6b6458]">
+                  Casa, finca, empresa o cubierta. Se muestra en la cotización.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <label className="cursor-pointer rounded-xl bg-[#0f3d2e] px-3 py-2 text-sm font-semibold text-white">
+                    Adjuntar imagen
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        try {
+                          setSiteImageDataUrl(await compressSiteImage(file));
+                        } catch {
+                          setSiteImageDataUrl("");
+                        }
+                      }}
+                    />
+                  </label>
+                  {siteImageDataUrl ? (
+                    <button
+                      type="button"
+                      className="rounded-xl border border-[#d8d2c4] px-3 py-2 text-sm"
+                      onClick={() => setSiteImageDataUrl("")}
+                    >
+                      Quitar foto
+                    </button>
+                  ) : null}
+                </div>
+                {siteImageDataUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={siteImageDataUrl}
+                    alt="Lugar del proyecto"
+                    className="mt-3 max-h-40 w-full rounded-xl object-cover"
+                  />
+                ) : null}
+              </div>
+
+              <div className="rounded-2xl border border-[#e4dfd4] bg-[#f7f4ee] p-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">
+                    Tamaño del logo en la cotización ({logoHeight} px)
+                  </span>
+                  <input
+                    type="range"
+                    min={48}
+                    max={140}
+                    className="w-full accent-[#0f3d2e]"
+                    value={logoHeight}
+                    onChange={(e) => setLogoHeight(Number(e.target.value))}
+                  />
+                </label>
+                <div className="mt-3 flex justify-center rounded-xl bg-[#070b16] p-4">
+                  <BrandLogo height={logoHeight} variant="card" />
+                </div>
+                <p className="mt-2 text-center text-[11px] tracking-widest text-[#6b6458] uppercase">
+                  Cotización EPC · Genera
+                </p>
               </div>
 
               <fieldset>

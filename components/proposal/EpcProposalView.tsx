@@ -12,6 +12,16 @@ const cop = new Intl.NumberFormat("es-CO", {
 
 const num = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 1 });
 
+function formatProposalDate(iso: string) {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("es-CO", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function SectionHead({
   n,
   title,
@@ -74,7 +84,7 @@ export function EpcProposalView({
     <div className={`proposal-print bg-[#070b16] text-[#e8eef8] ${embedded ? "" : "min-h-screen"}`}>
       <header className={`sticky top-0 z-20 flex items-center justify-between border-b border-[#1a2744] bg-[#070b16]/90 px-5 py-3 backdrop-blur print:static ${embedded ? "print:hidden" : ""}`}>
         <div className="flex items-center gap-2 text-sm text-[#c5d4ea]">
-          <BrandLogo height={28} />
+          <BrandLogo height={28} variant="card" className="!rounded-lg !px-1.5 !py-1" />
           {p.companyName} · Cotización EPC
         </div>
         <div className="flex items-center gap-2 print:hidden">
@@ -96,15 +106,27 @@ export function EpcProposalView({
 
       <div className="mx-auto max-w-5xl px-4 py-10">
         <div className="text-center">
-          <GeneraMark />
-          <p className="mt-3 inline-flex rounded-full bg-[#14352c] px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-[#5eead4] uppercase">
+          <GeneraMark height={p.logoHeight ?? 80} />
+          <p className="mt-4 inline-flex rounded-full bg-[#14352c] px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-[#5eead4] uppercase">
             {p.companyTag}
           </p>
           <h1 className="mt-3 text-3xl font-semibold text-white">{p.clientName}</h1>
           <p className="mt-1 text-sm text-[#8aa0c2]">
-            Fecha: {p.createdAt} · Vigencia: {p.validUntilDays} días
+            Fecha: {formatProposalDate(p.createdAt)} · Vigencia: {p.validUntilDays}{" "}
+            días
           </p>
         </div>
+
+        {p.siteImageDataUrl ? (
+          <div className="mt-8 overflow-hidden rounded-3xl border border-[#1e2d4a]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={p.siteImageDataUrl}
+              alt={`Lugar del proyecto · ${p.clientName}`}
+              className="max-h-[420px] w-full object-cover"
+            />
+          </div>
+        ) : null}
 
         <div className="mt-8 grid gap-3 md:grid-cols-3">
           <InfoTile label="Cliente" value={p.clientName} hint={p.clientCity} />
@@ -545,10 +567,10 @@ function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
   );
 }
 
-function GeneraMark() {
+function GeneraMark({ height }: { height: number }) {
   return (
     <div className="flex justify-center">
-      <BrandLogo height={72} />
+      <BrandLogo height={height} variant="card" />
     </div>
   );
 }

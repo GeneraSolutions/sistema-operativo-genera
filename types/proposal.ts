@@ -55,6 +55,8 @@ export interface EpcProposal {
   id: string;
   createdAt: string;
   validUntilDays: number;
+  siteImageDataUrl?: string;
+  logoHeight?: number;
   companyName: string;
   companyTag: string;
   clientName: string;

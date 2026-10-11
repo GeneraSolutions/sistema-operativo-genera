@@ -25,6 +25,9 @@ export interface BuildProposalInput {
   mount: "cubierta" | "suelo" | "pergola";
   executionDays: number;
   validUntilDays: number;
+  issuedAt?: string;
+  siteImageDataUrl?: string;
+  logoHeight?: number;
   advancePercent: number;
   quote: QuoteBreakdown;
   selection: QuoteEquipmentSelection;
@@ -128,8 +131,13 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
 
   return {
     id: input.id ?? crypto.randomUUID(),
-    createdAt: new Date().toISOString().slice(0, 10),
-    validUntilDays: input.validUntilDays,
+    createdAt: (input.issuedAt || new Date().toLocaleDateString("en-CA")).slice(
+      0,
+      10
+    ),
+    validUntilDays: Math.min(45, Math.max(1, input.validUntilDays)),
+    siteImageDataUrl: input.siteImageDataUrl,
+    logoHeight: input.logoHeight ?? 80,
     companyName: "Genera Solutions SAS",
     companyTag: "COTIZACIÓN EPC · GENERA",
     clientName: input.clientName.trim() || "Cliente",

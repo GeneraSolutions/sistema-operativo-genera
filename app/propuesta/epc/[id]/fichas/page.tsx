@@ -50,7 +50,7 @@ export default function FichasTecnicasPage() {
   return (
     <div className="min-h-screen bg-[#070b16] text-[#e8eef8]">
       <header className="flex items-center justify-between border-b border-[#1a2744] px-5 py-3">
-        <BrandLogo height={28} />
+        <BrandLogo height={28} variant="card" className="!rounded-lg !px-1.5 !py-1" />
         <Link
           href={`/propuesta/epc/${proposal.id}`}
           className="text-sm text-[#5eead4] underline"

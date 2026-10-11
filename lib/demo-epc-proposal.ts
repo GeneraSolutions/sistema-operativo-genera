@@ -7,6 +7,7 @@ export const DEMO_EPC_PROPOSAL: EpcProposal = {
   id: "3b0ae550-bea7-4671-a233-d368b7ae3136",
   createdAt: "2026-07-28",
   validUntilDays: 15,
+  logoHeight: 80,
   companyName: "Genera Solutions SAS",
   companyTag: "COTIZACIÓN EPC · GENERA",
   clientName: "Carlos Mauricio Fuentes",
