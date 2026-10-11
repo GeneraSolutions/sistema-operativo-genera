@@ -34,12 +34,34 @@ export interface TaxIncentives {
   panelsIvaExclusion: boolean;
 }
 
+export type PaymentKind = "two_shot" | "three_shot" | "financed" | "ppa";
+
+export interface PaymentInstallment {
+  key: string;
+  label: string;
+  percent?: number;
+  amountCOP: number;
+  hint: string;
+}
+
 export interface PaymentSchedule {
+  kind: PaymentKind;
   modality: string;
+  summary: string;
+  installments: PaymentInstallment[];
   advancePercent: number;
   deliveryPercent: number;
   advanceCOP: number;
   deliveryCOP: number;
+  financedPercent?: number;
+  financedMonths?: number;
+  financedEaPercent?: number;
+  monthlyInstallmentCOP?: number;
+  downPaymentCOP?: number;
+  ppaYears?: number;
+  ppaPricePerKWhCOP?: number;
+  ppaAnnualYear1COP?: number;
+  ppaContractTotalCOP?: number;
 }
 
 export interface ProposalToggles {
@@ -74,6 +96,11 @@ export interface EpcProposal {
   mountLabel: string;
   roofType: string;
   annualGenerationKWh: number;
+  peakSunHours?: number;
+  siteLat?: number;
+  siteLon?: number;
+  ideamStationName?: string;
+  ideamDistanceKm?: number;
   monthlyEnergy: MonthlyEnergyPoint[];
   bundles: TechnicalBundle[];
   commercialLines: CommercialLine[];

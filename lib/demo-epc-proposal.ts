@@ -148,7 +148,25 @@ export const DEMO_EPC_PROPOSAL: EpcProposal = {
     panelsIvaExclusion: true,
   },
   payment: {
-    modality: "Pago de Contado",
+    kind: "two_shot",
+    modality: "Dos contados",
+    summary: "70% anticipo · 30% a la entrega",
+    installments: [
+      {
+        key: "start",
+        label: "Anticipo",
+        percent: 70,
+        amountCOP: 39721387,
+        hint: "Al inicio del proyecto",
+      },
+      {
+        key: "end",
+        label: "Entrega del proyecto",
+        percent: 30,
+        amountCOP: 17023452,
+        hint: "Contra puesta en marcha",
+      },
+    ],
     advancePercent: 70,
     deliveryPercent: 30,
     advanceCOP: 39721387,

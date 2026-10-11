@@ -1,6 +1,8 @@
 import { GENERA_BONUSES } from "@/lib/proposal-bonuses";
 import { buildMonthlyEnergy } from "@/lib/monthly-energy";
+import { buildPaymentSchedule, type PaymentInput } from "@/lib/payment-schedule";
 import type { QuoteBreakdown, QuoteEquipmentSelection } from "@/lib/quote-engine";
+import type { PaymentKind } from "@/types/proposal";
 import {
   ColombiaSolarFinancials,
   type SolarProjectInput,
@@ -28,7 +30,21 @@ export interface BuildProposalInput {
   issuedAt?: string;
   siteImageDataUrl?: string;
   logoHeight?: number;
+  paymentKind?: PaymentKind;
+  twoStartPercent?: number;
+  threeStartPercent?: number;
+  threeEquipmentPercent?: number;
+  financedPercent?: number;
+  financedMonths?: number;
+  financedEaPercent?: number;
+  ppaYears?: number;
+  ppaPricePerKWhCOP?: number;
   advancePercent: number;
+  siteLat?: number;
+  siteLon?: number;
+  monthlyGhiWh?: number[];
+  ideamStationName?: string;
+  ideamDistanceKm?: number;
   quote: QuoteBreakdown;
   selection: QuoteEquipmentSelection;
   toggles: ProposalToggles;
@@ -101,8 +117,20 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
     .reduce((acc, c) => acc + c.energySavingsCOP + c.taxBenefitsCOP, 0);
   const blendedAnnualSavingsCOP = Math.round(total25ySavingsCOP / 25);
 
-  const advanceCOP = Math.round(totalCOP * (input.advancePercent / 100));
-  const deliveryPercent = 100 - input.advancePercent;
+  const paymentInput: PaymentInput = {
+    kind: input.paymentKind ?? "two_shot",
+    totalCOP,
+    annualGenerationKWh: quote.annualGenerationKWh,
+    twoStartPercent: input.twoStartPercent ?? input.advancePercent,
+    threeStartPercent: input.threeStartPercent ?? 40,
+    threeEquipmentPercent: input.threeEquipmentPercent ?? 40,
+    financedPercent: input.financedPercent ?? 100,
+    financedMonths: input.financedMonths ?? 36,
+    financedEaPercent: input.financedEaPercent ?? 18,
+    ppaYears: input.ppaYears ?? 15,
+    ppaPricePerKWhCOP: input.ppaPricePerKWhCOP ?? energyTariffCOP,
+  };
+  const payment = buildPaymentSchedule(paymentInput);
 
   const panelLabel = selection.panel
     ? `${selection.panel.brand} · ${selection.panel.model}`
@@ -155,9 +183,16 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
     mountLabel: MOUNT_COPY[input.mount].label,
     roofType: MOUNT_COPY[input.mount].roof,
     annualGenerationKWh: quote.annualGenerationKWh,
+    peakSunHours: input.peakSunHours,
+    siteLat: input.siteLat,
+    siteLon: input.siteLon,
+    ideamStationName: input.ideamStationName,
+    ideamDistanceKm: input.ideamDistanceKm,
     monthlyEnergy: buildMonthlyEnergy(
       quote.annualGenerationKWh,
-      input.monthlyConsumptionKWh
+      input.monthlyConsumptionKWh,
+      input.monthlyGhiWh,
+      systemKwp
     ),
     bundles,
     commercialLines,
@@ -171,13 +206,7 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
       annualDepreciationCOP: Math.round(subtotalCOP / 3),
       panelsIvaExclusion: true,
     },
-    payment: {
-      modality: "Pago de Contado",
-      advancePercent: input.advancePercent,
-      deliveryPercent,
-      advanceCOP,
-      deliveryCOP: totalCOP - advanceCOP,
-    },
+    payment,
     annualEnergySavingsCOP,
     year1TaxSavingsCOP,
     total25ySavingsCOP,

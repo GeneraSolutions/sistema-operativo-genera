@@ -56,6 +56,8 @@ export interface QuoteParams {
   clientWithholds: boolean;
   clientGranContribuyente: boolean;
   taxConfig: ColombiaTaxConfig;
+  /** GHI mensual IDEAM en Wh/m²·día (ene–dic). Si existe, manda sobre HSP plano. */
+  monthlyGhiWh?: number[];
 }
 
 export interface QuoteBreakdownLine {
@@ -314,9 +316,16 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
   ]);
 
   const performanceRatio = 0.8;
-  const annualGenerationKWh = Math.round(
-    params.systemKwp * params.peakSunHours * 365 * performanceRatio
-  );
+  const annualGenerationKWh = params.monthlyGhiWh?.length === 12
+    ? Math.round(
+        params.monthlyGhiWh.reduce((acc, wh, i) => {
+          const days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][i];
+          return acc + params.systemKwp * (wh / 1000) * days * performanceRatio;
+        }, 0)
+      )
+    : Math.round(
+        params.systemKwp * params.peakSunHours * 365 * performanceRatio
+      );
 
   return {
     lines,

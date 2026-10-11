@@ -6,10 +6,11 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
   const pad = { l: 44, r: 16, t: 20, b: 36 };
   const innerW = width - pad.l - pad.r;
   const innerH = height - pad.t - pad.b;
-  const maxY = Math.max(
-    1600,
+  const rawMax = Math.max(
+    1,
     ...data.flatMap((d) => [d.generationKWh, d.consumptionKWh])
   );
+  const maxY = Math.ceil(rawMax / 200) * 200;
   const x = (i: number) => pad.l + (i / Math.max(data.length - 1, 1)) * innerW;
   const y = (v: number) => pad.t + innerH - (v / maxY) * innerH;
 
@@ -21,7 +22,9 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
     .map((d, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(d.consumptionKWh)}`)
     .join(" ");
 
-  const ticks = [0, 400, 800, 1200, 1600].filter((t) => t <= maxY);
+  const tickStep = maxY <= 800 ? 200 : maxY <= 2000 ? 400 : 800;
+  const ticks: number[] = [];
+  for (let t = 0; t <= maxY; t += tickStep) ticks.push(t);
 
   return (
     <div className="w-full overflow-x-auto">

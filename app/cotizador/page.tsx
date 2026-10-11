@@ -20,6 +20,13 @@ import {
   type QuoteQuantities,
 } from "@/lib/quote-engine";
 import { loadKits, type EquipmentKit } from "@/lib/kits";
+import {
+  matchStationByCity,
+  resolveIdeamIrradiance,
+  scaleGhiToHsp,
+} from "@/lib/ideam-irradiance";
+import { IDEAM_STATIONS } from "@/lib/ideam-stations";
+import { FINANCED_MONTH_OPTIONS } from "@/lib/payment-schedule";
 import { buildEpcProposal } from "@/lib/proposal-builder";
 import { saveProposal } from "@/lib/proposal-store";
 import {
@@ -37,6 +44,7 @@ import {
   type ColombiaTaxConfig,
 } from "@/lib/colombia-tax";
 import type { InventoryItem } from "@/types/inventory";
+import type { PaymentKind } from "@/types/proposal";
 
 const numFmt = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
 const copFmt = new Intl.NumberFormat("es-CO", {
@@ -146,7 +154,17 @@ function CotizadorInner() {
   const [issuedAt, setIssuedAt] = useState(() => localISODate());
   const [siteImageDataUrl, setSiteImageDataUrl] = useState("");
   const [logoHeight, setLogoHeight] = useState(80);
+  const [siteLat, setSiteLat] = useState(4.71);
+  const [siteLon, setSiteLon] = useState(-74.15);
   const [advancePercent, setAdvancePercent] = useState(70);
+  const [paymentKind, setPaymentKind] = useState<PaymentKind>("two_shot");
+  const [threeStartPercent, setThreeStartPercent] = useState(40);
+  const [threeEquipmentPercent, setThreeEquipmentPercent] = useState(40);
+  const [financedPercent, setFinancedPercent] = useState(100);
+  const [financedMonths, setFinancedMonths] = useState(36);
+  const [financedEaPercent, setFinancedEaPercent] = useState(18);
+  const [ppaYears, setPpaYears] = useState(15);
+  const [ppaPricePerKWh, setPpaPricePerKWh] = useState(650);
   const [linkFlash, setLinkFlash] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [openFolds, setOpenFolds] = useState({
@@ -154,6 +172,7 @@ function CotizadorInner() {
     equipos: false,
     ingenieria: false,
     impuestos: false,
+    pago: false,
     costeo: false,
     propuesta: false,
   });
@@ -246,6 +265,23 @@ function CotizadorInner() {
     }
   }, [mount, inventory, hydrated]);
 
+  const irradiance = useMemo(
+    () => resolveIdeamIrradiance(siteLat, siteLon),
+    [siteLat, siteLon]
+  );
+
+  const monthlyGhiWh = useMemo(() => {
+    if (!irradiance) return undefined;
+    return scaleGhiToHsp(irradiance.wh, peakSunHours);
+  }, [irradiance, peakSunHours]);
+
+  function applySiteCoords(lat: number, lon: number) {
+    setSiteLat(lat);
+    setSiteLon(lon);
+    const r = resolveIdeamIrradiance(lat, lon);
+    if (r) setPeakSunHours(Math.round(r.hsp * 100) / 100);
+  }
+
   const quote = useMemo(
     () =>
       calculateParametricQuote({
@@ -271,6 +307,7 @@ function CotizadorInner() {
         clientWithholds,
         clientGranContribuyente,
         taxConfig,
+        monthlyGhiWh,
       }),
     [
       systemKwp,
@@ -294,6 +331,7 @@ function CotizadorInner() {
       clientWithholds,
       clientGranContribuyente,
       taxConfig,
+      monthlyGhiWh,
     ]
   );
 
@@ -316,6 +354,20 @@ function CotizadorInner() {
       siteImageDataUrl: siteImageDataUrl || undefined,
       logoHeight,
       advancePercent,
+      paymentKind,
+      twoStartPercent: advancePercent,
+      threeStartPercent,
+      threeEquipmentPercent,
+      financedPercent,
+      financedMonths,
+      financedEaPercent,
+      ppaYears,
+      ppaPricePerKWhCOP: ppaPricePerKWh,
+      siteLat,
+      siteLon,
+      monthlyGhiWh,
+      ideamStationName: irradiance?.label,
+      ideamDistanceKm: irradiance?.distanceKm,
       quote,
       selection,
       toggles,
@@ -338,6 +390,18 @@ function CotizadorInner() {
     siteImageDataUrl,
     logoHeight,
     advancePercent,
+    paymentKind,
+    threeStartPercent,
+    threeEquipmentPercent,
+    financedPercent,
+    financedMonths,
+    financedEaPercent,
+    ppaYears,
+    ppaPricePerKWh,
+    siteLat,
+    siteLon,
+    monthlyGhiWh,
+    irradiance,
     quote,
     selection,
     toggles,
@@ -447,6 +511,17 @@ function CotizadorInner() {
       siteImageDataUrl,
       logoHeight,
       advancePercent,
+      paymentKind,
+      twoStartPercent: advancePercent,
+      threeStartPercent,
+      threeEquipmentPercent,
+      financedPercent,
+      financedMonths,
+      financedEaPercent,
+      ppaYears,
+      ppaPricePerKWhCOP: ppaPricePerKWh,
+      siteLat,
+      siteLon,
       equipmentIds: idsFromSelection(selection),
       qty,
       toggles,
@@ -486,7 +561,17 @@ function CotizadorInner() {
     setIssuedAt(q.issuedAt || localISODate());
     setSiteImageDataUrl(q.siteImageDataUrl ?? "");
     setLogoHeight(q.logoHeight ?? 80);
-    setAdvancePercent(q.advancePercent);
+    setAdvancePercent(q.twoStartPercent ?? q.advancePercent);
+    setPaymentKind(q.paymentKind ?? "two_shot");
+    setThreeStartPercent(q.threeStartPercent ?? 40);
+    setThreeEquipmentPercent(q.threeEquipmentPercent ?? 40);
+    setFinancedPercent(q.financedPercent ?? 100);
+    setFinancedMonths(q.financedMonths ?? 36);
+    setFinancedEaPercent(q.financedEaPercent ?? 18);
+    setPpaYears(q.ppaYears ?? 15);
+    setPpaPricePerKWh(q.ppaPricePerKWhCOP ?? 650);
+    setSiteLat(q.siteLat ?? 4.71);
+    setSiteLon(q.siteLon ?? -74.15);
     setQty(q.qty);
     setToggles(q.toggles);
     setSelection({
@@ -680,11 +765,15 @@ function CotizadorInner() {
                     type="number"
                     step={0.1}
                     min={2}
-                    max={7}
+                    max={8}
                     className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
                     value={peakSunHours}
                     onChange={(e) => setPeakSunHours(Number(e.target.value) || 4.5)}
                   />
+                  <span className="mt-1 block text-xs text-[#6b6458]">
+                    Se carga del Ideam y puedes afinarlo; la curva mensual conserva la
+                    forma del atlas.
+                  </span>
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium">Tarifa ($/kWh)</span>
@@ -695,6 +784,65 @@ function CotizadorInner() {
                     onChange={(e) => setEnergyTariff(Number(e.target.value) || 850)}
                   />
                 </label>
+              </div>
+
+              <div className="rounded-2xl border border-[#e4dfd4] bg-[#f7f4ee] p-3">
+                <p className="text-sm font-medium">Radiación IDEAM</p>
+                <p className="mt-0.5 text-xs text-[#6b6458]">
+                  Atlas de radiación solar de Colombia · GHI Wh/m²·día. Coordenadas del
+                  predio para interpolar las estaciones más cercanas.
+                </p>
+                <label className="mt-2 block text-sm">
+                  <span className="mb-1 block font-medium">Estación de referencia</span>
+                  <select
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={irradiance?.station.id ?? ""}
+                    onChange={(e) => {
+                      const s = IDEAM_STATIONS.find((x) => x.id === e.target.value);
+                      if (!s) return;
+                      applySiteCoords(s.lat, s.lon);
+                    }}
+                  >
+                    {IDEAM_STATIONS.slice()
+                      .sort((a, b) => a.name.localeCompare(b.name, "es"))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">Latitud</span>
+                    <input
+                      type="number"
+                      step={0.0001}
+                      className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                      value={siteLat}
+                      onChange={(e) => setSiteLat(Number(e.target.value))}
+                      onBlur={() => applySiteCoords(siteLat, siteLon)}
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">Longitud</span>
+                    <input
+                      type="number"
+                      step={0.0001}
+                      className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                      value={siteLon}
+                      onChange={(e) => setSiteLon(Number(e.target.value))}
+                      onBlur={() => applySiteCoords(siteLat, siteLon)}
+                    />
+                  </label>
+                </div>
+                {irradiance ? (
+                  <p className="mt-2 text-xs text-[#6b6458]">
+                    {irradiance.method === "idw" ? "Interpolado" : "Estación"} ·{" "}
+                    {irradiance.label} · {numFmt.format(irradiance.distanceKm)} km · HSP{" "}
+                    {numFmt.format(irradiance.hsp)} kWh/m²·día
+                  </p>
+                ) : null}
               </div>
 
               <label className="block text-sm">
@@ -712,6 +860,10 @@ function CotizadorInner() {
                     className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
                     value={clientCity}
                     onChange={(e) => setClientCity(e.target.value)}
+                    onBlur={() => {
+                      const match = matchStationByCity(clientCity);
+                      if (match) applySiteCoords(match.lat, match.lon);
+                    }}
                   />
                 </label>
                 <label className="block text-sm">
@@ -732,15 +884,6 @@ function CotizadorInner() {
                     className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
                     value={executionDays}
                     onChange={(e) => setExecutionDays(Number(e.target.value) || 7)}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">Anticipo (%)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                    value={advancePercent}
-                    onChange={(e) => setAdvancePercent(Number(e.target.value) || 70)}
                   />
                 </label>
                 <label className="block text-sm">
@@ -937,6 +1080,204 @@ function CotizadorInner() {
                 />
                 Proyecto elegible Ley 1715 / 2099
               </label>
+            </div>
+          </QuoteFold>
+
+          <QuoteFold
+            title="Forma de pago"
+            summary={
+              paymentKind === "two_shot"
+                ? `Dos contados · ${advancePercent}/${100 - advancePercent}`
+                : paymentKind === "three_shot"
+                  ? `Tres contados · ${threeStartPercent}/${threeEquipmentPercent}/${Math.max(0, 100 - threeStartPercent - threeEquipmentPercent)}`
+                  : paymentKind === "financed"
+                    ? `Financiado ${financedPercent}% · ${financedMonths} meses`
+                    : `PPA ${ppaYears} años · $${ppaPricePerKWh}/kWh`
+            }
+            open={openFolds.pago}
+            onToggle={() => setOpenFolds((s) => ({ ...s, pago: !s.pago }))}
+          >
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    ["two_shot", "2 contados"],
+                    ["three_shot", "3 contados"],
+                    ["financed", "Financiado"],
+                    ["ppa", "PPA"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setPaymentKind(value)}
+                    className={`rounded-lg px-2 py-2 text-sm font-semibold ${
+                      paymentKind === value
+                        ? "bg-[#1f6b45] text-white"
+                        : "bg-[#fbfaf6] ring-1 ring-[#d8d2c4]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {paymentKind === "two_shot" ? (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">
+                    Anticipo inicial ({advancePercent}%) · resto {100 - advancePercent}% a
+                    la entrega
+                  </span>
+                  <input
+                    type="range"
+                    min={10}
+                    max={90}
+                    className="w-full accent-[#0f3d2e]"
+                    value={advancePercent}
+                    onChange={(e) => setAdvancePercent(Number(e.target.value))}
+                  />
+                </label>
+              ) : null}
+
+              {paymentKind === "three_shot" ? (
+                <>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">
+                      Anticipo inicial ({threeStartPercent}%)
+                    </span>
+                    <input
+                      type="range"
+                      min={10}
+                      max={80}
+                      className="w-full accent-[#0f3d2e]"
+                      value={threeStartPercent}
+                      onChange={(e) => {
+                        const start = Number(e.target.value);
+                        setThreeStartPercent(start);
+                        if (start + threeEquipmentPercent > 95) {
+                          setThreeEquipmentPercent(Math.max(5, 95 - start));
+                        }
+                      }}
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">
+                      Entrega de equipos ({threeEquipmentPercent}%)
+                    </span>
+                    <input
+                      type="range"
+                      min={5}
+                      max={80}
+                      className="w-full accent-[#0f3d2e]"
+                      value={threeEquipmentPercent}
+                      onChange={(e) => {
+                        const equip = Number(e.target.value);
+                        const maxEquip = Math.max(5, 95 - threeStartPercent);
+                        setThreeEquipmentPercent(Math.min(equip, maxEquip));
+                      }}
+                    />
+                  </label>
+                  <p className="text-xs text-[#6b6458]">
+                    Entrega del proyecto:{" "}
+                    {Math.max(0, 100 - threeStartPercent - threeEquipmentPercent)}%
+                  </p>
+                </>
+              ) : null}
+
+              {paymentKind === "financed" ? (
+                <>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">
+                      Porcentaje financiado ({financedPercent}%)
+                    </span>
+                    <input
+                      type="range"
+                      min={20}
+                      max={100}
+                      step={5}
+                      className="w-full accent-[#0f3d2e]"
+                      value={financedPercent}
+                      onChange={(e) => setFinancedPercent(Number(e.target.value))}
+                    />
+                    <span className="mt-1 block text-xs text-[#6b6458]">
+                      {financedPercent >= 100
+                        ? "Se financia el 100%."
+                        : `${100 - financedPercent}% de cuota inicial.`}
+                    </span>
+                  </label>
+                  <fieldset>
+                    <legend className="mb-2 text-sm font-medium">Plazo</legend>
+                    <div className="flex flex-wrap gap-2">
+                      {FINANCED_MONTH_OPTIONS.map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setFinancedMonths(m)}
+                          className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                            financedMonths === m
+                              ? "bg-[#1f6b45] text-white"
+                              : "bg-[#fbfaf6] ring-1 ring-[#d8d2c4]"
+                          }`}
+                        >
+                          {m} meses
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">
+                      Tasa efectiva anual TEA (%)
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                      value={financedEaPercent}
+                      onChange={(e) =>
+                        setFinancedEaPercent(Number(e.target.value) || 0)
+                      }
+                    />
+                    <span className="mt-1 block text-xs text-[#6b6458]">
+                      0 = cuotas sin intereses.
+                    </span>
+                  </label>
+                </>
+              ) : null}
+
+              {paymentKind === "ppa" ? (
+                <>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">
+                      Plazo del PPA ({ppaYears} años, máx. 25)
+                    </span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={25}
+                      className="w-full accent-[#0f3d2e]"
+                      value={ppaYears}
+                      onChange={(e) => setPpaYears(Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">Costo del kWh PPA (COP)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                      value={ppaPricePerKWh}
+                      onChange={(e) =>
+                        setPpaPricePerKWh(Number(e.target.value) || 0)
+                      }
+                    />
+                    <span className="mt-1 block text-xs text-[#6b6458]">
+                      Tarifa actual del cliente: {copFmt.format(energyTariff)}/kWh. El
+                      PPA se calcula con la generación IDEAM.
+                    </span>
+                  </label>
+                </>
+              ) : null}
             </div>
           </QuoteFold>
 

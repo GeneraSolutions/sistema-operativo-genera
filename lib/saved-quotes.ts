@@ -1,5 +1,5 @@
 import type { MountPreference, QuoteEquipmentSelection, QuoteQuantities } from "@/lib/quote-engine";
-import type { ProposalToggles } from "@/types/proposal";
+import type { PaymentKind, ProposalToggles } from "@/types/proposal";
 
 export interface SavedQuote {
   id: string;
@@ -33,6 +33,17 @@ export interface SavedQuote {
   siteImageDataUrl?: string;
   logoHeight?: number;
   advancePercent: number;
+  paymentKind?: PaymentKind;
+  twoStartPercent?: number;
+  threeStartPercent?: number;
+  threeEquipmentPercent?: number;
+  financedPercent?: number;
+  financedMonths?: number;
+  financedEaPercent?: number;
+  ppaYears?: number;
+  ppaPricePerKWhCOP?: number;
+  siteLat?: number;
+  siteLon?: number;
   equipmentIds: {
     panel?: string;
     inverter?: string;

@@ -132,7 +132,8 @@ export function EpcProposalView({
           <InfoTile label="Cliente" value={p.clientName} hint={p.clientCity} />
           <InfoTile
             label="Forma de pago"
-            value={`${p.payment.advancePercent}% anticipo y ${p.payment.deliveryPercent}% a la entrega`}
+            value={p.payment.modality}
+            hint={p.payment.summary}
           />
           <InfoTile
             label="Tiempo de ejecución"
@@ -179,7 +180,10 @@ export function EpcProposalView({
                 <h3 className="text-sm font-semibold tracking-wide text-white uppercase">
                   Generación solar vs. consumo del cliente
                 </h3>
-                <p className="text-xs text-[#6b7c99]">kWh / mes · estimación Colombia</p>
+                <p className="text-xs text-[#6b7c99]">
+                  kWh / mes · Atlas IDEAM de radiación solar
+                  {p.ideamStationName ? ` · ${p.ideamStationName}` : ""}
+                </p>
               </div>
               <MonthlyEnergyChart data={p.monthlyEnergy} />
             </div>
@@ -321,20 +325,48 @@ export function EpcProposalView({
             title="Forma de pago"
             subtitle={`Modalidad: ${p.payment.modality}`}
           />
-          <div className="grid gap-3 md:grid-cols-2">
-            <PayCard
-              label="Anticipo"
-              amount={cop.format(p.payment.advanceCOP)}
-              pct={`${p.payment.advancePercent} % del total`}
-              total={cop.format(p.totalCOP)}
-            />
-            <PayCard
-              label="Entrega"
-              amount={cop.format(p.payment.deliveryCOP)}
-              pct={`${p.payment.deliveryPercent} % del total`}
-              total={cop.format(p.totalCOP)}
-            />
+          <div
+            className={`grid gap-3 ${
+              p.payment.installments.length > 2 ? "md:grid-cols-3" : "md:grid-cols-2"
+            }`}
+          >
+            {p.payment.installments.map((item) => (
+              <PayCard
+                key={item.key}
+                label={item.label}
+                amount={
+                  item.key === "tarifa"
+                    ? `${cop.format(item.amountCOP)}/kWh`
+                    : cop.format(item.amountCOP)
+                }
+                pct={
+                  item.percent != null
+                    ? `${item.percent} % del total`
+                    : item.hint
+                }
+                total={
+                  p.payment.kind === "ppa"
+                    ? `Inversión de planta (referencia): ${cop.format(p.totalCOP)}`
+                    : cop.format(p.totalCOP)
+                }
+              />
+            ))}
           </div>
+          {p.payment.kind === "ppa" ? (
+            <p className="mt-3 text-sm text-[#8aa0c2]">
+              Modelo PPA: Genera invierte y opera la planta. El cliente paga la energía
+              generada a {cop.format(p.payment.ppaPricePerKWhCOP ?? 0)}/kWh durante{" "}
+              {p.payment.ppaYears} años (máximo 25).
+            </p>
+          ) : p.payment.kind === "financed" ? (
+            <p className="mt-3 text-sm text-[#8aa0c2]">
+              Cuota mensual estimada {cop.format(p.payment.monthlyInstallmentCOP ?? 0)}{" "}
+              durante {p.payment.financedMonths} meses
+              {p.payment.financedEaPercent
+                ? ` · TEA ${p.payment.financedEaPercent}%`
+                : " · sin intereses"}.
+            </p>
+          ) : null}
         </section>
 
         <section className="mt-12">
@@ -423,8 +455,17 @@ export function EpcProposalView({
             <TaxCard label="Km no recorridos" value={`${num.format(km)} km`} hint="gasolina / año" />
           </div>
           <p className="mt-3 text-sm text-[#8aa0c2]">
-            Generación estimada: {num.format(p.annualGenerationKWh)} kWh/año · 4.5 h-sol/día
-            Colombia
+            Generación estimada: {num.format(p.annualGenerationKWh)} kWh/año
+            {p.peakSunHours
+              ? ` · ${num.format(p.peakSunHours)} kWh/m²·día (HSP IDEAM)`
+              : ""}
+            {p.ideamStationName
+              ? ` · ${p.ideamStationName}${
+                  p.ideamDistanceKm != null
+                    ? ` (${num.format(p.ideamDistanceKm)} km)`
+                    : ""
+                }`
+              : ""}
           </p>
         </section>
 

@@ -6,3 +6,5 @@ out
 .env.local
 data/*.json
 tsconfig.tsbuildinfo
+.vercel
+.env*
