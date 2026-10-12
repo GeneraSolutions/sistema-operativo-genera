@@ -64,7 +64,7 @@ const PROFILES_DB: Record<string, VCardData> = {
     facebookUrl: "https://facebook.com/",
     bookingUrl: "https://calendly.com",
     avatarUrl: "/brand/camilo.jpg",
-    logoUrl: "/brand/logo-genera.png",
+    logoUrl: "/brand/logo-genera.png?v=2",
     defaultWaMessage:
       "Hola Camilo, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: [
