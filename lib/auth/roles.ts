@@ -9,9 +9,10 @@ export const ROLES = [
   "sst",
 ] as const;
 
-export type Role = (typeof ROLES)[number];
+export type BuiltinRole = (typeof ROLES)[number];
+export type Role = string;
 
-export const ROLE_LABELS: Record<Role, string> = {
+export const ROLE_LABELS: Record<string, string> = {
   ceo: "Gerente / CEO",
   gerente: "Gerencia operativa",
   comercial: "Asesor comercial",
@@ -29,7 +30,15 @@ export type AppModule =
   | "inteligencia"
   | "equipo";
 
-const MODULE_ROLES: Record<AppModule, Role[]> = {
+export const APP_MODULES: { id: AppModule; label: string }[] = [
+  { id: "cotizador", label: "Cotizador" },
+  { id: "visita", label: "Visitas técnicas" },
+  { id: "inventario", label: "Inventario" },
+  { id: "inteligencia", label: "Inteligencia" },
+  { id: "equipo", label: "Equipo y cargos" },
+];
+
+const MODULE_ROLES: Record<AppModule, string[]> = {
   cotizador: [
     "ceo",
     "gerente",
@@ -60,8 +69,62 @@ const MODULE_ROLES: Record<AppModule, Role[]> = {
   equipo: ["ceo", "gerente"],
 };
 
-export function canAccessModule(role: Role, mod: AppModule): boolean {
+export interface CustomRoleDef {
+  id: string;
+  label: string;
+  modules: AppModule[];
+  createdAt: string;
+}
+
+export const ROLE_PRESETS: { label: string; modules: AppModule[] }[] = [
+  { label: "Auxiliar", modules: ["visita", "inteligencia"] },
+  { label: "Auxiliar eléctrico", modules: ["visita", "inteligencia"] },
+  { label: "Auxiliar técnico", modules: ["visita", "inteligencia"] },
+  {
+    label: "Coordinador de proyectos",
+    modules: ["cotizador", "visita", "inteligencia", "inventario"],
+  },
+];
+
+export function isBuiltinRole(role: string): role is BuiltinRole {
+  return (ROLES as readonly string[]).includes(role);
+}
+
+export function slugRole(label: string): string {
+  const slug = label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+  return slug || `cargo-${Date.now().toString(36)}`;
+}
+
+export function modulesForRole(
+  role: string,
+  custom: CustomRoleDef[] = []
+): AppModule[] {
+  const extra = custom.find((c) => c.id === role);
+  if (extra) return extra.modules;
+  return APP_MODULES.map((m) => m.id).filter((mod) =>
+    MODULE_ROLES[mod].includes(role)
+  );
+}
+
+export function canAccessModule(
+  role: string,
+  mod: AppModule,
+  custom: CustomRoleDef[] = []
+): boolean {
+  if (modulesForRole(role, custom).includes(mod)) return true;
   return MODULE_ROLES[mod].includes(role);
+}
+
+export function roleLabel(role: string, custom: CustomRoleDef[] = []): string {
+  const extra = custom.find((c) => c.id === role);
+  if (extra) return extra.label;
+  return ROLE_LABELS[role] ?? role;
 }
 
 export function moduleFromPath(pathname: string): AppModule | null {
@@ -73,9 +136,14 @@ export function moduleFromPath(pathname: string): AppModule | null {
   return null;
 }
 
-export function defaultHomeForRole(role: Role): string {
-  if (canAccessModule(role, "cotizador")) return "/cotizador";
-  if (canAccessModule(role, "inteligencia")) return "/inteligencia";
-  if (canAccessModule(role, "inventario")) return "/inventario";
+export function defaultHomeForRole(
+  role: string,
+  custom: CustomRoleDef[] = []
+): string {
+  const mods = modulesForRole(role, custom);
+  if (mods.includes("cotizador")) return "/cotizador";
+  if (mods.includes("inteligencia")) return "/inteligencia";
+  if (mods.includes("visita")) return "/visita-tecnica";
+  if (mods.includes("inventario")) return "/inventario";
   return "/inteligencia";
 }

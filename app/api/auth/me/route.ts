@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth/request";
-import { ROLE_LABELS } from "@/lib/auth/roles";
+import { listCustomRoles } from "@/lib/auth/custom-roles";
+import { modulesForRole, roleLabel } from "@/lib/auth/roles";
+import { upsertDirectoryFromSession } from "@/lib/auth/store";
 
 export const runtime = "nodejs";
 
@@ -9,8 +11,13 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
+  await upsertDirectoryFromSession(user).catch(() => undefined);
+  const custom = await listCustomRoles();
+  const modules = user.modules?.length
+    ? user.modules
+    : modulesForRole(user.role, custom);
   return NextResponse.json({
-    user,
-    roleLabel: ROLE_LABELS[user.role],
+    user: { ...user, modules },
+    roleLabel: roleLabel(user.role, custom),
   });
 }

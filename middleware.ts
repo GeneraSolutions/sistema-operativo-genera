@@ -39,7 +39,13 @@ async function hmacBase64Url(secret: string, data: string): Promise<string> {
 
 async function readSession(
   req: NextRequest
-): Promise<{ id: string; role: Role; username: string; name: string } | null> {
+): Promise<{
+  id: string;
+  role: Role;
+  username: string;
+  name: string;
+  modules?: string[];
+} | null> {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const [body, sig] = token.split(".");
@@ -63,6 +69,7 @@ async function readSession(
       username: string;
       name: string;
       role: Role;
+      modules?: string[];
       exp: number;
     };
     if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
@@ -88,7 +95,10 @@ export async function middleware(req: NextRequest) {
   }
 
   const mod = moduleFromPath(pathname);
-  if (mod && !canAccessModule(session.role, mod)) {
+  const allowed = session.modules?.length
+    ? session.modules.includes(mod ?? "")
+    : canAccessModule(session.role, mod ?? "inteligencia");
+  if (mod && !allowed) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
     }

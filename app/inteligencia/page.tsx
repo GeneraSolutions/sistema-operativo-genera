@@ -486,7 +486,7 @@ export default function InteligenciaPage() {
                         {ceoPrivate && mine ? " · privada" : ""}
                       </p>
                       <p className="text-[10px] uppercase tracking-wide text-[#8a6b2a]">
-                        {ROLE_LABELS[c.role]} · {c.specialistLabel}
+                        {ROLE_LABELS[c.role] ?? c.role} · {c.specialistLabel}
                       </p>
                       <p className="mt-1 line-clamp-2 text-[#4d5c55]">{c.question}</p>
                       {openConsulta === c.id ? (

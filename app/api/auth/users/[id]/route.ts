@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth/request";
-import { ROLES, canAccessModule, type Role } from "@/lib/auth/roles";
+import { canAccessModule, type Role } from "@/lib/auth/roles";
+import { isKnownRole, listCustomRoles } from "@/lib/auth/custom-roles";
 import { deleteUser, updateUser } from "@/lib/auth/store";
 
 export const runtime = "nodejs";
@@ -20,7 +21,8 @@ export async function PATCH(
     active?: boolean;
     password?: string;
   };
-  const managingTeam = canAccessModule(session.role, "equipo");
+  const custom = await listCustomRoles();
+  const managingTeam = canAccessModule(session.role, "equipo", custom);
   const self = session.id === id;
   if (!managingTeam && !self) {
     return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
@@ -33,7 +35,7 @@ export async function PATCH(
       );
     }
   }
-  if (body.role && !ROLES.includes(body.role)) {
+  if (body.role && !(await isKnownRole(body.role))) {
     return NextResponse.json({ error: "Cargo no válido." }, { status: 400 });
   }
   if (body.role === "ceo" && session.role !== "ceo") {
@@ -59,7 +61,7 @@ export async function DELETE(
   if (!session) {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
-  if (!canAccessModule(session.role, "equipo")) {
+  if (!canAccessModule(session.role, "equipo", await listCustomRoles())) {
     return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
   }
   const { id } = await ctx.params;

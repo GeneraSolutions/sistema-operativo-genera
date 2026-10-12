@@ -34,20 +34,26 @@ export function AppShell({
     name: string;
     username: string;
     role: Role;
+    modules?: string[];
+    roleLabel?: string;
   } | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.user) setMe(data.user);
+        if (data?.user) {
+          setMe({ ...data.user, roleLabel: data.roleLabel });
+        }
       })
       .catch(() => null);
   }, []);
 
-  const nav = NAV.filter((item) =>
-    me ? canAccessModule(me.role, item.module) : item.module !== "equipo"
-  );
+  const nav = NAV.filter((item) => {
+    if (!me) return item.module !== "equipo";
+    if (me.modules?.length) return me.modules.includes(item.module);
+    return canAccessModule(me.role, item.module);
+  });
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -111,7 +117,7 @@ export function AppShell({
               <div className="text-right">
                 <p className="text-sm font-semibold text-white">{me.name}</p>
                 <p className="text-[10px] uppercase tracking-wide text-[#d4b46a]">
-                  {ROLE_LABELS[me.role]}
+                  {me.roleLabel || ROLE_LABELS[me.role] || me.role}
                 </p>
                 <button
                   type="button"

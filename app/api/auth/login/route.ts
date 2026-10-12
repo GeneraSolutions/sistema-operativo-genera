@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { listCustomRoles } from "@/lib/auth/custom-roles";
 import { defaultHomeForRole } from "@/lib/auth/roles";
 import { encodeSession, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/session";
 import { authenticate } from "@/lib/auth/store";
@@ -23,9 +24,10 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+    const custom = await listCustomRoles();
     const res = NextResponse.json({
       user,
-      home: defaultHomeForRole(user.role),
+      home: defaultHomeForRole(user.role, custom),
     });
     res.cookies.set(SESSION_COOKIE, encodeSession(user), sessionCookieOptions());
     return res;

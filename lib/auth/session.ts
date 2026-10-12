@@ -10,6 +10,7 @@ export interface SessionUser {
   username: string;
   name: string;
   role: Role;
+  modules?: string[];
 }
 
 interface SessionPayload extends SessionUser {
@@ -51,6 +52,7 @@ export function decodeSession(
       username: payload.username,
       name: payload.name,
       role: payload.role,
+      modules: Array.isArray(payload.modules) ? payload.modules : undefined,
     };
   } catch {
     return null;

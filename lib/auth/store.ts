@@ -1,7 +1,17 @@
 import { readFileSync } from "fs";
 import path from "path";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
-import type { Role } from "@/lib/auth/roles";
+import {
+  modulesForRole,
+  type AppModule,
+  type Role,
+} from "@/lib/auth/roles";
+import { listCustomRoles } from "@/lib/auth/custom-roles";
+import {
+  readUsersDirectoryCookie,
+  writeUsersDirectoryCookie,
+  type DirectoryUser,
+} from "@/lib/auth/directory-cookie";
 import type { SessionUser } from "@/lib/auth/session";
 import { persistGet, persistSet } from "@/lib/persist";
 
@@ -23,6 +33,11 @@ export interface StoredUser {
 
 export type PublicUser = Omit<StoredUser, "passwordHash" | "passwordSalt">;
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __generaUserCache: StoredUser[] | undefined;
+}
+
 function seedCeo(): StoredUser {
   const { hash, salt } = hashPassword(DEFAULT_CEO_PASSWORD);
   return {
@@ -38,6 +53,7 @@ function seedCeo(): StoredUser {
 }
 
 function migrateLegacyFile(): StoredUser[] | null {
+  if (process.env.VERCEL) return null;
   try {
     const raw = readFileSync(
       path.join(process.cwd(), "data", "users.json"),
@@ -50,21 +66,79 @@ function migrateLegacyFile(): StoredUser[] | null {
   }
 }
 
+function asStored(user: DirectoryUser | StoredUser): StoredUser {
+  return {
+    id: user.id,
+    username: user.username.trim().toLowerCase(),
+    name: user.name,
+    role: user.role,
+    passwordHash: user.passwordHash ?? "",
+    passwordSalt: user.passwordSalt ?? "",
+    active: user.active,
+    createdAt: user.createdAt,
+  };
+}
+
+function mergeUserLists(
+  ...lists: ((StoredUser | DirectoryUser)[] | null | undefined)[]
+): StoredUser[] {
+  const byUsername = new Map<string, StoredUser>();
+  for (const list of lists) {
+    for (const raw of list ?? []) {
+      if (!raw?.username) continue;
+      const user = asStored(raw);
+      const prev = byUsername.get(user.username);
+      if (!prev) {
+        byUsername.set(user.username, user);
+        continue;
+      }
+      const chosen =
+        (user.passwordHash ? 1 : 0) >= (prev.passwordHash ? 1 : 0) ? user : prev;
+      if (!chosen.passwordHash) {
+        chosen.passwordHash = prev.passwordHash || user.passwordHash;
+        chosen.passwordSalt = prev.passwordSalt || user.passwordSalt;
+      }
+      if (prev.name && chosen.name === chosen.username) chosen.name = prev.name;
+      byUsername.set(user.username, chosen);
+    }
+  }
+  const ceo = [...byUsername.values()].filter((u) => u.role === "ceo");
+  const rest = [...byUsername.values()]
+    .filter((u) => u.role !== "ceo")
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  return [...ceo, ...rest];
+}
+
 async function readUsers(): Promise<StoredUser[]> {
   const stored = await persistGet<StoredUser[]>(USERS_KEY);
-  if (stored && stored.length) return stored;
+  const fromCookie = await readUsersDirectoryCookie();
+  const merged = mergeUserLists(
+    globalThis.__generaUserCache,
+    stored,
+    fromCookie
+  );
+  if (merged.length) {
+    globalThis.__generaUserCache = merged;
+    if (!stored || stored.length < merged.length) {
+      await persistSet(USERS_KEY, merged).catch(() => undefined);
+    }
+    await writeUsersDirectoryCookie(merged);
+    return merged;
+  }
   const legacy = migrateLegacyFile();
   if (legacy) {
-    await persistSet(USERS_KEY, legacy);
+    await writeUsers(legacy);
     return legacy;
   }
   const ceo = seedCeo();
-  await persistSet(USERS_KEY, [ceo]);
+  await writeUsers([ceo]);
   return [ceo];
 }
 
 async function writeUsers(users: StoredUser[]) {
+  globalThis.__generaUserCache = users;
   await persistSet(USERS_KEY, users);
+  await writeUsersDirectoryCookie(users);
 }
 
 export function toPublicUser(user: StoredUser): PublicUser {
@@ -96,11 +170,13 @@ export async function authenticate(
   if (!verifyPassword(password, user.passwordHash, user.passwordSalt)) {
     return null;
   }
+  const custom = await listCustomRoles();
   return {
     id: user.id,
     username: user.username,
     name: user.name,
     role: user.role,
+    modules: modulesForRole(user.role, custom),
   };
 }
 
@@ -179,4 +255,49 @@ export async function deleteUser(id: string): Promise<void> {
     throw new Error("El usuario CEO no se elimina. Desactívelo solo si hay otro CEO.");
   }
   await writeUsers(users.filter((u) => u.id !== id));
+}
+
+export async function sessionModulesFor(role: Role): Promise<AppModule[]> {
+  const custom = await listCustomRoles();
+  return modulesForRole(role, custom);
+}
+
+export async function upsertDirectoryFromSession(session: {
+  id: string;
+  username: string;
+  name: string;
+  role: Role;
+}): Promise<void> {
+  const users = await readUsers();
+  const key = session.username.trim().toLowerCase();
+  const existing = users.find((u) => u.username === key || u.id === session.id);
+  if (existing) {
+    if (existing.name === session.name && existing.role === session.role) return;
+    existing.name = session.name || existing.name;
+    existing.role = session.role || existing.role;
+    await writeUsers(users);
+    return;
+  }
+  await writeUsers([
+    ...users,
+    {
+      id: session.id,
+      username: key,
+      name: session.name || key,
+      role: session.role,
+      passwordHash: "",
+      passwordSalt: "",
+      active: true,
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+}
+
+export async function syncDirectoryUsers(
+  incoming: DirectoryUser[]
+): Promise<PublicUser[]> {
+  const current = await readUsers();
+  const merged = mergeUserLists(current, incoming);
+  await writeUsers(merged);
+  return merged.map(toPublicUser);
 }

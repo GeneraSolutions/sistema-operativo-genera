@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth/request";
-import { ROLES, canAccessModule, type Role } from "@/lib/auth/roles";
+import { canAccessModule, type Role } from "@/lib/auth/roles";
+import { allRoleOptions, isKnownRole, listCustomRoles } from "@/lib/auth/custom-roles";
 import { createUser, listUsers } from "@/lib/auth/store";
 
 export const runtime = "nodejs";
@@ -10,10 +11,14 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
-  if (!canAccessModule(session.role, "equipo")) {
+  const custom = await listCustomRoles();
+  if (!canAccessModule(session.role, "equipo", custom)) {
     return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
   }
-  return NextResponse.json({ users: await listUsers() });
+  return NextResponse.json({
+    users: await listUsers(),
+    roles: await allRoleOptions(),
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -21,7 +26,8 @@ export async function POST(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
-  if (!canAccessModule(session.role, "equipo")) {
+  const custom = await listCustomRoles();
+  if (!canAccessModule(session.role, "equipo", custom)) {
     return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
   }
   try {
@@ -31,7 +37,7 @@ export async function POST(req: NextRequest) {
       role?: Role;
       password?: string;
     };
-    if (!body.role || !ROLES.includes(body.role)) {
+    if (!body.role || !(await isKnownRole(body.role))) {
       return NextResponse.json({ error: "Cargo no válido." }, { status: 400 });
     }
     if (body.role === "ceo" && session.role !== "ceo") {
@@ -46,7 +52,7 @@ export async function POST(req: NextRequest) {
       role: body.role,
       password: body.password ?? "",
     });
-    return NextResponse.json({ user });
+    return NextResponse.json({ user, roles: await allRoleOptions() });
   } catch (err) {
     const detail = err instanceof Error ? err.message : "Error";
     return NextResponse.json({ error: detail }, { status: 400 });
