@@ -33,7 +33,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0f2a1f] px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-[0_20px_50px_rgba(0,0,0,0.25)]">
-        <BrandLogo height={48} />
+        <BrandLogo height={56} />
         <p className="mt-4 text-[11px] font-semibold tracking-[0.28em] text-[#8a6b2a] uppercase">
           Genera Solutions SAS
         </p>

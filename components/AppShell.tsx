@@ -66,7 +66,7 @@ export function AppShell({
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-3">
-              <BrandLogo height={44} />
+              <BrandLogo height={52} />
               <Link
                 href={me ? defaultHomeForRole(me.role) : "/inteligencia"}
                 className="group min-w-0"

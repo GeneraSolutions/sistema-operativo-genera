@@ -1,11 +1,9 @@
 "use client";
 
-import logo from "./logo-genera.jpg";
-
 type BrandLogoProps = {
   height?: number;
   className?: string;
-  /** knockout: quita el blanco sobre fondos claros. card: placa blanca para fondos oscuros. */
+  /** knockout: marca sin fondo, para el header verde. card: logo con fondo negro para la propuesta. */
   variant?: "knockout" | "card";
 };
 
@@ -14,25 +12,22 @@ export function BrandLogo({
   className = "",
   variant = "knockout",
 }: BrandLogoProps) {
-  const src = typeof logo === "string" ? logo : logo.src;
   const card = variant === "card";
 
   return (
     <span
       className={`inline-flex items-center ${
-        card ? "rounded-2xl bg-white px-3 py-2 shadow-sm" : ""
+        card ? "overflow-hidden rounded-lg bg-black" : ""
       } ${className}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={card ? "/brand/logo-genera.jpg" : "/brand/logo-genera-mark.png"}
         alt="Genera Solutions"
-        style={{
-          height,
-          width: "auto",
-          mixBlendMode: card ? "normal" : "multiply",
-        }}
-        className="block max-w-[min(420px,80vw)] bg-transparent object-contain"
+        style={{ height, width: "auto" }}
+        className={`block max-w-[min(420px,80vw)] object-contain ${
+          card ? "bg-black" : "bg-transparent"
+        }`}
       />
     </span>
   );
