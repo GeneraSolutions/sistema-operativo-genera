@@ -6,6 +6,7 @@ import type { Role } from "@/lib/auth/roles";
 function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/_next")) return true;
   if (pathname.startsWith("/login")) return true;
+  if (pathname.startsWith("/vcard")) return true;
   if (pathname.startsWith("/propuesta")) return true;
   if (pathname.startsWith("/api/auth/login")) return true;
   if (pathname.startsWith("/api/auth/logout")) return true;

@@ -1,3 +1,4 @@
+import type { AddonState } from "@/lib/eng-labor-addons";
 import type {
   MountPreference,
   QuoteEquipmentSelection,
@@ -60,6 +61,7 @@ export interface SavedQuote {
   };
   qty: QuoteQuantities;
   quoteLines?: QuoteLineInput[];
+  engAddons?: AddonState[];
   toggles: ProposalToggles;
 }
 

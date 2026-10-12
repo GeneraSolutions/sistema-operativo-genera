@@ -383,9 +383,17 @@ function buildCommercialLines(
     {
       index: 8,
       title: "Ingeniería, Gestión Legal y Logística",
-      description: quote.labor
-        ? `Ingeniería, UPME/RETIE y cuadrilla: ${quote.labor.technicians} técnicos × ${quote.labor.days} días`
-        : "memoria técnica · UPME · planos · cuadrilla de obra · transporte materiales a obra",
+      description: (() => {
+        const extras = (quote.addons ?? [])
+          .filter((a) => a.enabled)
+          .map((a) => a.label);
+        const crew = quote.labor
+          ? `cuadrilla ${quote.labor.technicians} técnicos × ${quote.labor.days} días`
+          : "cuadrilla de obra";
+        return extras.length
+          ? `${extras.join(" · ")} · ${crew}`
+          : `Ingeniería, UPME/RETIE y ${crew}`;
+      })(),
       qty: 1,
     },
   ];

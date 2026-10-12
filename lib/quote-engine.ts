@@ -7,6 +7,12 @@ import {
   type MarginTactic,
   type ProjectPL,
 } from "@/lib/colombia-tax";
+import {
+  resolveEngLaborAddons,
+  sumEnabledAddons,
+  type AddonState,
+  type ResolvedAddon,
+} from "@/lib/eng-labor-addons";
 import { IVA_RATE } from "@/lib/pricing";
 import type { InventoryItem } from "@/types/inventory";
 
@@ -69,6 +75,9 @@ export interface QuoteParams {
   taxConfig: ColombiaTaxConfig;
   /** GHI mensual IDEAM en Wh/m²·día (ene–dic). Si existe, manda sobre HSP plano. */
   monthlyGhiWh?: number[];
+  engAddons?: AddonState[];
+  applyLey1715?: boolean;
+  addonMarginPercent?: number;
 }
 
 export interface QuoteBreakdownLine {
@@ -104,6 +113,7 @@ export interface QuoteBreakdown {
   inverterCount: number;
   batteryCount: number;
   labor: LaborCostResult;
+  addons: ResolvedAddon[];
   pl: ProjectPL;
   tactics: MarginTactic[];
 }
@@ -327,26 +337,46 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
     config: params.taxConfig,
   });
 
-  const engineeringSale = Math.max(0, Math.round(params.engineeringSaleCOP));
-  const engineeringCost = Math.max(0, Math.round(params.engineeringCostCOP));
+  const addons = resolveEngLaborAddons(params.engAddons, {
+    systemKwp: params.systemKwp,
+    technicians: params.technicians,
+    days: params.laborDays,
+    dailyWageCOP: params.dailyWageCOP,
+    mount: params.mount,
+    applyLey1715: Boolean(params.applyLey1715),
+    equipmentSaleCOP: equipmentSale,
+    marginPercent: params.addonMarginPercent ?? params.laborMarginPercent ?? 35,
+  });
+  const engAdd = sumEnabledAddons(addons, "engineering");
+  const siteAdd = sumEnabledAddons(addons, "site");
+
+  const engineeringSale =
+    Math.max(0, Math.round(params.engineeringSaleCOP)) + engAdd.sale;
+  const engineeringCost =
+    Math.max(0, Math.round(params.engineeringCostCOP)) + engAdd.cost;
+  const laborSale = labor.saleCOP + siteAdd.sale;
+  const laborCost = labor.costCOP + siteAdd.cost;
   const engineeringIva = params.chargeIva
     ? Math.round(engineeringSale * IVA_RATE)
+    : 0;
+  const laborIva = params.chargeIva
+    ? labor.ivaCOP + Math.round(siteAdd.sale * IVA_RATE)
     : 0;
 
   const overheadCOP = Math.round(
     equipmentSale * (Math.max(0, params.overheadPercent) / 100)
   );
 
-  const ivaCOP = equipmentIva + engineeringIva + labor.ivaCOP;
-  const saleSubtotalCOP = equipmentSale + engineeringSale + labor.saleCOP;
+  const ivaCOP = equipmentIva + engineeringIva + laborIva;
+  const saleSubtotalCOP = equipmentSale + engineeringSale + laborSale;
   const totalCapexCOP = saleSubtotalCOP + ivaCOP;
   const marginCOP = Math.max(
     0,
-    saleSubtotalCOP - equipmentCost - engineeringCost - labor.costCOP - overheadCOP
+    saleSubtotalCOP - equipmentCost - engineeringCost - laborCost - overheadCOP
   );
 
   const totalInternalCost =
-    equipmentCost + engineeringCost + labor.costCOP + overheadCOP;
+    equipmentCost + engineeringCost + laborCost + overheadCOP;
   const targetNet =
     params.targetNetProfitCOP > 0
       ? params.targetNetProfitCOP
@@ -357,8 +387,8 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
     costEquipmentCOP: equipmentCost,
     saleEngineeringCOP: engineeringSale,
     costEngineeringCOP: engineeringCost,
-    saleLaborCOP: labor.saleCOP,
-    costLaborCOP: labor.costCOP,
+    saleLaborCOP: laborSale,
+    costLaborCOP: laborCost,
     overheadCOP,
     ivaCOP,
     targetNetProfitCOP: targetNet,
@@ -397,9 +427,7 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
     {
       key: "labor",
       marginPercent:
-        labor.saleCOP > 0
-          ? ((labor.saleCOP - labor.costCOP) / labor.saleCOP) * 100
-          : 0,
+        laborSale > 0 ? ((laborSale - laborCost) / laborSale) * 100 : 0,
     },
   ]);
 
@@ -433,6 +461,7 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
     batteryCount:
       params.quoteLines?.find((l) => l.key === "battery")?.qty ?? q.batteries,
     labor,
+    addons,
     pl,
     tactics,
   };

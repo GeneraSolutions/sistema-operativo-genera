@@ -15,6 +15,11 @@ import {
   loadInventory,
 } from "@/lib/inventory";
 import {
+  addonsToState,
+  saleFromCost,
+  type AddonState,
+} from "@/lib/eng-labor-addons";
+import {
   calculateParametricQuote,
   lineFromItem,
   selectionFromLines,
@@ -23,6 +28,7 @@ import {
   type QuoteLineInput,
   type QuoteEquipmentSelection,
 } from "@/lib/quote-engine";
+import { IVA_RATE } from "@/lib/pricing";
 import { loadKits, type EquipmentKit } from "@/lib/kits";
 import {
   matchStationByCity,
@@ -40,6 +46,17 @@ import {
   saveQuoteSnapshot,
   type SavedQuote,
 } from "@/lib/saved-quotes";
+import {
+  applyVisitToAddons,
+  applyVisitToQuoteLines,
+  isVisitLockedLineKey,
+  loadStoredSiteVisit,
+  mountFromRoof,
+  saveStoredSiteVisit,
+  stripVisitQuoteLines,
+  visitHasCoords,
+  type SiteVisit,
+} from "@/lib/site-visit";
 import {
   applyCityPreset,
   DEFAULT_TAX_CONFIG,
@@ -131,6 +148,9 @@ function CotizadorInner() {
   const [clientGranContribuyente, setClientGranContribuyente] = useState(false);
   const [taxConfig, setTaxConfig] = useState<ColombiaTaxConfig>(DEFAULT_TAX_CONFIG);
   const [quoteLines, setQuoteLines] = useState<QuoteLineInput[]>([]);
+  const [engAddons, setEngAddons] = useState<AddonState[] | undefined>(
+    undefined
+  );
   const [addItemId, setAddItemId] = useState("");
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
   const [applyLey1715, setApplyLey1715] = useState(true);
@@ -155,6 +175,8 @@ function CotizadorInner() {
   const [ppaPricePerKWh, setPpaPricePerKWh] = useState(650);
   const [linkFlash, setLinkFlash] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [visitLinked, setVisitLinked] = useState(false);
+  const [siteVisit, setSiteVisit] = useState<SiteVisit | null>(null);
   const [openFolds, setOpenFolds] = useState({
     params: true,
     equipos: false,
@@ -242,6 +264,29 @@ function CotizadorInner() {
 
   useEffect(() => {
     if (!hydrated) return;
+    const storedVisit = loadStoredSiteVisit();
+    if (!storedVisit) return;
+    setSiteVisit(storedVisit.visit);
+    const forceLink =
+      searchParams.get("visita") === "1" || storedVisit.linked;
+    setVisitLinked(forceLink);
+    if (searchParams.get("visita") === "1" && !storedVisit.linked) {
+      saveStoredSiteVisit({ visit: storedVisit.visit, linked: true });
+    }
+    if (forceLink && storedVisit.visit.clientName) {
+      setClientName(storedVisit.visit.clientName);
+    }
+    if (forceLink && storedVisit.visit.location) {
+      setClientCity(storedVisit.visit.location);
+    }
+    if (forceLink && visitHasCoords(storedVisit.visit)) {
+      applySiteCoords(storedVisit.visit.lat as number, storedVisit.visit.lon as number);
+    }
+    if (forceLink) setMount(mountFromRoof(storedVisit.visit.roofType));
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     const suggested = suggestQuantities(
       systemKwp,
       selection,
@@ -259,9 +304,11 @@ function CotizadorInner() {
         protection_dc: suggested.protectionDc,
         protection_ac: suggested.protectionAc,
       };
-      let next = lines.map((l) =>
-        qtyByKey[l.key] != null ? { ...l, qty: qtyByKey[l.key] } : l
-      );
+      let next = lines.map((l) => {
+        if (qtyByKey[l.key] == null) return l;
+        if (visitLinked && isVisitLockedLineKey(l.key)) return l;
+        return { ...l, qty: qtyByKey[l.key] };
+      });
       const bat = getDefaultsByCategory(inventory).battery;
       const hasBat = next.some((l) => l.key === "battery");
       if (includeBattery && bat && !hasBat) {
@@ -280,6 +327,7 @@ function CotizadorInner() {
     selection.panel?.id,
     selection.inverter?.id,
     selection.battery?.id,
+    visitLinked,
   ]);
 
   useEffect(() => {
@@ -296,6 +344,19 @@ function CotizadorInner() {
       )
     );
   }, [mount, inventory, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!visitLinked || !siteVisit) {
+      setQuoteLines((lines) => stripVisitQuoteLines(lines));
+      return;
+    }
+    setMount(mountFromRoof(siteVisit.roofType));
+    setQuoteLines((lines) =>
+      applyVisitToQuoteLines(lines, inventory, siteVisit)
+    );
+    setEngAddons((prev) => applyVisitToAddons(prev, siteVisit));
+  }, [hydrated, visitLinked, siteVisit, inventory]);
 
   const irradiance = useMemo(
     () => resolveIdeamIrradiance(siteLat, siteLon),
@@ -342,6 +403,9 @@ function CotizadorInner() {
         clientGranContribuyente,
         taxConfig,
         monthlyGhiWh,
+        engAddons,
+        applyLey1715,
+        addonMarginPercent: laborMarginPercent,
       }),
     [
       systemKwp,
@@ -368,6 +432,8 @@ function CotizadorInner() {
       clientGranContribuyente,
       taxConfig,
       monthlyGhiWh,
+      engAddons,
+      applyLey1715,
     ]
   );
 
@@ -580,6 +646,7 @@ function CotizadorInner() {
       equipmentIds: idsFromSelection(selection),
       qty,
       quoteLines,
+      engAddons: addonsToState(quote.addons),
       toggles,
     };
   }
@@ -648,6 +715,15 @@ function CotizadorInner() {
       }
       setQuoteLines(next);
     }
+    setEngAddons(q.engAddons);
+  }
+
+  function patchAddon(id: string, patch: Partial<AddonState>) {
+    setEngAddons(
+      addonsToState(
+        quote.addons.map((a) => (a.id === id ? { ...a, ...patch } : a))
+      )
+    );
   }
 
   const marginRate = quote.pl?.netMarginPercent ?? 0;
@@ -668,6 +744,19 @@ function CotizadorInner() {
 
   const activeInventory = inventory.filter((i) => i.active);
 
+  function toggleVisitLink(next: boolean) {
+    setVisitLinked(next);
+    const stored = loadStoredSiteVisit();
+    if (stored) saveStoredSiteVisit({ visit: stored.visit, linked: next });
+    else if (siteVisit) saveStoredSiteVisit({ visit: siteVisit, linked: next });
+    if (next) {
+      const v = stored?.visit ?? siteVisit;
+      if (v?.clientName) setClientName(v.clientName);
+      if (v?.location) setClientCity(v.location);
+      if (v && visitHasCoords(v)) applySiteCoords(v.lat as number, v.lon as number);
+    }
+  }
+
   return (
     <AppShell
       title="Cotizador paramétrico"
@@ -681,6 +770,10 @@ function CotizadorInner() {
             propuesta con interruptores.{" "}
             <Link href="/inventario" className="font-medium text-[#1f6b45] underline">
               Gestionar catálogo
+            </Link>
+            {" · "}
+            <Link href="/visita-tecnica" className="font-medium text-[#1f6b45] underline">
+              Visita técnica
             </Link>
           </p>
         </div>
@@ -779,6 +872,54 @@ function CotizadorInner() {
             }
           >
             <div className="space-y-4">
+              <div
+                className={`rounded-2xl border px-3 py-3 ${
+                  visitLinked
+                    ? "border-[#1f6b45]/40 bg-[#e8f6ee]"
+                    : "border-[#d8d2c4] bg-[#fbfaf6]"
+                }`}
+              >
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={visitLinked}
+                  onClick={() => toggleVisitLink(!visitLinked)}
+                  className="flex w-full items-start gap-3 text-left"
+                >
+                  <span
+                    className={`mt-0.5 flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 ${
+                      visitLinked ? "bg-[#1f6b45]" : "bg-[#c4bbb0]"
+                    }`}
+                  >
+                    <span
+                      className={`h-5 w-5 rounded-full bg-white shadow transition ${
+                        visitLinked ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </span>
+                  <span>
+                    <span className="block text-[10px] font-bold tracking-wider uppercase text-[#1f6b45]">
+                      {visitLinked ? "ON" : "OFF"} · Vincular datos de Visita Técnica
+                      con la Cotización
+                    </span>
+                    <span className="mt-0.5 block text-xs text-[#4d5c55]">
+                      {visitLinked && siteVisit
+                        ? `Campo: ${siteVisit.dcRunM} m DC · ${siteVisit.acRunM} m AC · montaje ${mountFromRoof(siteVisit.roofType)}${
+                            visitHasCoords(siteVisit)
+                              ? ` · ${siteVisit.lat}, ${siteVisit.lon}`
+                              : ""
+                          }.`
+                        : "OFF usa metros genéricos por kWp. Complete la visita técnica para traer metrado real."}
+                    </span>
+                  </span>
+                </button>
+                <Link
+                  href="/visita-tecnica"
+                  className="mt-2 inline-block text-[11px] font-medium text-[#1f6b45] underline"
+                >
+                  Abrir formulario de visita
+                </Link>
+              </div>
               <label className="block">
                 <div className="mb-1.5 flex justify-between text-sm">
                   <span className="font-medium">Potencia (kWp)</span>
@@ -1535,49 +1676,17 @@ function CotizadorInner() {
 
           <QuoteFold
             title="Ingeniería y cuadrilla"
-            summary={`${technicians} técnicos · ${copFmt.format(quote.labor.costCOP)} costo`}
+            summary={`${quote.addons.filter((a) => a.enabled).length} partidas · ${technicians} técnicos`}
             open={openFolds.ingenieria}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, ingenieria: !s.ingenieria }))
             }
           >
             <p className="text-xs text-[#6d7c74]">
-              Valor de ingeniería y jornales con prestaciones de ley. El cliente ve
-              el total del proyecto; el desglose de costo es interno.
+              Prende o apaga cada partida. El valor se sugiere por kWp, personas o
+              días; puedes editarlo. El cliente ve el total, no este desglose.
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Ingeniería al cliente (COP)</span>
-                <input
-                  type="number"
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={engineeringSaleCOP}
-                  onChange={(e) =>
-                    setEngineeringSaleCOP(Math.max(0, Number(e.target.value) || 0))
-                  }
-                />
-                <button
-                  type="button"
-                  className="mt-1 text-[11px] font-medium text-[#1f6b45] underline"
-                  onClick={() => setEngineeringSaleCOP(suggestedEngineering)}
-                >
-                  Usar sugerido {copFmt.format(suggestedEngineering)} (12% equipos)
-                </button>
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Costo ingeniería interna (COP)</span>
-                <input
-                  type="number"
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={engineeringCostCOP}
-                  onChange={(e) =>
-                    setEngineeringCostCOP(Math.max(0, Number(e.target.value) || 0))
-                  }
-                />
-                <span className="mt-1 block text-[11px] text-[#6d7c74]">
-                  Horas de diseño, RETIE, visitas. Si es 0, se asume margen 100%.
-                </span>
-              </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium">Técnicos en obra</span>
                 <input
@@ -1607,7 +1716,7 @@ function CotizadorInner() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium">
-                  % ganancia cuadrilla (si no fija venta)
+                  % ganancia servicios
                 </span>
                 <input
                   type="number"
@@ -1647,6 +1756,165 @@ function CotizadorInner() {
                 Costo real cuadrilla: {copFmt.format(quote.labor.costCOP)} · Se
                 cobra: {copFmt.format(quote.labor.saleCOP)}
               </p>
+            </div>
+
+            {(
+              [
+                ["engineering", "Ingeniería y trámites"],
+                ["site", "Obra, SST y extras"],
+              ] as const
+            ).map(([group, heading]) => (
+              <div key={group} className="mt-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1f6b45]">
+                  {heading}
+                </p>
+                <div className="mt-2 space-y-2">
+                  {quote.addons
+                    .filter((a) => a.group === group)
+                    .map((a) => (
+                      <div
+                        key={a.id}
+                        className={`rounded-xl border px-3 py-2.5 ${
+                          a.enabled
+                            ? "border-[#1f6b45]/35 bg-white"
+                            : "border-[#d8d2c4] bg-[#fbfaf6] opacity-75"
+                        }`}
+                      >
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={a.enabled}
+                            onChange={() =>
+                              patchAddon(a.id, { enabled: !a.enabled })
+                            }
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-[#12241c]">
+                              {a.label}
+                            </span>
+                            <span className="block text-[11px] text-[#6d7c74]">
+                              {a.hint}
+                              {a.manual ? " · editado" : ""}
+                            </span>
+                          </span>
+                        </label>
+                        {a.id === "overtime" ? (
+                          <label className="mt-2 block text-[11px] font-medium">
+                            Días extra
+                            <input
+                              type="number"
+                              min={0}
+                              className="mt-1 w-full rounded-lg border border-[#d8d2c4] bg-white px-2 py-1.5 text-sm"
+                              value={a.extraQty}
+                              onChange={(e) =>
+                                patchAddon(a.id, {
+                                  extraQty: Math.max(
+                                    0,
+                                    Number(e.target.value) || 0
+                                  ),
+                                  manual: false,
+                                })
+                              }
+                            />
+                          </label>
+                        ) : null}
+                        {a.enabled ? (
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <label className="text-[11px] font-medium">
+                              Costo
+                              <input
+                                type="number"
+                                className="mt-1 w-full rounded-lg border border-[#d8d2c4] bg-white px-2 py-1.5 text-sm"
+                                value={a.costCOP}
+                                onChange={(e) => {
+                                  const cost = Math.max(
+                                    0,
+                                    Number(e.target.value) || 0
+                                  );
+                                  patchAddon(a.id, {
+                                    manual: true,
+                                    costCOP: cost,
+                                    saleCOP: saleFromCost(
+                                      cost,
+                                      laborMarginPercent
+                                    ),
+                                  });
+                                }}
+                              />
+                            </label>
+                            <label className="text-[11px] font-medium">
+                              Venta
+                              <input
+                                type="number"
+                                className="mt-1 w-full rounded-lg border border-[#d8d2c4] bg-white px-2 py-1.5 text-sm"
+                                value={a.saleCOP}
+                                onChange={(e) =>
+                                  patchAddon(a.id, {
+                                    manual: true,
+                                    costCOP: a.costCOP,
+                                    saleCOP: Math.max(
+                                      0,
+                                      Number(e.target.value) || 0
+                                    ),
+                                  })
+                                }
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+                        {a.enabled && a.manual ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] font-medium text-[#1f6b45] underline"
+                            onClick={() =>
+                              patchAddon(a.id, { manual: false })
+                            }
+                          >
+                            Volver al sugerido{" "}
+                            {copFmt.format(a.suggestedCostCOP)}
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))}
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">
+                  Ajuste ingeniería venta (COP)
+                </span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={engineeringSaleCOP}
+                  onChange={(e) =>
+                    setEngineeringSaleCOP(Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+                <button
+                  type="button"
+                  className="mt-1 text-[11px] font-medium text-[#1f6b45] underline"
+                  onClick={() => setEngineeringSaleCOP(suggestedEngineering)}
+                >
+                  12% equipos {copFmt.format(suggestedEngineering)}
+                </button>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">
+                  Ajuste ingeniería costo (COP)
+                </span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={engineeringCostCOP}
+                  onChange={(e) =>
+                    setEngineeringCostCOP(Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+              </label>
             </div>
           </QuoteFold>
 
@@ -1821,32 +2089,62 @@ function CotizadorInner() {
                       <td className="py-1.5">{copFmt.format(line.ivaTotalCOP)}</td>
                     </tr>
                   ))}
-                  <tr className="border-t border-[#1f4636]">
-                    <td className="py-1.5 pr-2">Ingeniería</td>
-                    <td className="py-1.5 pr-2">1 gl</td>
-                    <td className="py-1.5 pr-2">
-                      {copFmt.format(quote.pl.costEngineeringCOP)}
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      {quote.pl.saleEngineeringCOP
-                        ? numFmt.format(
-                            ((quote.pl.saleEngineeringCOP -
-                              quote.pl.costEngineeringCOP) /
-                              quote.pl.saleEngineeringCOP) *
-                              100
-                          )
-                        : 0}
-                      %
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      {copFmt.format(quote.pl.saleEngineeringCOP)}
-                    </td>
-                    <td className="py-1.5">
-                      {copFmt.format(
-                        chargeIva ? Math.round(quote.pl.saleEngineeringCOP * 0.19) : 0
-                      )}
-                    </td>
-                  </tr>
+                  {engineeringSaleCOP > 0 || engineeringCostCOP > 0 ? (
+                    <tr className="border-t border-[#1f4636]">
+                      <td className="py-1.5 pr-2">Ajuste ingeniería</td>
+                      <td className="py-1.5 pr-2">1 gl</td>
+                      <td className="py-1.5 pr-2">
+                        {copFmt.format(engineeringCostCOP)}
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        {engineeringSaleCOP
+                          ? numFmt.format(
+                              ((engineeringSaleCOP - engineeringCostCOP) /
+                                engineeringSaleCOP) *
+                                100
+                            )
+                          : 0}
+                        %
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        {copFmt.format(engineeringSaleCOP)}
+                      </td>
+                      <td className="py-1.5">
+                        {copFmt.format(
+                          chargeIva
+                            ? Math.round(engineeringSaleCOP * IVA_RATE)
+                            : 0
+                        )}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {quote.addons
+                    .filter((a) => a.enabled && a.group === "engineering")
+                    .map((a) => (
+                      <tr key={a.id} className="border-t border-[#1f4636]">
+                        <td className="py-1.5 pr-2">{a.label}</td>
+                        <td className="py-1.5 pr-2">1 gl</td>
+                        <td className="py-1.5 pr-2">
+                          {copFmt.format(a.costCOP)}
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          {a.saleCOP
+                            ? numFmt.format(
+                                ((a.saleCOP - a.costCOP) / a.saleCOP) * 100
+                              )
+                            : 0}
+                          %
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          {copFmt.format(a.saleCOP)}
+                        </td>
+                        <td className="py-1.5">
+                          {copFmt.format(
+                            chargeIva ? Math.round(a.saleCOP * IVA_RATE) : 0
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                   <tr className="border-t border-[#1f4636]">
                     <td className="py-1.5 pr-2">Cuadrilla</td>
                     <td className="py-1.5 pr-2">
@@ -1870,6 +2168,35 @@ function CotizadorInner() {
                     </td>
                     <td className="py-1.5">{copFmt.format(quote.labor.ivaCOP)}</td>
                   </tr>
+                  {quote.addons
+                    .filter((a) => a.enabled && a.group === "site")
+                    .map((a) => (
+                      <tr key={a.id} className="border-t border-[#1f4636]">
+                        <td className="py-1.5 pr-2">{a.label}</td>
+                        <td className="py-1.5 pr-2">
+                          {a.id === "overtime" ? `${a.extraQty} d` : "1 gl"}
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          {copFmt.format(a.costCOP)}
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          {a.saleCOP
+                            ? numFmt.format(
+                                ((a.saleCOP - a.costCOP) / a.saleCOP) * 100
+                              )
+                            : 0}
+                          %
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          {copFmt.format(a.saleCOP)}
+                        </td>
+                        <td className="py-1.5">
+                          {copFmt.format(
+                            chargeIva ? Math.round(a.saleCOP * IVA_RATE) : 0
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>

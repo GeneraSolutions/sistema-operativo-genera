@@ -22,7 +22,12 @@ export const ROLE_LABELS: Record<Role, string> = {
   sst: "SST / HSE",
 };
 
-export type AppModule = "cotizador" | "inventario" | "inteligencia" | "equipo";
+export type AppModule =
+  | "cotizador"
+  | "visita"
+  | "inventario"
+  | "inteligencia"
+  | "equipo";
 
 const MODULE_ROLES: Record<AppModule, Role[]> = {
   cotizador: [
@@ -32,6 +37,14 @@ const MODULE_ROLES: Record<AppModule, Role[]> = {
     "ingenieria",
     "operaciones",
     "contabilidad",
+  ],
+  visita: [
+    "ceo",
+    "gerente",
+    "comercial",
+    "ingenieria",
+    "operaciones",
+    "sst",
   ],
   inventario: ["ceo", "gerente", "compras", "ingenieria", "contabilidad"],
   inteligencia: [
@@ -53,6 +66,7 @@ export function canAccessModule(role: Role, mod: AppModule): boolean {
 
 export function moduleFromPath(pathname: string): AppModule | null {
   if (pathname.startsWith("/cotizador")) return "cotizador";
+  if (pathname.startsWith("/visita-tecnica")) return "visita";
   if (pathname.startsWith("/inventario")) return "inventario";
   if (pathname.startsWith("/inteligencia")) return "inteligencia";
   if (pathname.startsWith("/equipo")) return "equipo";
