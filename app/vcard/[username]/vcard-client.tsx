@@ -49,9 +49,9 @@ const PROFILES_DB: Record<string, VCardData> = {
   camilo: {
     firstName: "Camilo",
     lastName: "Rendón",
-    fullName: "Camilo Arturo Rendón Chacón",
+    fullName: "Camilo Rendón Chacón",
     company: "Genera Solutions SAS",
-    role: "Director de Proyectos",
+    role: "CEO y Director de Proyectos",
     department: "Dirección Ejecutiva",
     phone: "+573174553388",
     whatsappNumber: "573174553388",
@@ -63,9 +63,8 @@ const PROFILES_DB: Record<string, VCardData> = {
     tiktokUrl: "https://tiktok.com/",
     facebookUrl: "https://facebook.com/",
     bookingUrl: "https://calendly.com",
-    avatarUrl:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80",
-    logoUrl: "/brand/logo-genera.jpg",
+    avatarUrl: "/brand/camilo.jpg",
+    logoUrl: "/brand/logo-genera.png",
     defaultWaMessage:
       "Hola Camilo, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: [
@@ -481,16 +480,12 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: "center",
   },
   logo: {
-    height: 84,
+    height: 96,
     width: "auto",
-    maxWidth: "calc(100% - 36px)",
+    maxWidth: "100%",
     objectFit: "contain",
     margin: "0 auto 1.25rem",
     display: "block",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: "12px 18px",
-    boxSizing: "content-box",
   },
   avatar: {
     width: 96,
@@ -499,13 +494,13 @@ const styles: Record<string, React.CSSProperties> = {
     objectFit: "cover",
     display: "block",
     margin: "0 auto 1rem",
-    border: "2px solid #f59e0b",
+    border: "3px solid #6dbe45",
   },
   department: {
     fontSize: "0.75rem",
     textTransform: "uppercase",
     letterSpacing: "0.1em",
-    color: "#f59e0b",
+    color: "#6dbe45",
     fontWeight: 600,
   },
   name: {
@@ -529,7 +524,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "0.75rem",
   },
   btnPrimary: {
-    backgroundColor: "#f59e0b",
+    backgroundColor: "#6dbe45",
     color: "#090d16",
     border: "none",
     padding: "0.85rem 1rem",
@@ -552,7 +547,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "0.75rem",
   },
   btnFeatured: {
-    background: "linear-gradient(135deg, #fbbf24 0%, #f59e0b 45%, #d97706 100%)",
+    background: "linear-gradient(135deg, #8ed15a 0%, #6dbe45 45%, #4e9e32 100%)",
     color: "#090d16",
     textDecoration: "none",
     padding: "1rem 1rem",
@@ -561,7 +556,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "center",
     gap: "0.75rem",
-    boxShadow: "0 10px 28px rgba(245, 158, 11, 0.28)",
+    boxShadow: "0 10px 28px rgba(109, 190, 69, 0.28)",
   },
   btnFeaturedSubtitle: {
     fontSize: "0.75rem",
@@ -582,8 +577,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnQr: {
     backgroundColor: "transparent",
-    color: "#f59e0b",
-    border: "1px solid rgba(245, 158, 11, 0.7)",
+    color: "#6dbe45",
+    border: "1px solid rgba(109, 190, 69, 0.75)",
     padding: "0.85rem 1rem",
     borderRadius: "0.75rem",
     fontWeight: 700,
