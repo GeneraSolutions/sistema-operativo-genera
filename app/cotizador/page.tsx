@@ -598,15 +598,6 @@ function CotizadorInner() {
         );
         return;
       }
-      const check = await fetch(`/api/propuestas/${proposal.id}`, {
-        cache: "no-store",
-      });
-      if (!check.ok) {
-        setLinkFlash(
-          "El servidor no retuvo la propuesta. Espere el deploy e intente de nuevo."
-        );
-        return;
-      }
     } catch {
       setLinkFlash("No hay conexión con el servidor para publicar la cotización.");
       return;

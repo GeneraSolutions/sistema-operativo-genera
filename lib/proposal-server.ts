@@ -1,12 +1,16 @@
+import { get as blobGet, put as blobPut } from "@vercel/blob";
 import { DEMO_EPC_PROPOSAL } from "@/lib/demo-epc-proposal";
-import { hasDurableStore, persistGet, persistSet } from "@/lib/persist";
+import { hasDurableStore } from "@/lib/persist";
 import type { EpcProposal } from "@/types/proposal";
 
-function keyFor(id: string) {
-  return `genera:proposal:${id}`;
+function blobAuth() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  return token ? { token } : {};
 }
 
-const LIST_KEY = "genera:public-proposals";
+function proposalPath(id: string) {
+  return `proposals/${id}.json`;
+}
 
 function compactProposal(proposal: EpcProposal, dropImage = false): EpcProposal {
   const image = proposal.siteImageDataUrl || "";
@@ -17,6 +21,30 @@ function compactProposal(proposal: EpcProposal, dropImage = false): EpcProposal 
   };
 }
 
+async function readProposalBlob(id: string): Promise<EpcProposal | null> {
+  const result = await blobGet(proposalPath(id), {
+    access: "private",
+    useCache: false,
+    ...blobAuth(),
+  });
+  if (!result || result.statusCode !== 200 || !result.stream) return null;
+  const text = await new Response(result.stream).text();
+  if (!text) return null;
+  const parsed = JSON.parse(text) as EpcProposal;
+  return parsed?.id ? parsed : null;
+}
+
+async function writeProposalBlob(proposal: EpcProposal): Promise<void> {
+  await blobPut(proposalPath(proposal.id), JSON.stringify(proposal), {
+    access: "private",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "application/json",
+    cacheControlMaxAge: 0,
+    ...blobAuth(),
+  });
+}
+
 export async function saveProposalServer(proposal: EpcProposal): Promise<void> {
   if (process.env.VERCEL && !hasDurableStore()) {
     throw new Error(
@@ -25,27 +53,30 @@ export async function saveProposalServer(proposal: EpcProposal): Promise<void> {
   }
   let slim = compactProposal(proposal);
   try {
-    await persistSet(keyFor(slim.id), slim);
+    await writeProposalBlob(slim);
   } catch {
     slim = compactProposal(proposal, true);
-    await persistSet(keyFor(slim.id), slim);
+    await writeProposalBlob(slim);
   }
-  try {
-    const list = (await persistGet<EpcProposal[]>(LIST_KEY)) ?? [];
-    const next = [
-      { ...slim, siteImageDataUrl: undefined },
-      ...list.filter((item) => item.id !== slim.id),
-    ].slice(0, 80);
-    await persistSet(LIST_KEY, next);
-  } catch {
-    /* el índice es respaldo; la clave individual ya quedó */
+
+  let stored: EpcProposal | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    stored = await readProposalBlob(slim.id);
+    if (stored) break;
+    await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+  }
+  if (!stored) {
+    throw new Error(
+      "La propuesta se envió al almacenamiento pero no se pudo confirmar. Intente de nuevo."
+    );
   }
 }
 
 export async function getProposalServer(id: string): Promise<EpcProposal | null> {
   if (id === DEMO_EPC_PROPOSAL.id) return DEMO_EPC_PROPOSAL;
-  const stored = await persistGet<EpcProposal>(keyFor(id));
-  if (stored?.id) return stored;
-  const list = (await persistGet<EpcProposal[]>(LIST_KEY)) ?? [];
-  return list.find((item) => item.id === id) ?? null;
+  try {
+    return await readProposalBlob(id);
+  } catch {
+    return null;
+  }
 }

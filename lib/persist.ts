@@ -23,15 +23,21 @@ export function hasDurableStore(): boolean {
 }
 
 function blobPath(key: string) {
-  return `genera-kv/${encodeURIComponent(key)}.json`;
+  return `genera-kv/${key.replace(/[^a-zA-Z0-9._-]+/g, "-")}.json`;
+}
+
+function blobAuth() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  return token ? { token } : {};
 }
 
 async function blobGet<T>(key: string): Promise<T | null> {
   const result = await blobGetFile(blobPath(key), {
     access: "private",
     useCache: false,
+    ...blobAuth(),
   });
-  if (!result?.stream) return null;
+  if (!result || result.statusCode !== 200 || !result.stream) return null;
   const text = await new Response(result.stream).text();
   if (!text) return null;
   return JSON.parse(text) as T;
@@ -44,6 +50,7 @@ async function blobSet<T>(key: string, value: T): Promise<void> {
     allowOverwrite: true,
     contentType: "application/json",
     cacheControlMaxAge: 0,
+    ...blobAuth(),
   });
 }
 
