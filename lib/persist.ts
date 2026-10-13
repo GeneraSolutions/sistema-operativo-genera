@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
+import { get as blobGetFile, put as blobPutFile } from "@vercel/blob";
 
 function kvUrl(): string | undefined {
   return process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -11,6 +12,39 @@ function kvToken(): string | undefined {
 
 export function hasCloudKv(): boolean {
   return Boolean(kvUrl() && kvToken());
+}
+
+export function hasBlobStore(): boolean {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+}
+
+export function hasDurableStore(): boolean {
+  return hasCloudKv() || hasBlobStore();
+}
+
+function blobPath(key: string) {
+  return `genera-kv/${encodeURIComponent(key)}.json`;
+}
+
+async function blobGet<T>(key: string): Promise<T | null> {
+  const result = await blobGetFile(blobPath(key), {
+    access: "private",
+    useCache: false,
+  });
+  if (!result?.stream) return null;
+  const text = await new Response(result.stream).text();
+  if (!text) return null;
+  return JSON.parse(text) as T;
+}
+
+async function blobSet<T>(key: string, value: T): Promise<void> {
+  await blobPutFile(blobPath(key), JSON.stringify(value), {
+    access: "private",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "application/json",
+    cacheControlMaxAge: 0,
+  });
 }
 
 /** En Vercel el código es de solo lectura; /tmp sí se puede escribir. */
@@ -73,6 +107,13 @@ export async function persistGet<T>(key: string): Promise<T | null> {
     }
     return result as T;
   }
+  if (hasBlobStore()) {
+    try {
+      return await blobGet<T>(key);
+    } catch {
+      return null;
+    }
+  }
   const map = readFileMap();
   return (map[key] as T) ?? null;
 }
@@ -80,6 +121,10 @@ export async function persistGet<T>(key: string): Promise<T | null> {
 export async function persistSet<T>(key: string, value: T): Promise<void> {
   if (hasCloudKv()) {
     await kvCommand(["SET", key, JSON.stringify(value)]);
+    return;
+  }
+  if (hasBlobStore()) {
+    await blobSet(key, value);
     return;
   }
   const map = readFileMap();

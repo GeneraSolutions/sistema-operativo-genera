@@ -594,7 +594,7 @@ function CotizadorInner() {
         const data = await res.json().catch(() => ({}));
         setLinkFlash(
           data.error ||
-            "No se pudo publicar en el servidor. En Vercel cree Redis (KV) en Storage."
+            "No se pudo publicar en el servidor. Intente de nuevo en un minuto."
         );
         return;
       }
@@ -603,7 +603,7 @@ function CotizadorInner() {
       });
       if (!check.ok) {
         setLinkFlash(
-          "El servidor no retuvo la propuesta. En Vercel: Storage → Create Database → Upstash Redis, y vuelva a emitir el enlace."
+          "El servidor no retuvo la propuesta. Espere el deploy e intente de nuevo."
         );
         return;
       }

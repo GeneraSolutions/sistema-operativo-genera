@@ -1,5 +1,5 @@
 import { DEMO_EPC_PROPOSAL } from "@/lib/demo-epc-proposal";
-import { hasCloudKv, persistGet, persistSet } from "@/lib/persist";
+import { hasDurableStore, persistGet, persistSet } from "@/lib/persist";
 import type { EpcProposal } from "@/types/proposal";
 
 function keyFor(id: string) {
@@ -18,9 +18,9 @@ function compactProposal(proposal: EpcProposal, dropImage = false): EpcProposal 
 }
 
 export async function saveProposalServer(proposal: EpcProposal): Promise<void> {
-  if (process.env.VERCEL && !hasCloudKv()) {
+  if (process.env.VERCEL && !hasDurableStore()) {
     throw new Error(
-      "El enlace comercial no se puede publicar: falta Redis (KV) en Vercel. Storage → Create Database → Upstash Redis."
+      "El enlace comercial no se puede publicar: falta almacenamiento duradero en Vercel."
     );
   }
   let slim = compactProposal(proposal);

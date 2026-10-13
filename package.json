@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.1",
     "leaflet": "^1.9.4",
     "next": "^15.5.4",
     "openai": "^7.23.0",
