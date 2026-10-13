@@ -56,7 +56,7 @@ export default function ArchivoPage() {
         setVisits(visits);
         quotes.forEach((q) => {
           try {
-            saveQuoteSnapshot(q);
+            saveQuoteSnapshot(q, { replaceLines: false });
             if (q.quoteLines?.length) putQuoteLines(q.id, q.quoteLines);
           } catch {
             /* quota */

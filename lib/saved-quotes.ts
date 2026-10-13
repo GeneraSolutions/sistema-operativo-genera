@@ -194,6 +194,12 @@ export function mergeQuotes(local: SavedQuote[], remote: SavedQuote[]): SavedQuo
     byId.set(q.id, pickRicher(newer, older));
   }
   return [...byId.values()]
+    .map((q) => {
+      if (typeof window === "undefined") return q;
+      const stored = getStoredQuoteLines(q.id);
+      if (!stored?.length) return q;
+      return { ...q, quoteLines: stored, qtyLocked: true };
+    })
     .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
     .slice(0, 40);
 }
@@ -208,16 +214,25 @@ export function loadSavedQuotes(): SavedQuote[] {
   }
 }
 
-export function saveQuoteSnapshot(quote: SavedQuote): SavedQuote {
+export function saveQuoteSnapshot(
+  quote: SavedQuote,
+  opts?: { replaceLines?: boolean }
+): SavedQuote {
   const incoming = cloneQuoteLines(quote.quoteLines);
   const existing = quote.id ? getStoredQuoteLines(quote.id) : undefined;
-  const lines = incoming.length ? incoming : existing;
+  const replace = opts?.replaceLines !== false;
+  const lines =
+    replace && incoming.length
+      ? incoming
+      : existing?.length
+        ? existing
+        : incoming;
   const compact = compactQuote({
     ...quote,
     quoteLines: lines ?? incoming,
     qtyLocked: true,
   });
-  if (compact.id && (compact.quoteLines?.length ?? 0) > 0) {
+  if (compact.id && replace && (compact.quoteLines?.length ?? 0) > 0) {
     putQuoteLines(compact.id, compact.quoteLines ?? []);
   }
   const all = loadSavedQuotes().filter((q) => q.id !== compact.id);
@@ -251,6 +266,19 @@ export function deleteSavedQuote(id: string): void {
 
 export function getSavedQuote(id: string): SavedQuote | undefined {
   return loadSavedQuotes().find((q) => q.id === id);
+}
+
+export function qtyFromLines(lines: QuoteLineInput[]): QuoteQuantities {
+  const n = (key: string) => lines.find((l) => l.key === key)?.qty ?? 0;
+  return {
+    panels: n("panel"),
+    inverters: n("inverter") || n("microinverter"),
+    batteries: n("battery"),
+    structure: n("structure"),
+    cabling: n("cabling"),
+    protectionDc: n("protection_dc"),
+    protectionAc: n("protection_ac"),
+  };
 }
 
 export function idsFromSelection(selection: QuoteEquipmentSelection) {

@@ -49,6 +49,7 @@ import {
   mergeQuotes,
   pinActiveQuote,
   putQuoteLines,
+  qtyFromLines,
   resolveQuoteLines,
   saveQuoteSnapshot,
   type SavedQuote,
@@ -163,15 +164,12 @@ function CotizadorInner() {
   const bootedKey = useRef<string | null>(null);
   const editingQuoteId = useRef<string | undefined>(undefined);
   const qtyLockedRef = useRef(false);
+  const quoteLinesRef = useRef<QuoteLineInput[]>([]);
   const [qtyLocked, setQtyLocked] = useState(false);
 
   function lockQuantities(locked: boolean) {
     qtyLockedRef.current = locked;
     setQtyLocked(locked);
-  }
-
-  function suggestionsAllowed() {
-    return !qtyLockedRef.current && !editingQuoteId.current;
   }
 
   function pinQuoteInUrl(id: string) {
@@ -240,6 +238,7 @@ function CotizadorInner() {
     }),
     [quoteLines]
   );
+  quoteLinesRef.current = quoteLines;
 
   const liveSuggested = useMemo(
     () =>
@@ -350,7 +349,7 @@ function CotizadorInner() {
           ).find((x) => x.id === openId);
           if (q) {
             try {
-              saveQuoteSnapshot(q);
+              saveQuoteSnapshot(q, { replaceLines: false });
             } catch {
               /* quota */
             }
@@ -666,8 +665,6 @@ function CotizadorInner() {
 
   function changeSystemKwp(nextKwp: number) {
     setSystemKwp(nextKwp);
-    if (!suggestionsAllowed()) return;
-    setQuoteLines((lines) => withSuggestedQty(lines, nextKwp));
   }
 
   function applySuggestion() {
@@ -719,8 +716,8 @@ function CotizadorInner() {
       siteLat,
       siteLon,
       equipmentIds: idsFromSelection(selection),
-      qty,
-      quoteLines: quoteLines.map((l) => ({ ...l })),
+      qty: qtyFromLines(quoteLinesRef.current),
+      quoteLines: quoteLinesRef.current.map((l) => ({ ...l })),
       qtyLocked: true,
       engAddons: addonsToState(quote.addons),
       toggles,
@@ -731,7 +728,10 @@ function CotizadorInner() {
     try {
       editingQuoteId.current = q.id;
       lockQuantities(true);
-      const saved = saveQuoteSnapshot({ ...q, qtyLocked: true });
+      const saved = saveQuoteSnapshot(
+        { ...q, qtyLocked: true },
+        { replaceLines: true }
+      );
       putQuoteLines(saved.id, saved.quoteLines ?? []);
       pinQuoteInUrl(saved.id);
       setSavedQuotes(loadSavedQuotes());
@@ -753,7 +753,7 @@ function CotizadorInner() {
     editingQuoteId.current = q.id;
     addonsFrozen.current = true;
     lockQuantities(true);
-    pinQuoteInUrl(q.id);
+    pinActiveQuote(q.id);
     const catalog = items ?? inventory;
     const find = (id?: string) => catalog.find((i) => i.id === id) ?? null;
     setClientName(q.clientName);
@@ -1675,10 +1675,20 @@ function CotizadorInner() {
                   </button>
                 </>
               ) : (
-                <p>
-                  Sugerencia automática según kWp y potencia del panel. En cuanto
-                  edite una cantidad o guarde, esa edición queda fija.
-                </p>
+                <>
+                  <p>
+                    Al crear la cotización se sugiere cantidad según kWp y el panel.
+                    Si cambia el kWp después, use el botón para recalcular. Editar
+                    una cantidad la deja fija.
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-1 font-semibold text-[#1f6b45] underline"
+                    onClick={applySuggestion}
+                  >
+                    Aplicar sugerencia ahora
+                  </button>
+                </>
               )}
             </div>
             <div className="mt-4 space-y-3">
@@ -1724,9 +1734,7 @@ function CotizadorInner() {
                                 ? lineFromItem(line.key, next, r.qty)
                                 : r
                             );
-                            return suggestionsAllowed()
-                              ? withSuggestedQty(mapped)
-                              : mapped;
+                            return mapped;
                           });
                         }}
                       >
@@ -1750,11 +1758,16 @@ function CotizadorInner() {
                           onChange={(e) => {
                             const n = Math.max(0, Number(e.target.value) || 0);
                             lockQuantities(true);
-                            setQuoteLines((rows) =>
-                              rows.map((r) =>
+                            setQuoteLines((rows) => {
+                              const next = rows.map((r) =>
                                 r.key === line.key ? { ...r, qty: n } : r
-                              )
-                            );
+                              );
+                              quoteLinesRef.current = next;
+                              if (editingQuoteId.current) {
+                                putQuoteLines(editingQuoteId.current, next);
+                              }
+                              return next;
+                            });
                           }}
                         />
                       </label>
