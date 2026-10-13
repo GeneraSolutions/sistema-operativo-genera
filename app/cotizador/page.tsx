@@ -20,6 +20,7 @@ import {
   type AddonState,
 } from "@/lib/eng-labor-addons";
 import {
+  applySuggestedQuantities,
   calculateParametricQuote,
   lineFromItem,
   selectionFromLines,
@@ -43,6 +44,7 @@ import {
   deleteSavedQuote,
   idsFromSelection,
   loadSavedQuotes,
+  mergeQuotes,
   saveQuoteSnapshot,
   type SavedQuote,
 } from "@/lib/saved-quotes";
@@ -155,6 +157,7 @@ function CotizadorInner() {
   const addonsFrozen = useRef(false);
   const didInit = useRef(false);
   const editingQuoteId = useRef<string | undefined>(undefined);
+  const [qtyLocked, setQtyLocked] = useState(false);
   const [addItemId, setAddItemId] = useState("");
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
   const [applyLey1715, setApplyLey1715] = useState(true);
@@ -214,6 +217,18 @@ function CotizadorInner() {
     [quoteLines]
   );
 
+  const liveSuggested = useMemo(
+    () =>
+      suggestQuantities(
+        systemKwp,
+        selection,
+        includeBattery,
+        batteryKwh,
+        12
+      ),
+    [systemKwp, selection, includeBattery, batteryKwh]
+  );
+
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
@@ -262,7 +277,11 @@ function CotizadorInner() {
     push("protection_dc", seedSel.protectionDc, suggested.protectionDc);
     push("protection_ac", seedSel.protectionAc, suggested.protectionAc);
 
-    const openId = sessionStorage.getItem(OPEN_QUOTE_KEY);
+    const forceNew = searchParams.get("nueva") === "1";
+    if (forceNew) sessionStorage.removeItem(OPEN_QUOTE_KEY);
+    const openId = forceNew
+      ? null
+      : searchParams.get("quote") || sessionStorage.getItem(OPEN_QUOTE_KEY);
     if (openId) sessionStorage.removeItem(OPEN_QUOTE_KEY);
     const saved = openId
       ? loadSavedQuotes().find((q) => q.id === openId)
@@ -288,7 +307,28 @@ function CotizadorInner() {
     setTaxConfig(loadTaxConfig());
     if (saved) {
       loadQuote(saved, items);
+    } else if (openId) {
+      void fetch("/api/archivo")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          const q = mergeQuotes(
+            loadSavedQuotes(),
+            data?.quotes ?? []
+          ).find((x) => x.id === openId);
+          if (q) {
+            try {
+              saveQuoteSnapshot(q);
+            } catch {
+              /* quota */
+            }
+            loadQuote(q, items);
+          } else {
+            setQuoteLines(initial);
+          }
+        })
+        .catch(() => setQuoteLines(initial));
     } else {
+      setQtyLocked(false);
       setQuoteLines(initial);
       if (searchParams.get("visita") === "1") {
         const stored = loadStoredSiteVisit();
@@ -571,7 +611,32 @@ function CotizadorInner() {
     add("protection_dc", sel.protectionDc, suggested.protectionDc);
     add("protection_ac", sel.protectionAc, suggested.protectionAc);
     if (kit.includeBattery) add("battery", sel.battery, suggested.batteries);
+    setQtyLocked(false);
     setQuoteLines(next);
+  }
+
+  function withSuggestedQty(lines: QuoteLineInput[], kwp = systemKwp) {
+    const sel = selectionFromLines(lines, inventory);
+    const suggested = suggestQuantities(
+      kwp,
+      sel,
+      includeBattery,
+      batteryKwh,
+      12
+    );
+    return applySuggestedQuantities(lines, suggested, {
+      preserveKeys: visitLinked ? ["cabling"] : [],
+    });
+  }
+
+  function changeSystemKwp(nextKwp: number) {
+    setSystemKwp(nextKwp);
+    if (qtyLocked) return;
+    setQuoteLines((lines) => withSuggestedQty(lines, nextKwp));
+  }
+
+  function applySuggestion() {
+    setQuoteLines((lines) => withSuggestedQty(lines));
   }
 
   function snapshotCurrent(name?: string): SavedQuote {
@@ -621,6 +686,7 @@ function CotizadorInner() {
       equipmentIds: idsFromSelection(selection),
       qty,
       quoteLines: quoteLines.map((l) => ({ ...l })),
+      qtyLocked: true,
       engAddons: addonsToState(quote.addons),
       toggles,
     };
@@ -629,9 +695,14 @@ function CotizadorInner() {
   function persistQuote(q: SavedQuote) {
     try {
       editingQuoteId.current = q.id;
-      const saved = saveQuoteSnapshot(q);
+      setQtyLocked(true);
+      const saved = saveQuoteSnapshot({ ...q, qtyLocked: true });
       setSavedQuotes(loadSavedQuotes());
       setSaveFlash("Cotización guardada. Ábrala en Archivo.");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("nueva");
+      url.searchParams.set("quote", saved.id);
+      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
       void fetch("/api/archivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -648,6 +719,7 @@ function CotizadorInner() {
   function loadQuote(q: SavedQuote, items?: InventoryItem[]) {
     editingQuoteId.current = q.id;
     addonsFrozen.current = true;
+    setQtyLocked(true);
     const catalog = items ?? inventory;
     const find = (id?: string) => catalog.find((i) => i.id === id) ?? null;
     setClientName(q.clientName);
@@ -989,7 +1061,7 @@ function CotizadorInner() {
                   max={5000}
                   step={systemKwp < 100 ? 1 : systemKwp < 500 ? 5 : 25}
                   value={systemKwp}
-                  onChange={(e) => setSystemKwp(Number(e.target.value))}
+                  onChange={(e) => changeSystemKwp(Number(e.target.value))}
                   className="w-full accent-[#1f6b45]"
                 />
                 <div className="mt-1 flex justify-between text-[10px] text-[#8a7f70]">
@@ -1005,7 +1077,7 @@ function CotizadorInner() {
                   onChange={(e) => {
                     const v = Number(e.target.value);
                     if (Number.isFinite(v))
-                      setSystemKwp(Math.min(5000, Math.max(3, v)));
+                      changeSystemKwp(Math.min(5000, Math.max(3, v)));
                   }}
                 />
               </label>
@@ -1545,6 +1617,32 @@ function CotizadorInner() {
               Precio base del inventario, con margen e IVA por línea. Puede agregar o
               quitar productos; el cliente no ve este desglose.
             </p>
+            <div className="mt-3 rounded-xl border border-[#e4dfd4] bg-white px-3 py-2 text-xs text-[#4d5c55]">
+              {qtyLocked ? (
+                <>
+                  <p>
+                    Cantidades fijas: se conservan al guardar y al reabrir. La
+                    sugerencia por kWp queda en segundo plano (
+                    {liveSuggested.panels} paneles · {liveSuggested.cabling} m
+                    cable · {liveSuggested.structure} estructura ·{" "}
+                    {liveSuggested.protectionDc} prot. DC ·{" "}
+                    {liveSuggested.protectionAc} prot. AC).
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-1 font-semibold text-[#1f6b45] underline"
+                    onClick={applySuggestion}
+                  >
+                    Aplicar sugerencia ahora
+                  </button>
+                </>
+              ) : (
+                <p>
+                  Sugerencia automática según kWp y potencia del panel. En cuanto
+                  edite una cantidad o guarde, esa edición queda fija.
+                </p>
+              )}
+            </div>
             <div className="mt-4 space-y-3">
               {quoteLines.map((line) => {
                 const item = inventory.find((i) => i.id === line.itemId);
@@ -1582,13 +1680,16 @@ function CotizadorInner() {
                         onChange={(e) => {
                           const next = inventory.find((i) => i.id === e.target.value);
                           if (!next) return;
-                          setQuoteLines((rows) =>
-                            rows.map((r) =>
+                          setQuoteLines((rows) => {
+                            const mapped = rows.map((r) =>
                               r.key === line.key
                                 ? lineFromItem(line.key, next, r.qty)
                                 : r
-                            )
-                          );
+                            );
+                            return qtyLocked
+                              ? mapped
+                              : withSuggestedQty(mapped);
+                          });
                         }}
                       >
                         {options.map((opt) => (
@@ -1610,6 +1711,7 @@ function CotizadorInner() {
                           value={line.qty}
                           onChange={(e) => {
                             const n = Math.max(0, Number(e.target.value) || 0);
+                            setQtyLocked(true);
                             setQuoteLines((rows) =>
                               rows.map((r) =>
                                 r.key === line.key ? { ...r, qty: n } : r

@@ -147,6 +147,32 @@ export function suggestQuantities(
   };
 }
 
+const SUGGESTED_QTY_KEYS: Record<string, keyof QuoteQuantities> = {
+  panel: "panels",
+  inverter: "inverters",
+  microinverter: "inverters",
+  structure: "structure",
+  cabling: "cabling",
+  protection_dc: "protectionDc",
+  protection_ac: "protectionAc",
+  battery: "batteries",
+};
+
+/** Updates qty on core equipment only. Extra products stay untouched. */
+export function applySuggestedQuantities(
+  lines: QuoteLineInput[],
+  suggested: QuoteQuantities,
+  opts?: { preserveKeys?: string[] }
+): QuoteLineInput[] {
+  const preserve = new Set(opts?.preserveKeys ?? []);
+  return lines.map((line) => {
+    if (preserve.has(line.key)) return line;
+    const field = SUGGESTED_QTY_KEYS[line.key];
+    if (!field) return line;
+    return { ...line, qty: suggested[field] };
+  });
+}
+
 function makeLine(
   key: string,
   item: InventoryItem,

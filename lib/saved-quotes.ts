@@ -61,6 +61,8 @@ export interface SavedQuote {
   };
   qty: QuoteQuantities;
   quoteLines?: QuoteLineInput[];
+  /** Once true, kWp/panel suggestions no longer overwrite edited quantities. */
+  qtyLocked?: boolean;
   engAddons?: AddonState[];
   toggles: ProposalToggles;
 }
@@ -75,14 +77,33 @@ function compactQuote(quote: SavedQuote): SavedQuote {
   };
 }
 
+function pickRicher(newer: SavedQuote, older: SavedQuote): SavedQuote {
+  return {
+    ...newer,
+    quoteLines:
+      newer.quoteLines?.length ? newer.quoteLines : older.quoteLines,
+    qty: newer.quoteLines?.length
+      ? newer.qty
+      : older.quoteLines?.length
+        ? older.qty
+        : newer.qty,
+    qtyLocked: newer.qtyLocked || older.qtyLocked,
+    engAddons: newer.engAddons?.length ? newer.engAddons : older.engAddons,
+  };
+}
+
 export function mergeQuotes(local: SavedQuote[], remote: SavedQuote[]): SavedQuote[] {
   const byId = new Map<string, SavedQuote>();
   for (const q of [...remote, ...local]) {
     if (!q?.id) continue;
     const prev = byId.get(q.id);
-    if (!prev || Date.parse(q.savedAt) >= Date.parse(prev.savedAt)) {
+    if (!prev) {
       byId.set(q.id, q);
+      continue;
     }
+    const newer = Date.parse(q.savedAt) >= Date.parse(prev.savedAt) ? q : prev;
+    const older = newer === q ? prev : q;
+    byId.set(q.id, pickRicher(newer, older));
   }
   return [...byId.values()]
     .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))

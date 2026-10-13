@@ -75,7 +75,7 @@ export default function ArchivoPage() {
 
   function openQuote(id: string) {
     sessionStorage.setItem(OPEN_QUOTE_KEY, id);
-    router.push("/cotizador");
+    router.push(`/cotizador?quote=${encodeURIComponent(id)}`);
   }
 
   function openVisit(id: string) {
@@ -100,7 +100,8 @@ export default function ArchivoPage() {
             Cotizaciones
           </h2>
           <a
-            href="/cotizador"
+            href="/cotizador?nueva=1"
+            onClick={() => sessionStorage.removeItem(OPEN_QUOTE_KEY)}
             className="text-sm font-semibold text-[#1f6b45] underline"
           >
             Nueva cotización
