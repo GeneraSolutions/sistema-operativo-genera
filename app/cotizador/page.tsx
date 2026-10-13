@@ -398,15 +398,6 @@ function CotizadorInner() {
     if (forceLink) setMount(mountFromRoof(storedVisit.visit.roofType));
   }, [hydrated]);
 
-  useEffect(() => {
-    if (!hydrated || addonsFrozen.current) return;
-    if (!quote.addons.length) return;
-    addonsFrozen.current = true;
-    setEngAddons(
-      addonsToState(quote.addons).map((a) => ({ ...a, manual: true }))
-    );
-  }, [hydrated, quote.addons]);
-
   const irradiance = useMemo(
     () => resolveIdeamIrradiance(siteLat, siteLon),
     [siteLat, siteLon]
@@ -485,6 +476,15 @@ function CotizadorInner() {
       applyLey1715,
     ]
   );
+
+  useEffect(() => {
+    if (!hydrated || addonsFrozen.current) return;
+    if (!quote.addons.length) return;
+    addonsFrozen.current = true;
+    setEngAddons(
+      addonsToState(quote.addons).map((a) => ({ ...a, manual: true }))
+    );
+  }, [hydrated, quote.addons]);
 
   const liveProposal = useMemo(() => {
     if (!hydrated) return null;
