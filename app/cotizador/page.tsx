@@ -234,16 +234,31 @@ function CotizadorInner() {
       filterByCategory(items, "protection_ac")[0] ||
       null;
 
+    const kwpStart = (() => {
+      const raw = searchParams.get("kwp");
+      const v = raw ? Number(raw) : 50;
+      return Number.isFinite(v) && v >= 3 && v <= 5000 ? v : 50;
+    })();
+    const seedSel = {
+      panel: defaults.panel ?? null,
+      inverter: defaults.inverter ?? null,
+      battery: defaults.battery ?? null,
+      structure: mountDefault,
+      cabling: defaults.cabling ?? null,
+      protectionDc: dc,
+      protectionAc: ac,
+    };
+    const suggested = suggestQuantities(kwpStart, seedSel, false, 20, 12);
     const initial: QuoteLineInput[] = [];
     const push = (key: string, item: InventoryItem | null, n: number) => {
       if (item) initial.push(lineFromItem(key, item, n));
     };
-    push("panel", defaults.panel ?? null, 1);
-    push("inverter", defaults.inverter ?? null, 1);
-    push("structure", mountDefault, 1);
-    push("cabling", defaults.cabling ?? null, 12);
-    push("protection_dc", dc, 1);
-    push("protection_ac", ac, 1);
+    push("panel", seedSel.panel, suggested.panels);
+    push("inverter", seedSel.inverter, suggested.inverters);
+    push("structure", seedSel.structure, suggested.structure);
+    push("cabling", seedSel.cabling, suggested.cabling);
+    push("protection_dc", seedSel.protectionDc, suggested.protectionDc);
+    push("protection_ac", seedSel.protectionAc, suggested.protectionAc);
     setQuoteLines(initial);
 
     const kwpParam = searchParams.get("kwp");
@@ -292,48 +307,23 @@ function CotizadorInner() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const suggested = suggestQuantities(
-      systemKwp,
-      selection,
-      includeBattery,
-      batteryKwh,
-      12
-    );
     setQuoteLines((lines) => {
-      const qtyByKey: Record<string, number> = {
-        panel: suggested.panels,
-        inverter: suggested.inverters,
-        battery: suggested.batteries,
-        structure: suggested.structure,
-        cabling: suggested.cabling,
-        protection_dc: suggested.protectionDc,
-        protection_ac: suggested.protectionAc,
-      };
-      let next = lines.map((l) => {
-        if (qtyByKey[l.key] == null) return l;
-        if (visitLinked && isVisitLockedLineKey(l.key)) return l;
-        return { ...l, qty: qtyByKey[l.key] };
-      });
-      const bat = getDefaultsByCategory(inventory).battery;
-      const hasBat = next.some((l) => l.key === "battery");
-      if (includeBattery && bat && !hasBat) {
-        next = [...next, lineFromItem("battery", bat, suggested.batteries)];
+      const hasBat = lines.some((l) => l.key === "battery");
+      if (includeBattery && !hasBat) {
+        const bat = getDefaultsByCategory(inventory).battery;
+        if (!bat) return lines;
+        const n = Math.max(
+          1,
+          Math.ceil(batteryKwh / Math.max(bat.capacity ?? 5, 0.1))
+        );
+        return [...lines, lineFromItem("battery", bat, n)];
       }
       if (!includeBattery && hasBat) {
-        next = next.filter((l) => l.key !== "battery");
+        return lines.filter((l) => l.key !== "battery");
       }
-      return next;
+      return lines;
     });
-  }, [
-    hydrated,
-    systemKwp,
-    includeBattery,
-    batteryKwh,
-    selection.panel?.id,
-    selection.inverter?.id,
-    selection.battery?.id,
-    visitLinked,
-  ]);
+  }, [hydrated, includeBattery]);
 
   useEffect(() => {
     if (!hydrated) return;
