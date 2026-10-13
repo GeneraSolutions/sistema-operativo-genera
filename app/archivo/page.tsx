@@ -46,7 +46,17 @@ export default function ArchivoPage() {
 
   useEffect(() => {
     refresh();
-    void fetch("/api/archivo")
+    const localQuotes = loadSavedQuotes();
+    const localVisits = loadSavedVisits();
+    void fetch("/api/archivo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        quotes: localQuotes,
+        visits: localVisits,
+      }),
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data) return;
@@ -95,8 +105,9 @@ export default function ArchivoPage() {
     >
       <p className="mb-6 max-w-3xl text-sm leading-6 text-[#4d5c55]">
         Use <strong>Guardar cotización</strong> en el cotizador y{" "}
-        <strong>Guardar visita técnica</strong> en visitas. Quedan en este
-        equipo. Ábralas de nuevo cuando quiera seguir trabajando.
+        <strong>Guardar visita técnica</strong> en visitas. Quedan en el
+        servidor: cualquier persona del equipo las ve en Archivo, desde el
+        celular o el computador.
       </p>
 
       <section className="mb-8">
@@ -128,6 +139,7 @@ export default function ArchivoPage() {
                   <th className="px-4 py-3">Cliente</th>
                   <th className="px-4 py-3">Ciudad</th>
                   <th className="px-4 py-3">Potencia</th>
+                  <th className="px-4 py-3">Registró</th>
                   <th className="px-4 py-3">Guardada</th>
                   <th className="px-4 py-3">Acciones</th>
                 </tr>
@@ -139,6 +151,7 @@ export default function ArchivoPage() {
                     <td className="px-4 py-3">{q.clientName}</td>
                     <td className="px-4 py-3">{q.clientCity}</td>
                     <td className="px-4 py-3">{q.systemKwp} kWp</td>
+                    <td className="px-4 py-3">{q.savedByName || q.savedBy || "—"}</td>
                     <td className="px-4 py-3 text-[#6d7c74]">{when(q.savedAt)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-3">

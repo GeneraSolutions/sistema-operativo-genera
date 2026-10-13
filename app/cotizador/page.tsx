@@ -336,6 +336,22 @@ function CotizadorInner() {
       if (q.quoteLines?.length) putQuoteLines(q.id, q.quoteLines);
     }
     setSavedQuotes(localQuotes);
+    void fetch("/api/archivo", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.quotes) return;
+        const merged = mergeQuotes(loadSavedQuotes(), data.quotes);
+        merged.forEach((row) => {
+          try {
+            saveQuoteSnapshot(row, { replaceLines: false });
+            if (row.quoteLines?.length) putQuoteLines(row.id, row.quoteLines);
+          } catch {
+            /* quota */
+          }
+        });
+        setSavedQuotes(merged);
+      })
+      .catch(() => undefined);
     setTaxConfig(loadTaxConfig());
     if (saved) {
       loadQuote(saved, items);
@@ -724,7 +740,7 @@ function CotizadorInner() {
     };
   }
 
-  function persistQuote(q: SavedQuote) {
+  async function persistQuote(q: SavedQuote) {
     try {
       editingQuoteId.current = q.id;
       lockQuantities(true);
@@ -735,12 +751,32 @@ function CotizadorInner() {
       putQuoteLines(saved.id, saved.quoteLines ?? []);
       pinQuoteInUrl(saved.id);
       setSavedQuotes(loadSavedQuotes());
-      setSaveFlash("Cotización guardada. Ábrala en Archivo.");
-      void fetch("/api/archivo", {
+      const res = await fetch("/api/archivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quote: saved }),
       });
+      if (!res.ok) {
+        setSaveFlash(
+          "Se guardó en este equipo, pero no llegó al servidor. Revise la conexión e intente de nuevo."
+        );
+      } else {
+        const data = await res.json().catch(() => null);
+        if (data?.quotes) {
+          const merged = mergeQuotes(loadSavedQuotes(), data.quotes);
+          merged.forEach((row) => {
+            try {
+              saveQuoteSnapshot(row, { replaceLines: false });
+            } catch {
+              /* quota */
+            }
+          });
+          setSavedQuotes(merged);
+        }
+        setSaveFlash(
+          "Cotización guardada. Ya aparece en Archivo en todos los equipos."
+        );
+      }
     } catch {
       setSaveFlash(
         "No se pudo guardar. Quite la foto del sitio e intente de nuevo."

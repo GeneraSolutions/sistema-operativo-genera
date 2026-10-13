@@ -63,6 +63,8 @@ export interface SavedQuote {
   quoteLines?: QuoteLineInput[];
   /** Once true, kWp/panel suggestions no longer overwrite edited quantities. */
   qtyLocked?: boolean;
+  savedBy?: string;
+  savedByName?: string;
   engAddons?: AddonState[];
   toggles: ProposalToggles;
 }

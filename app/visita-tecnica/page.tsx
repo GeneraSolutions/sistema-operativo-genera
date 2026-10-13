@@ -69,7 +69,7 @@ export default function VisitaTecnicaPage() {
     setVisit((prev) => ({ ...prev, [key]: value }));
   }
 
-  function saveVisit() {
+  async function saveVisit() {
     persist(visit, linked);
     try {
       const archived = saveVisitSnapshot({
@@ -78,12 +78,16 @@ export default function VisitaTecnicaPage() {
         id: savedId,
       });
       setSavedId(archived.id);
-      setFlash("Visita técnica guardada. Ábrala en Archivo.");
-      void fetch("/api/archivo", {
+      const res = await fetch("/api/archivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ visit: archived }),
       });
+      setFlash(
+        res.ok
+          ? "Visita técnica guardada. Ya aparece en Archivo en todos los equipos."
+          : "Se guardó en este equipo, pero no llegó al servidor. Intente de nuevo."
+      );
     } catch {
       setFlash(
         "No se pudo guardar. Quite algunas fotos e intente de nuevo."
