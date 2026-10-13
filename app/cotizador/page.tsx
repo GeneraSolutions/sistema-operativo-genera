@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
 import { BrandLogo } from "@/components/BrandLogo";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
@@ -152,6 +152,9 @@ function CotizadorInner() {
   const [engAddons, setEngAddons] = useState<AddonState[] | undefined>(
     undefined
   );
+  const addonsFrozen = useRef(false);
+  const prevMount = useRef<typeof mount | null>(null);
+  const editingQuoteId = useRef<string | undefined>(undefined);
   const [addItemId, setAddItemId] = useState("");
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
   const [applyLey1715, setApplyLey1715] = useState(true);
@@ -334,6 +337,12 @@ function CotizadorInner() {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (prevMount.current == null) {
+      prevMount.current = mount;
+      return;
+    }
+    if (prevMount.current === mount) return;
+    prevMount.current = mount;
     const match =
       filterByCategory(inventory, "structure").find(
         (s) => s.mountType === mount && s.isDefault
@@ -358,7 +367,16 @@ function CotizadorInner() {
       applyVisitToQuoteLines(lines, inventory, siteVisit)
     );
     setEngAddons((prev) => applyVisitToAddons(prev, siteVisit));
-  }, [hydrated, visitLinked, siteVisit, inventory]);
+  }, [hydrated, visitLinked, siteVisit]);
+
+  useEffect(() => {
+    if (!hydrated || addonsFrozen.current) return;
+    if (!quote.addons.length) return;
+    addonsFrozen.current = true;
+    setEngAddons(
+      addonsToState(quote.addons).map((a) => ({ ...a, manual: true }))
+    );
+  }, [hydrated, quote.addons]);
 
   const irradiance = useMemo(
     () => resolveIdeamIrradiance(siteLat, siteLon),
@@ -603,7 +621,7 @@ function CotizadorInner() {
 
   function snapshotCurrent(name?: string): SavedQuote {
     return {
-      id: crypto.randomUUID(),
+      id: editingQuoteId.current || crypto.randomUUID(),
       name: name || `${clientName} · ${systemKwp} kWp`,
       savedAt: new Date().toISOString(),
       clientName,
@@ -654,13 +672,27 @@ function CotizadorInner() {
   }
 
   function persistQuote(q: SavedQuote) {
-    saveQuoteSnapshot(q);
-    setSavedQuotes(loadSavedQuotes());
-    setSaveFlash("Cotización guardada. Ábrala cuando quiera en Archivo.");
-    window.setTimeout(() => setSaveFlash(""), 3500);
+    try {
+      editingQuoteId.current = q.id;
+      const saved = saveQuoteSnapshot(q);
+      setSavedQuotes(loadSavedQuotes());
+      setSaveFlash("Cotización guardada. Ábrala en Archivo.");
+      void fetch("/api/archivo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote: saved }),
+      });
+    } catch {
+      setSaveFlash(
+        "No se pudo guardar. Quite la foto del sitio e intente de nuevo."
+      );
+    }
+    window.setTimeout(() => setSaveFlash(""), 4500);
   }
 
   function loadQuote(q: SavedQuote) {
+    editingQuoteId.current = q.id;
+    addonsFrozen.current = true;
     const find = (id?: string) => inventory.find((i) => i.id === id) ?? null;
     setClientName(q.clientName);
     setClientCity(q.clientCity);

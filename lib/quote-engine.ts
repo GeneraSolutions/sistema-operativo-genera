@@ -35,6 +35,7 @@ export interface QuoteLineInput {
   marginPercent: number;
   applyIva: boolean;
   costUnitCOP: number;
+  label?: string;
 }
 
 export interface QuoteQuantities {
@@ -202,6 +203,7 @@ export function lineFromItem(
     marginPercent: item.marginPercent ?? 0,
     applyIva: item.applyIva ?? item.category !== "panel",
     costUnitCOP: item.priceCOP,
+    label: `${item.brand} ${item.model || item.name}`.trim(),
   };
 }
 
@@ -231,21 +233,36 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
   const { selection, quantities: q, chargeIva } = params;
   const lines: QuoteBreakdownLine[] = [];
 
-  if (params.quoteLines?.length && params.inventory?.length) {
+  if (params.quoteLines?.length) {
     for (const slot of params.quoteLines) {
       if (slot.qty <= 0) continue;
-      const item = params.inventory.find((i) => i.id === slot.itemId);
-      if (!item) continue;
+      const item = params.inventory?.find((i) => i.id === slot.itemId);
+      const stub: InventoryItem = item ?? {
+        id: slot.itemId,
+        category: "panel",
+        name: slot.label || slot.key,
+        brand: "GENERA",
+        model: slot.label || slot.key,
+        priceCOP: slot.costUnitCOP,
+        priceUSD: 0,
+        marginPercent: slot.marginPercent,
+        applyIva: slot.applyIva,
+        unit: "unidad",
+        isDefault: false,
+        active: true,
+        updatedAt: new Date().toISOString(),
+      };
       lines.push(
         makeLine(
           slot.key,
-          item,
+          stub,
           slot.qty,
-          item.unit || "unidad",
+          item?.unit || "unidad",
           chargeIva,
-          item.category === "structure"
-            ? `${item.name} (${params.mount})`
-            : undefined,
+          slot.label ||
+            (item?.category === "structure"
+              ? `${item.name} (${params.mount})`
+              : undefined),
           {
             marginPercent: slot.marginPercent,
             applyIva: slot.applyIva,

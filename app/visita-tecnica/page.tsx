@@ -71,14 +71,25 @@ export default function VisitaTecnicaPage() {
 
   function saveVisit() {
     persist(visit, linked);
-    const archived = saveVisitSnapshot({
-      visit,
-      linked,
-      id: savedId,
-    });
-    setSavedId(archived.id);
-    setFlash("Visita técnica guardada. Ábrala cuando quiera en Archivo.");
-    window.setTimeout(() => setFlash(""), 3500);
+    try {
+      const archived = saveVisitSnapshot({
+        visit,
+        linked,
+        id: savedId,
+      });
+      setSavedId(archived.id);
+      setFlash("Visita técnica guardada. Ábrala en Archivo.");
+      void fetch("/api/archivo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visit: archived }),
+      });
+    } catch {
+      setFlash(
+        "No se pudo guardar. Quite algunas fotos e intente de nuevo."
+      );
+    }
+    window.setTimeout(() => setFlash(""), 4500);
   }
 
   function newVisit() {

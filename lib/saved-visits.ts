@@ -22,6 +22,30 @@ export function loadSavedVisits(): SavedVisit[] {
   }
 }
 
+function compactVisit(record: SavedVisit): SavedVisit {
+  const photos = (record.visit.photos ?? [])
+    .filter((p) => p?.dataUrl && p.dataUrl.length < 160_000)
+    .slice(0, 4);
+  return {
+    ...record,
+    visit: { ...record.visit, photos },
+  };
+}
+
+export function mergeVisits(local: SavedVisit[], remote: SavedVisit[]): SavedVisit[] {
+  const byId = new Map<string, SavedVisit>();
+  for (const v of [...remote, ...local]) {
+    if (!v?.id) continue;
+    const prev = byId.get(v.id);
+    if (!prev || Date.parse(v.savedAt) >= Date.parse(prev.savedAt)) {
+      byId.set(v.id, v);
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
+    .slice(0, 40);
+}
+
 export function saveVisitSnapshot(input: {
   visit: SiteVisit;
   linked: boolean;
@@ -44,9 +68,18 @@ export function saveVisitSnapshot(input: {
     linked: input.linked,
     visit: { ...input.visit, updatedAt: new Date().toISOString() },
   };
-  const next = [record, ...all.filter((v) => v.id !== record.id)].slice(0, 40);
-  localStorage.setItem(KEY, JSON.stringify(next));
-  return record;
+  const stored = compactVisit(record);
+  const next = [stored, ...all.filter((v) => v.id !== stored.id)].slice(0, 40);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    const lighter = next.map((v) => ({
+      ...v,
+      visit: { ...v.visit, photos: [] },
+    }));
+    localStorage.setItem(KEY, JSON.stringify(lighter));
+  }
+  return stored;
 }
 
 export function deleteSavedVisit(id: string): void {

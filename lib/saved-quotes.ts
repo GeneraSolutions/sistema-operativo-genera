@@ -67,18 +67,49 @@ export interface SavedQuote {
 
 const KEY = "genera.saved-quotes.v1";
 
+function compactQuote(quote: SavedQuote): SavedQuote {
+  const image = quote.siteImageDataUrl || "";
+  return {
+    ...quote,
+    siteImageDataUrl: image.length > 120_000 ? undefined : quote.siteImageDataUrl,
+  };
+}
+
+export function mergeQuotes(local: SavedQuote[], remote: SavedQuote[]): SavedQuote[] {
+  const byId = new Map<string, SavedQuote>();
+  for (const q of [...remote, ...local]) {
+    if (!q?.id) continue;
+    const prev = byId.get(q.id);
+    if (!prev || Date.parse(q.savedAt) >= Date.parse(prev.savedAt)) {
+      byId.set(q.id, q);
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
+    .slice(0, 40);
+}
+
 export function loadSavedQuotes(): SavedQuote[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]") as SavedQuote[];
+    const parsed = JSON.parse(localStorage.getItem(KEY) || "[]") as SavedQuote[];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-export function saveQuoteSnapshot(quote: SavedQuote): void {
-  const all = loadSavedQuotes().filter((q) => q.id !== quote.id);
-  localStorage.setItem(KEY, JSON.stringify([quote, ...all].slice(0, 40)));
+export function saveQuoteSnapshot(quote: SavedQuote): SavedQuote {
+  const compact = compactQuote(quote);
+  const all = loadSavedQuotes().filter((q) => q.id !== compact.id);
+  const next = [compact, ...all].slice(0, 40);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    const lighter = next.map((q) => ({ ...q, siteImageDataUrl: undefined }));
+    localStorage.setItem(KEY, JSON.stringify(lighter));
+  }
+  return compact;
 }
 
 export function deleteSavedQuote(id: string): void {
@@ -86,6 +117,10 @@ export function deleteSavedQuote(id: string): void {
     KEY,
     JSON.stringify(loadSavedQuotes().filter((q) => q.id !== id))
   );
+}
+
+export function getSavedQuote(id: string): SavedQuote | undefined {
+  return loadSavedQuotes().find((q) => q.id === id);
 }
 
 export function idsFromSelection(selection: QuoteEquipmentSelection) {

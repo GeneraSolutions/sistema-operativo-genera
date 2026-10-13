@@ -6,6 +6,8 @@ import { AppShell } from "@/components/AppShell";
 import {
   deleteSavedQuote,
   loadSavedQuotes,
+  mergeQuotes,
+  saveQuoteSnapshot,
   type SavedQuote,
 } from "@/lib/saved-quotes";
 import {
@@ -13,6 +15,8 @@ import {
   OPEN_VISIT_KEY,
   deleteSavedVisit,
   loadSavedVisits,
+  mergeVisits,
+  saveVisitSnapshot,
   type SavedVisit,
 } from "@/lib/saved-visits";
 
@@ -39,6 +43,34 @@ export default function ArchivoPage() {
 
   useEffect(() => {
     refresh();
+    void fetch("/api/archivo")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        const quotes = mergeQuotes(loadSavedQuotes(), data.quotes ?? []);
+        const visits = mergeVisits(loadSavedVisits(), data.visits ?? []);
+        setQuotes(quotes);
+        setVisits(visits);
+        quotes.forEach((q) => {
+          try {
+            saveQuoteSnapshot(q);
+          } catch {
+            /* quota */
+          }
+        });
+        visits.forEach((v) => {
+          try {
+            saveVisitSnapshot({
+              visit: v.visit,
+              linked: v.linked,
+              id: v.id,
+            });
+          } catch {
+            /* quota */
+          }
+        });
+      })
+      .catch(() => undefined);
   }, []);
 
   function openQuote(id: string) {
@@ -115,6 +147,9 @@ export default function ArchivoPage() {
                             if (!confirm("¿Quitar esta cotización del archivo?"))
                               return;
                             deleteSavedQuote(q.id);
+                            void fetch(`/api/archivo?quote=${q.id}`, {
+                              method: "DELETE",
+                            });
                             refresh();
                           }}
                         >
@@ -186,6 +221,9 @@ export default function ArchivoPage() {
                             if (!confirm("¿Quitar esta visita del archivo?"))
                               return;
                             deleteSavedVisit(v.id);
+                            void fetch(`/api/archivo?visit=${v.id}`, {
+                              method: "DELETE",
+                            });
                             refresh();
                           }}
                         >
