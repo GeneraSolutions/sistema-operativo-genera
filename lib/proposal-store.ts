@@ -36,14 +36,21 @@ export function listProposals(): EpcProposal[] {
 }
 
 export async function loadProposalRemote(id: string): Promise<EpcProposal | null> {
-  const local = getProposal(id);
-  if (local) return local;
   try {
-    const res = await fetch(`/api/propuestas/${id}`);
-    if (!res.ok) return null;
-    const data = (await res.json()) as { proposal?: EpcProposal };
-    return data.proposal ?? null;
+    const res = await fetch(`/api/propuestas/${id}`, { cache: "no-store" });
+    if (res.ok) {
+      const data = (await res.json()) as { proposal?: EpcProposal };
+      if (data.proposal) {
+        try {
+          saveProposal(data.proposal);
+        } catch {
+          /* quota */
+        }
+        return data.proposal;
+      }
+    }
   } catch {
-    return null;
+    /* red */
   }
+  return getProposal(id);
 }

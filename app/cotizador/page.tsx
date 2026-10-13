@@ -594,7 +594,16 @@ function CotizadorInner() {
         const data = await res.json().catch(() => ({}));
         setLinkFlash(
           data.error ||
-            "No se pudo publicar en el servidor. Configure KV en Vercel."
+            "No se pudo publicar en el servidor. En Vercel cree Redis (KV) en Storage."
+        );
+        return;
+      }
+      const check = await fetch(`/api/propuestas/${proposal.id}`, {
+        cache: "no-store",
+      });
+      if (!check.ok) {
+        setLinkFlash(
+          "El servidor no retuvo la propuesta. En Vercel: Storage → Create Database → Upstash Redis, y vuelva a emitir el enlace."
         );
         return;
       }

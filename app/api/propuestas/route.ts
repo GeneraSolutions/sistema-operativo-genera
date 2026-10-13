@@ -4,6 +4,7 @@ import { saveProposalServer } from "@/lib/proposal-server";
 import type { EpcProposal } from "@/types/proposal";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const session = getSessionFromRequest(req);
