@@ -2,6 +2,11 @@
 
 import { BrandLogo } from "@/components/BrandLogo";
 import { MonthlyEnergyChart } from "@/components/proposal/MonthlyEnergyChart";
+import {
+  cloneWarranties,
+  visibleWarrantyItems,
+  yearsLabel,
+} from "@/lib/warranties";
 import type { EpcProposal } from "@/types/proposal";
 
 const cop = new Intl.NumberFormat("es-CO", {
@@ -79,6 +84,8 @@ export function EpcProposalView({
   const co2T = co2Kg / 1000;
   const trees = Math.round(co2Kg / 21);
   const km = Math.round(co2Kg / 0.192);
+  const warranties = cloneWarranties(p.warranties);
+  const warrantyItems = visibleWarrantyItems(warranties, p.includeBattery);
 
   return (
     <div className={`proposal-print bg-[#070b16] text-[#e8eef8] ${embedded ? "" : "min-h-screen"}`}>
@@ -490,11 +497,26 @@ export function EpcProposalView({
           </div>
           <div>
             <h2 className="text-lg font-semibold text-white">Garantías</h2>
-            <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">
-              Paneles: 25 años producto · 25 años rendimiento (≥80%). Inversores: 10 años
-              fábrica. Baterías: según fabricante 10 años. Estructura: 10 años corrosión.
-              Mano de obra GENERA: 1 año.
-            </p>
+            {warrantyItems.length ? (
+              <ul className="mt-2 space-y-1.5 text-sm leading-6 text-[#c5d4ea]">
+                {warrantyItems.map((item) => (
+                  <li key={item.id}>
+                    <span className="text-white">{item.label}:</span>{" "}
+                    {yearsLabel(item.years)}
+                    {item.detail.trim() ? ` · ${item.detail.trim()}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">
+                Garantías según acuerdo comercial de este proyecto.
+              </p>
+            )}
+            {warranties.notes.trim() ? (
+              <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">
+                {warranties.notes.trim()}
+              </p>
+            ) : null}
           </div>
         </section>
 

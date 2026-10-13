@@ -73,6 +73,14 @@ import {
   saveTaxConfig,
   type ColombiaTaxConfig,
 } from "@/lib/colombia-tax";
+import {
+  cloneWarranties,
+  loadCompanyWarranties,
+  saveCompanyWarranties,
+  warrantySummary,
+  type SystemWarranties,
+  type WarrantyItem,
+} from "@/lib/warranties";
 import type { InventoryItem } from "@/types/inventory";
 import type { PaymentKind } from "@/types/proposal";
 
@@ -182,6 +190,10 @@ function CotizadorInner() {
   }
   const [addItemId, setAddItemId] = useState("");
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
+  const [warranties, setWarranties] = useState<SystemWarranties>(() =>
+    cloneWarranties()
+  );
+  const [warrantyFlash, setWarrantyFlash] = useState("");
   const [applyLey1715, setApplyLey1715] = useState(true);
   const [clientName, setClientName] = useState("Cliente Corporativo");
   const [clientCity, setClientCity] = useState("Bogotá");
@@ -215,6 +227,7 @@ function CotizadorInner() {
     pago: false,
     costeo: false,
     propuesta: false,
+    garantias: true,
   });
   const [kits, setKits] = useState<EquipmentKit[]>([]);
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
@@ -379,6 +392,7 @@ function CotizadorInner() {
         );
     } else {
       lockQuantities(false);
+      setWarranties(loadCompanyWarranties());
       setQuoteLines(initial);
       if (searchParams.get("visita") === "1") {
         const stored = loadStoredSiteVisit();
@@ -539,6 +553,7 @@ function CotizadorInner() {
       selection,
       toggles,
       applyLey1715,
+      warranties,
     });
   }, [
     hydrated,
@@ -573,6 +588,7 @@ function CotizadorInner() {
     selection,
     toggles,
     applyLey1715,
+    warranties,
   ]);
 
   useEffect(() => {
@@ -590,6 +606,38 @@ function CotizadorInner() {
 
   function updateToggle<K extends keyof ProposalToggles>(key: K, value: boolean) {
     setToggles((t) => ({ ...t, [key]: value }));
+  }
+
+  function patchWarranty(id: string, patch: Partial<WarrantyItem>) {
+    setWarranties((w) => ({
+      ...w,
+      items: w.items.map((item) =>
+        item.id === id ? { ...item, ...patch } : item
+      ),
+    }));
+  }
+
+  function addWarrantyLine() {
+    setWarranties((w) => ({
+      ...w,
+      items: [
+        ...w.items,
+        {
+          id: crypto.randomUUID(),
+          label: "Nueva garantía",
+          years: 1,
+          detail: "",
+          enabled: true,
+        },
+      ],
+    }));
+  }
+
+  function removeWarrantyLine(id: string) {
+    setWarranties((w) => ({
+      ...w,
+      items: w.items.filter((item) => item.id !== id),
+    }));
   }
 
   function handlePdfPro() {
@@ -737,6 +785,7 @@ function CotizadorInner() {
       qtyLocked: true,
       engAddons: addonsToState(quote.addons),
       toggles,
+      warranties: cloneWarranties(warranties),
     };
   }
 
@@ -830,6 +879,7 @@ function CotizadorInner() {
     setSiteLat(q.siteLat ?? 4.71);
     setSiteLon(q.siteLon ?? -74.15);
     setToggles(q.toggles);
+    setWarranties(cloneWarranties(q.warranties ?? loadCompanyWarranties()));
     const restored = resolveQuoteLines(q);
     if (restored) {
       setQuoteLines(restored);
@@ -2550,6 +2600,151 @@ function CotizadorInner() {
                 </div>
               ))}
             </div>
+          </QuoteFold>
+
+          <QuoteFold
+            title="Garantías del sistema"
+            summary={warrantySummary(warranties, includeBattery)}
+            open={openFolds.garantias}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, garantias: !s.garantias }))
+            }
+            printHidden
+          >
+            <p className="text-xs text-[#6d7c74]">
+              Este texto aparece al final de la cotización comercial. Cambie años,
+              detalle o quite partidas. Lo que edite aquí es lo que ve el cliente.
+            </p>
+            <div className="mt-4 space-y-3">
+              {warranties.items.map((item) => {
+                const hiddenBattery =
+                  !includeBattery && item.id === "batteries";
+                return (
+                  <div
+                    key={item.id}
+                    className={`rounded-xl border px-3 py-3 ${
+                      hiddenBattery
+                        ? "border-[#eee9de] bg-[#f7f4ee] opacity-60"
+                        : "border-[#ddd6c8] bg-[#fbfaf6]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          checked={item.enabled}
+                          onChange={(e) =>
+                            patchWarranty(item.id, {
+                              enabled: e.target.checked,
+                            })
+                          }
+                        />
+                        Incluir en la cotización
+                      </label>
+                      <button
+                        type="button"
+                        className="text-xs text-[#9b2c2c]"
+                        onClick={() => removeWarrantyLine(item.id)}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                    {hiddenBattery ? (
+                      <p className="mt-1 text-[11px] text-[#6d7c74]">
+                        Esta partida no se muestra mientras el sistema no tenga
+                        baterías.
+                      </p>
+                    ) : null}
+                    <div className="mt-2 grid gap-2 sm:grid-cols-[1.4fr_0.6fr]">
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium">Concepto</span>
+                        <input
+                          className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2.5"
+                          value={item.label}
+                          onChange={(e) =>
+                            patchWarranty(item.id, { label: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium">Años</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2.5"
+                          value={item.years}
+                          onChange={(e) =>
+                            patchWarranty(item.id, {
+                              years: Number(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-2 block text-sm">
+                      <span className="mb-1 block font-medium">
+                        Detalle (opcional)
+                      </span>
+                      <input
+                        className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2.5"
+                        value={item.detail}
+                        placeholder="fábrica, corrosión, ≥80%…"
+                        onChange={(e) =>
+                          patchWarranty(item.id, { detail: e.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+            <label className="mt-4 block text-sm">
+              <span className="mb-1 block font-medium">
+                Nota adicional de garantías
+              </span>
+              <textarea
+                rows={3}
+                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                value={warranties.notes}
+                placeholder="Condiciones, exclusiones o cobertura extra para este proyecto."
+                onChange={(e) =>
+                  setWarranties((w) => ({ ...w, notes: e.target.value }))
+                }
+              />
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={addWarrantyLine}
+                className="rounded-xl bg-[#0f2a1f] px-3 py-2 text-sm font-medium text-white"
+              >
+                Agregar garantía
+              </button>
+              <button
+                type="button"
+                onClick={() => setWarranties(cloneWarranties())}
+                className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-2 text-sm"
+              >
+                Restaurar valores GENERA
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  saveCompanyWarranties(warranties);
+                  setWarrantyFlash(
+                    "Estas garantías quedan como estándar en cotizaciones nuevas."
+                  );
+                  window.setTimeout(() => setWarrantyFlash(""), 3500);
+                }}
+                className="rounded-xl border border-[#1f6b45] bg-[#e8f6ee] px-3 py-2 text-sm text-[#1f6b45]"
+              >
+                Usar en cotizaciones nuevas
+              </button>
+            </div>
+            {warrantyFlash ? (
+              <p className="mt-2 text-sm text-[#1f6b45]">{warrantyFlash}</p>
+            ) : null}
           </QuoteFold>
 
           <QuoteFold

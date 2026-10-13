@@ -1,4 +1,5 @@
 import { GENERA_BONUSES } from "@/lib/proposal-bonuses";
+import { DEFAULT_WARRANTIES } from "@/lib/warranties";
 import { buildMonthlyEnergy } from "@/lib/monthly-energy";
 import type { EpcProposal } from "@/types/proposal";
 
@@ -181,6 +182,7 @@ export const DEMO_EPC_PROPOSAL: EpcProposal = {
   paybackYearsSimple: 4.56,
   npvCOP: 28511014,
   bonuses: GENERA_BONUSES,
+  warranties: DEFAULT_WARRANTIES,
   datasheets: [
     {
       itemId: "pane-znshine-solar-650w",

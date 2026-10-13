@@ -1,3 +1,5 @@
+import type { SystemWarranties } from "@/lib/warranties";
+
 export interface MonthlyEnergyPoint {
   month: string;
   generationKWh: number;
@@ -119,6 +121,7 @@ export interface EpcProposal {
   npvCOP: number;
   bonuses: ProposalBonus[];
   toggles: ProposalToggles;
+  warranties: SystemWarranties;
   notes?: string;
   datasheets: EquipmentDatasheet[];
 }

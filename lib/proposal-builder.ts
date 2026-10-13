@@ -2,6 +2,7 @@ import { GENERA_BONUSES } from "@/lib/proposal-bonuses";
 import { buildMonthlyEnergy } from "@/lib/monthly-energy";
 import { buildPaymentSchedule, type PaymentInput } from "@/lib/payment-schedule";
 import type { QuoteBreakdown, QuoteEquipmentSelection } from "@/lib/quote-engine";
+import { cloneWarranties, type SystemWarranties } from "@/lib/warranties";
 import type { PaymentKind } from "@/types/proposal";
 import {
   ColombiaSolarFinancials,
@@ -49,6 +50,7 @@ export interface BuildProposalInput {
   selection: QuoteEquipmentSelection;
   toggles: ProposalToggles;
   applyLey1715: boolean;
+  warranties?: SystemWarranties;
 }
 
 const MOUNT_COPY = {
@@ -217,6 +219,7 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
     npvCOP: metrics.npvCOP,
     bonuses: GENERA_BONUSES,
     toggles,
+    warranties: cloneWarranties(input.warranties),
     datasheets: buildDatasheets(selection, includeBattery),
   };
 }

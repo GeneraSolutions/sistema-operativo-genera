@@ -5,6 +5,7 @@ import type {
   QuoteLineInput,
   QuoteQuantities,
 } from "@/lib/quote-engine";
+import type { SystemWarranties } from "@/lib/warranties";
 import type { PaymentKind, ProposalToggles } from "@/types/proposal";
 
 export interface SavedQuote {
@@ -67,6 +68,7 @@ export interface SavedQuote {
   savedByName?: string;
   engAddons?: AddonState[];
   toggles: ProposalToggles;
+  warranties?: SystemWarranties;
 }
 
 const KEY = "genera.saved-quotes.v1";
@@ -179,6 +181,7 @@ function pickRicher(newer: SavedQuote, older: SavedQuote): SavedQuote {
         : newer.qty,
     qtyLocked: newer.qtyLocked || older.qtyLocked,
     engAddons: newer.engAddons?.length ? newer.engAddons : older.engAddons,
+    warranties: newer.warranties?.items?.length ? newer.warranties : older.warranties,
   };
 }
 
