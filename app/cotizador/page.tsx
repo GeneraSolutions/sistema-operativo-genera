@@ -153,7 +153,7 @@ function CotizadorInner() {
     undefined
   );
   const addonsFrozen = useRef(false);
-  const prevMount = useRef<typeof mount | null>(null);
+  const didInit = useRef(false);
   const editingQuoteId = useRef<string | undefined>(undefined);
   const [addItemId, setAddItemId] = useState("");
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
@@ -215,6 +215,8 @@ function CotizadorInner() {
   );
 
   useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
     const items = loadInventory();
     setInventory(items);
     setCustomCats(loadCustomCategories());
@@ -259,7 +261,12 @@ function CotizadorInner() {
     push("cabling", seedSel.cabling, suggested.cabling);
     push("protection_dc", seedSel.protectionDc, suggested.protectionDc);
     push("protection_ac", seedSel.protectionAc, suggested.protectionAc);
-    setQuoteLines(initial);
+
+    const openId = sessionStorage.getItem(OPEN_QUOTE_KEY);
+    if (openId) sessionStorage.removeItem(OPEN_QUOTE_KEY);
+    const saved = openId
+      ? loadSavedQuotes().find((q) => q.id === openId)
+      : undefined;
 
     const kwpParam = searchParams.get("kwp");
     if (kwpParam) {
@@ -279,6 +286,17 @@ function CotizadorInner() {
     setKits(loadKits());
     setSavedQuotes(loadSavedQuotes());
     setTaxConfig(loadTaxConfig());
+    if (saved) {
+      loadQuote(saved, items);
+    } else {
+      setQuoteLines(initial);
+      if (searchParams.get("visita") === "1") {
+        const stored = loadStoredSiteVisit();
+        if (stored?.visit) {
+          setQuoteLines(applyVisitToQuoteLines(initial, items, stored.visit));
+        }
+      }
+    }
     setHydrated(true);
   }, [searchParams]);
 
@@ -287,6 +305,7 @@ function CotizadorInner() {
     const storedVisit = loadStoredSiteVisit();
     if (!storedVisit) return;
     setSiteVisit(storedVisit.visit);
+    if (editingQuoteId.current) return;
     const forceLink =
       searchParams.get("visita") === "1" || storedVisit.linked;
     setVisitLinked(forceLink);
@@ -304,60 +323,6 @@ function CotizadorInner() {
     }
     if (forceLink) setMount(mountFromRoof(storedVisit.visit.roofType));
   }, [hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    setQuoteLines((lines) => {
-      const hasBat = lines.some((l) => l.key === "battery");
-      if (includeBattery && !hasBat) {
-        const bat = getDefaultsByCategory(inventory).battery;
-        if (!bat) return lines;
-        const n = Math.max(
-          1,
-          Math.ceil(batteryKwh / Math.max(bat.capacity ?? 5, 0.1))
-        );
-        return [...lines, lineFromItem("battery", bat, n)];
-      }
-      if (!includeBattery && hasBat) {
-        return lines.filter((l) => l.key !== "battery");
-      }
-      return lines;
-    });
-  }, [hydrated, includeBattery]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    if (prevMount.current == null) {
-      prevMount.current = mount;
-      return;
-    }
-    if (prevMount.current === mount) return;
-    prevMount.current = mount;
-    const match =
-      filterByCategory(inventory, "structure").find(
-        (s) => s.mountType === mount && s.isDefault
-      ) ||
-      filterByCategory(inventory, "structure").find((s) => s.mountType === mount);
-    if (!match) return;
-    setQuoteLines((lines) =>
-      lines.map((l) =>
-        l.key === "structure" ? lineFromItem("structure", match, l.qty) : l
-      )
-    );
-  }, [mount, inventory, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    if (!visitLinked || !siteVisit) {
-      setQuoteLines((lines) => stripVisitQuoteLines(lines));
-      return;
-    }
-    setMount(mountFromRoof(siteVisit.roofType));
-    setQuoteLines((lines) =>
-      applyVisitToQuoteLines(lines, inventory, siteVisit)
-    );
-    setEngAddons((prev) => applyVisitToAddons(prev, siteVisit));
-  }, [hydrated, visitLinked, siteVisit]);
 
   useEffect(() => {
     if (!hydrated || addonsFrozen.current) return;
@@ -655,7 +620,7 @@ function CotizadorInner() {
       siteLon,
       equipmentIds: idsFromSelection(selection),
       qty,
-      quoteLines,
+      quoteLines: quoteLines.map((l) => ({ ...l })),
       engAddons: addonsToState(quote.addons),
       toggles,
     };
@@ -680,10 +645,11 @@ function CotizadorInner() {
     window.setTimeout(() => setSaveFlash(""), 4500);
   }
 
-  function loadQuote(q: SavedQuote) {
+  function loadQuote(q: SavedQuote, items?: InventoryItem[]) {
     editingQuoteId.current = q.id;
     addonsFrozen.current = true;
-    const find = (id?: string) => inventory.find((i) => i.id === id) ?? null;
+    const catalog = items ?? inventory;
+    const find = (id?: string) => catalog.find((i) => i.id === id) ?? null;
     setClientName(q.clientName);
     setClientCity(q.clientCity);
     setSystemKwp(q.systemKwp);
@@ -723,7 +689,14 @@ function CotizadorInner() {
     setSiteLon(q.siteLon ?? -74.15);
     setToggles(q.toggles);
     if (q.quoteLines?.length) {
-      setQuoteLines(q.quoteLines);
+      setQuoteLines(
+        q.quoteLines.map((l) => ({
+          ...l,
+          qty: Number(l.qty) || 0,
+          costUnitCOP: Number(l.costUnitCOP) || 0,
+          marginPercent: Number(l.marginPercent) || 0,
+        }))
+      );
     } else {
       const next: QuoteLineInput[] = [];
       const add = (key: string, id: string | undefined, n: number) => {
@@ -743,15 +716,6 @@ function CotizadorInner() {
     }
     setEngAddons(q.engAddons);
   }
-
-  useEffect(() => {
-    if (!hydrated) return;
-    const id = sessionStorage.getItem(OPEN_QUOTE_KEY);
-    if (!id) return;
-    sessionStorage.removeItem(OPEN_QUOTE_KEY);
-    const q = loadSavedQuotes().find((item) => item.id === id);
-    if (q) loadQuote(q);
-  }, [hydrated]);
 
   function patchAddon(id: string, patch: Partial<AddonState>) {
     setEngAddons(
@@ -784,12 +748,57 @@ function CotizadorInner() {
     const stored = loadStoredSiteVisit();
     if (stored) saveStoredSiteVisit({ visit: stored.visit, linked: next });
     else if (siteVisit) saveStoredSiteVisit({ visit: siteVisit, linked: next });
-    if (next) {
-      const v = stored?.visit ?? siteVisit;
-      if (v?.clientName) setClientName(v.clientName);
-      if (v?.location) setClientCity(v.location);
-      if (v && visitHasCoords(v)) applySiteCoords(v.lat as number, v.lon as number);
+    const v = stored?.visit ?? siteVisit;
+    if (next && v) {
+      if (v.clientName) setClientName(v.clientName);
+      if (v.location) setClientCity(v.location);
+      if (visitHasCoords(v)) applySiteCoords(v.lat as number, v.lon as number);
+      setMount(mountFromRoof(v.roofType));
+      setQuoteLines((lines) => applyVisitToQuoteLines(lines, inventory, v));
+      setEngAddons((prev) => applyVisitToAddons(prev, v));
+    } else {
+      setQuoteLines((lines) => stripVisitQuoteLines(lines));
     }
+  }
+
+  function changeMount(value: MountPreference) {
+    setMount(value);
+    const match =
+      filterByCategory(inventory, "structure").find(
+        (s) => s.mountType === value && s.isDefault
+      ) ||
+      filterByCategory(inventory, "structure").find((s) => s.mountType === value);
+    if (!match) return;
+    setQuoteLines((lines) =>
+      lines.map((l) =>
+        l.key === "structure"
+          ? {
+              ...lineFromItem("structure", match, l.qty),
+              costUnitCOP: l.costUnitCOP,
+              marginPercent: l.marginPercent,
+              applyIva: l.applyIva,
+            }
+          : l
+      )
+    );
+  }
+
+  function toggleBattery(on: boolean) {
+    setIncludeBattery(on);
+    setQuoteLines((lines) => {
+      const hasBat = lines.some((l) => l.key === "battery");
+      if (on && !hasBat) {
+        const bat = getDefaultsByCategory(inventory).battery;
+        if (!bat) return lines;
+        const n = Math.max(
+          1,
+          Math.ceil(batteryKwh / Math.max(bat.capacity ?? 5, 0.1))
+        );
+        return [...lines, lineFromItem("battery", bat, n)];
+      }
+      if (!on && hasBat) return lines.filter((l) => l.key !== "battery");
+      return lines;
+    });
   }
 
   return (
@@ -1252,7 +1261,7 @@ function CotizadorInner() {
                     <button
                       key={value}
                       type="button"
-                      onClick={() => setMount(value)}
+                      onClick={() => changeMount(value)}
                       className={`rounded-lg px-2 py-2 text-sm font-semibold ${
                         mount === value
                           ? "bg-[#1f6b45] text-white"
@@ -1298,7 +1307,7 @@ function CotizadorInner() {
                   <input
                     type="checkbox"
                     checked={includeBattery}
-                    onChange={(e) => setIncludeBattery(e.target.checked)}
+                    onChange={(e) => toggleBattery(e.target.checked)}
                   />
                   Incluir BESS (baterías de litio)
                 </label>
