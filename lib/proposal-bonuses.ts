@@ -3,13 +3,6 @@ import type { ProposalBonus } from "@/types/proposal";
 /** Valor agregado incluido en cada propuesta comercial Genera. */
 export const GENERA_BONUSES: ProposalBonus[] = [
   {
-    id: "ev-charger",
-    title: "Instalación de cargador EV",
-    tagline: "Equipo del cliente · cableado · RETIE · puesta en marcha",
-    description:
-      "Instalación profesional del cargador para vehículo eléctrico que ya posee el cliente: canalización y cableado dedicado, protecciones RETIE, integración segura al tablero y puesta en marcha en sitio.",
-  },
-  {
     id: "monitor-24-7",
     title: "Monitoreo inteligente 24/7",
     tagline: "App web · alertas en tiempo real",

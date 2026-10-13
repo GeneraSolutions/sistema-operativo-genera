@@ -1210,7 +1210,7 @@ function CotizadorInner() {
                   />
                 </label>
                 <div className="mt-3 flex justify-center rounded-xl bg-[#070b16] p-4">
-                  <BrandLogo height={logoHeight} variant="card" />
+                  <BrandLogo height={logoHeight} />
                 </div>
                 <p className="mt-2 text-center text-[11px] tracking-widest text-[#6b6458] uppercase">
                   Cotización EPC · Genera

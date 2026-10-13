@@ -84,7 +84,7 @@ export function EpcProposalView({
     <div className={`proposal-print bg-[#070b16] text-[#e8eef8] ${embedded ? "" : "min-h-screen"}`}>
       <header className={`sticky top-0 z-20 flex items-center justify-between border-b border-[#1a2744] bg-[#070b16]/90 px-5 py-3 backdrop-blur print:static ${embedded ? "print:hidden" : ""}`}>
         <div className="flex items-center gap-2 text-sm text-[#c5d4ea]">
-          <BrandLogo height={28} variant="card" className="!rounded-lg !px-1.5 !py-1" />
+          <BrandLogo height={32} />
           {p.companyName} · Cotización EPC
         </div>
         <div className="flex items-center gap-2 print:hidden">
@@ -256,11 +256,15 @@ export function EpcProposalView({
               </tbody>
             </table>
             <div className="space-y-1 border-t border-[#1e2d4a] bg-[#0c1426] px-4 py-4 text-sm">
-              <Row k="Total proyecto" v={cop.format(p.totalCOP)} strong />
+              <Row k="Subtotal" v={cop.format(p.subtotalCOP)} />
+              <Row
+                k={p.ivaCOP > 0 ? "IVA (19%)" : "IVA"}
+                v={p.ivaCOP > 0 ? cop.format(p.ivaCOP) : "No aplicado"}
+              />
+              <Row k="Valor total" v={cop.format(p.totalCOP)} strong />
               <p className="pt-1 text-xs text-[#6b7c99]">
-                {p.ivaCOP > 0
-                  ? "Inversión llave en mano. El desglose de costos unitarios es interno de Genera."
-                  : "Inversión llave en mano. IVA no aplicado en esta oferta."}
+                Inversión llave en mano. El desglose de costos unitarios es interno
+                de Genera.
               </p>
             </div>
           </div>
@@ -426,7 +430,13 @@ export function EpcProposalView({
             subtitle="Valor agregado incluido en su propuesta"
           />
           <div className="grid gap-3 md:grid-cols-2">
-            {p.bonuses.map((b) => (
+            {p.bonuses
+              .filter(
+                (b) =>
+                  b.id !== "ev-charger" &&
+                  !/cargador\s*ev/i.test(b.title)
+              )
+              .map((b) => (
               <article
                 key={b.id}
                 className="rounded-2xl border border-[#1e2d4a] bg-[#10182c] p-4"
@@ -611,7 +621,7 @@ function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
 function GeneraMark({ height }: { height: number }) {
   return (
     <div className="flex justify-center">
-      <BrandLogo height={height} variant="card" />
+      <BrandLogo height={height} />
     </div>
   );
 }
