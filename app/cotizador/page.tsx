@@ -46,6 +46,7 @@ import {
   saveQuoteSnapshot,
   type SavedQuote,
 } from "@/lib/saved-quotes";
+import { OPEN_QUOTE_KEY } from "@/lib/saved-visits";
 import {
   applyVisitToAddons,
   applyVisitToQuoteLines,
@@ -174,6 +175,7 @@ function CotizadorInner() {
   const [ppaYears, setPpaYears] = useState(15);
   const [ppaPricePerKWh, setPpaPricePerKWh] = useState(650);
   const [linkFlash, setLinkFlash] = useState("");
+  const [saveFlash, setSaveFlash] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [visitLinked, setVisitLinked] = useState(false);
   const [siteVisit, setSiteVisit] = useState<SiteVisit | null>(null);
@@ -654,6 +656,8 @@ function CotizadorInner() {
   function persistQuote(q: SavedQuote) {
     saveQuoteSnapshot(q);
     setSavedQuotes(loadSavedQuotes());
+    setSaveFlash("Cotización guardada. Ábrala cuando quiera en Archivo.");
+    window.setTimeout(() => setSaveFlash(""), 3500);
   }
 
   function loadQuote(q: SavedQuote) {
@@ -717,6 +721,15 @@ function CotizadorInner() {
     }
     setEngAddons(q.engAddons);
   }
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const id = sessionStorage.getItem(OPEN_QUOTE_KEY);
+    if (!id) return;
+    sessionStorage.removeItem(OPEN_QUOTE_KEY);
+    const q = loadSavedQuotes().find((item) => item.id === id);
+    if (q) loadQuote(q);
+  }, [hydrated]);
 
   function patchAddon(id: string, patch: Partial<AddonState>) {
     setEngAddons(
@@ -818,7 +831,16 @@ function CotizadorInner() {
             Duplicar última
           </button>
         ) : null}
+        <a
+          href="/archivo"
+          className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#1f6b45] underline"
+        >
+          Ver archivo
+        </a>
       </div>
+      {saveFlash ? (
+        <p className="mb-3 text-sm text-[#1f6b45] print:hidden">{saveFlash}</p>
+      ) : null}
       {marginRate < 12 ? (
         <p className="mb-3 rounded-xl bg-[#fff4e5] px-4 py-2 text-sm text-[#9a5b00] print:hidden">
           Alerta de utilidad neta: {numFmt.format(marginRate)}% sobre venta (objetivo
@@ -836,7 +858,10 @@ function CotizadorInner() {
       {savedQuotes.length > 0 ? (
         <div className="mb-4 print:hidden">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#8a6b2a]">
-            Cotizaciones guardadas
+            Cotizaciones guardadas ·{" "}
+            <a href="/archivo" className="normal-case tracking-normal underline">
+              ver todas
+            </a>
           </p>
           <div className="mt-1 flex flex-wrap gap-2">
             {savedQuotes.slice(0, 6).map((q) => (

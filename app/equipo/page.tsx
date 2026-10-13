@@ -333,7 +333,9 @@ export default function EquipoPage() {
             <div className="text-sm lg:col-span-2">
               <span className="mb-1 block font-medium">Módulos que puede usar</span>
               <div className="flex flex-wrap gap-2">
-                {APP_MODULES.filter((m) => m.id !== "equipo").map((mod) => (
+                {APP_MODULES.filter(
+                  (m) => m.id !== "equipo" && m.id !== "archivo"
+                ).map((mod) => (
                   <label
                     key={mod.id}
                     className={`cursor-pointer rounded-full border px-3 py-1.5 ${

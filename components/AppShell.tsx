@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import {
   ROLE_LABELS,
-  canAccessModule,
   defaultHomeForRole,
+  sessionAllowsModule,
   type AppModule,
   type Role,
 } from "@/lib/auth/roles";
@@ -15,6 +15,7 @@ import {
 const NAV: { href: string; label: string; hint: string; module: AppModule }[] = [
   { href: "/cotizador", label: "Cotizador", hint: "Paramétrico", module: "cotizador" },
   { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", module: "visita" },
+  { href: "/archivo", label: "Archivo", hint: "Guardados", module: "archivo" },
   { href: "/inventario", label: "Inventario", hint: "Catálogo & TRM", module: "inventario" },
   { href: "/inteligencia", label: "Inteligencia", hint: "Especialistas AI", module: "inteligencia" },
   { href: "/equipo", label: "Equipo", hint: "Usuarios y cargos", module: "equipo" },
@@ -51,8 +52,7 @@ export function AppShell({
 
   const nav = NAV.filter((item) => {
     if (!me) return item.module !== "equipo";
-    if (me.modules?.length) return me.modules.includes(item.module);
-    return canAccessModule(me.role, item.module);
+    return sessionAllowsModule(item.module, me.role, me.modules);
   });
 
   async function logout() {

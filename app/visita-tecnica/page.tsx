@@ -18,6 +18,11 @@ import {
   type RoofCoverType,
   type SiteVisit,
 } from "@/lib/site-visit";
+import {
+  OPEN_VISIT_KEY,
+  getSavedVisit,
+  saveVisitSnapshot,
+} from "@/lib/saved-visits";
 
 const inputClass =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
@@ -28,9 +33,26 @@ export default function VisitaTecnicaPage() {
   const [linked, setLinked] = useState(false);
   const [flash, setFlash] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [savedId, setSavedId] = useState<string | undefined>();
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const openId = sessionStorage.getItem(OPEN_VISIT_KEY);
+    if (openId) {
+      sessionStorage.removeItem(OPEN_VISIT_KEY);
+      const archived = getSavedVisit(openId);
+      if (archived) {
+        setVisit(archived.visit);
+        setLinked(archived.linked);
+        setSavedId(archived.id);
+        saveStoredSiteVisit({
+          visit: archived.visit,
+          linked: archived.linked,
+        });
+        setHydrated(true);
+        return;
+      }
+    }
     const stored = loadStoredSiteVisit();
     if (stored) {
       setVisit(stored.visit);
@@ -49,8 +71,24 @@ export default function VisitaTecnicaPage() {
 
   function saveVisit() {
     persist(visit, linked);
-    setFlash("Visita técnica guardada en este equipo.");
-    window.setTimeout(() => setFlash(""), 2800);
+    const archived = saveVisitSnapshot({
+      visit,
+      linked,
+      id: savedId,
+    });
+    setSavedId(archived.id);
+    setFlash("Visita técnica guardada. Ábrala cuando quiera en Archivo.");
+    window.setTimeout(() => setFlash(""), 3500);
+  }
+
+  function newVisit() {
+    const next = emptySiteVisit();
+    setVisit(next);
+    setLinked(false);
+    setSavedId(undefined);
+    persist(next, false);
+    setFlash("Formulario limpio para una visita nueva.");
+    window.setTimeout(() => setFlash(""), 2500);
   }
 
   function setLink(next: boolean) {
@@ -539,6 +577,19 @@ export default function VisitaTecnicaPage() {
         >
           Guardar visita técnica
         </button>
+        <button
+          type="button"
+          onClick={newVisit}
+          className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#0f2a1f] shadow-sm ring-1 ring-[#d8d2c4]"
+        >
+          Nueva visita
+        </button>
+        <Link
+          href="/archivo"
+          className="rounded-xl px-4 py-2.5 text-sm font-semibold text-[#1f6b45] underline"
+        >
+          Ver archivo
+        </Link>
         <button
           type="button"
           onClick={exportPdf}

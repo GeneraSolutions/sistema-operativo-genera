@@ -28,11 +28,13 @@ export type AppModule =
   | "visita"
   | "inventario"
   | "inteligencia"
-  | "equipo";
+  | "equipo"
+  | "archivo";
 
 export const APP_MODULES: { id: AppModule; label: string }[] = [
   { id: "cotizador", label: "Cotizador" },
   { id: "visita", label: "Visitas técnicas" },
+  { id: "archivo", label: "Archivo" },
   { id: "inventario", label: "Inventario" },
   { id: "inteligencia", label: "Inteligencia" },
   { id: "equipo", label: "Equipo y cargos" },
@@ -67,6 +69,15 @@ const MODULE_ROLES: Record<AppModule, string[]> = {
     "sst",
   ],
   equipo: ["ceo", "gerente"],
+  archivo: [
+    "ceo",
+    "gerente",
+    "comercial",
+    "ingenieria",
+    "operaciones",
+    "contabilidad",
+    "sst",
+  ],
 };
 
 export interface CustomRoleDef {
@@ -117,8 +128,35 @@ export function canAccessModule(
   mod: AppModule,
   custom: CustomRoleDef[] = []
 ): boolean {
-  if (modulesForRole(role, custom).includes(mod)) return true;
-  return MODULE_ROLES[mod].includes(role);
+  const mods = modulesForRole(role, custom);
+  if (mod === "archivo") {
+    return (
+      mods.includes("archivo") ||
+      mods.includes("cotizador") ||
+      mods.includes("visita")
+    );
+  }
+  if (mods.includes(mod)) return true;
+  return MODULE_ROLES[mod]?.includes(role) ?? false;
+}
+
+export function sessionAllowsModule(
+  mod: AppModule,
+  role: string,
+  sessionModules?: string[]
+): boolean {
+  if (mod === "archivo") {
+    if (sessionModules?.length) {
+      return (
+        sessionModules.includes("archivo") ||
+        sessionModules.includes("cotizador") ||
+        sessionModules.includes("visita")
+      );
+    }
+    return canAccessModule(role, "archivo");
+  }
+  if (sessionModules?.length) return sessionModules.includes(mod);
+  return canAccessModule(role, mod);
 }
 
 export function roleLabel(role: string, custom: CustomRoleDef[] = []): string {
@@ -133,6 +171,7 @@ export function moduleFromPath(pathname: string): AppModule | null {
   if (pathname.startsWith("/inventario")) return "inventario";
   if (pathname.startsWith("/inteligencia")) return "inteligencia";
   if (pathname.startsWith("/equipo")) return "equipo";
+  if (pathname.startsWith("/archivo")) return "archivo";
   return null;
 }
 

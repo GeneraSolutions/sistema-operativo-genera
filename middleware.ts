@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { canAccessModule, moduleFromPath } from "@/lib/auth/roles";
+import { moduleFromPath, sessionAllowsModule } from "@/lib/auth/roles";
 import { SESSION_COOKIE, authSecret } from "@/lib/auth/session-public";
 import type { Role } from "@/lib/auth/roles";
 
@@ -95,9 +95,9 @@ export async function middleware(req: NextRequest) {
   }
 
   const mod = moduleFromPath(pathname);
-  const allowed = session.modules?.length
-    ? session.modules.includes(mod ?? "")
-    : canAccessModule(session.role, mod ?? "inteligencia");
+  const allowed = mod
+    ? sessionAllowsModule(mod, session.role, session.modules)
+    : true;
   if (mod && !allowed) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
