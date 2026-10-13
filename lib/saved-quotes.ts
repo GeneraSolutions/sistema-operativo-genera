@@ -68,6 +68,94 @@ export interface SavedQuote {
 }
 
 const KEY = "genera.saved-quotes.v1";
+const LINES_KEY = "genera.quote-lines.v1";
+export const ACTIVE_QUOTE_KEY = "genera:active-quote";
+
+export function cloneQuoteLines(
+  lines: QuoteLineInput[] | undefined | null
+): QuoteLineInput[] {
+  if (!Array.isArray(lines)) return [];
+  return lines.map((l) => {
+    const qty = Number(l.qty);
+    const cost = Number(l.costUnitCOP);
+    const margin = Number(l.marginPercent);
+    return {
+      ...l,
+      itemId: String(l.itemId || ""),
+      key: String(l.key || ""),
+      qty: Number.isFinite(qty) ? qty : 0,
+      costUnitCOP: Number.isFinite(cost) ? cost : 0,
+      marginPercent: Number.isFinite(margin) ? margin : 0,
+      applyIva: Boolean(l.applyIva),
+    };
+  });
+}
+
+function readLinesMap(): Record<string, QuoteLineInput[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LINES_KEY) || "{}") as Record<
+      string,
+      QuoteLineInput[]
+    >;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function putQuoteLines(id: string, lines: QuoteLineInput[]): void {
+  if (typeof window === "undefined" || !id) return;
+  const cloned = cloneQuoteLines(lines);
+  const all = readLinesMap();
+  all[id] = cloned;
+  try {
+    localStorage.setItem(LINES_KEY, JSON.stringify(all));
+  } catch {
+    /* quota: still pin this quote in session */
+  }
+  try {
+    sessionStorage.setItem(`${LINES_KEY}:${id}`, JSON.stringify(cloned));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getStoredQuoteLines(id: string): QuoteLineInput[] | undefined {
+  if (typeof window === "undefined" || !id) return undefined;
+  try {
+    const sess = sessionStorage.getItem(`${LINES_KEY}:${id}`);
+    if (sess) {
+      const parsed = JSON.parse(sess) as QuoteLineInput[];
+      if (Array.isArray(parsed) && parsed.length) return cloneQuoteLines(parsed);
+    }
+  } catch {
+    /* ignore */
+  }
+  const stored = readLinesMap()[id];
+  if (Array.isArray(stored) && stored.length) return cloneQuoteLines(stored);
+  return undefined;
+}
+
+/** Exact equipment rows for a saved quote. Never recalculates from kWp. */
+export function resolveQuoteLines(q: SavedQuote): QuoteLineInput[] | undefined {
+  const stored = getStoredQuoteLines(q.id);
+  if (stored?.length) return stored;
+  if (Array.isArray(q.quoteLines) && q.quoteLines.length) {
+    return cloneQuoteLines(q.quoteLines);
+  }
+  return undefined;
+}
+
+export function pinActiveQuote(id: string): void {
+  if (typeof window === "undefined" || !id) return;
+  sessionStorage.setItem(ACTIVE_QUOTE_KEY, id);
+}
+
+export function clearActiveQuote(): void {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(ACTIVE_QUOTE_KEY);
+}
 
 function compactQuote(quote: SavedQuote): SavedQuote {
   const image = quote.siteImageDataUrl || "";
@@ -121,7 +209,17 @@ export function loadSavedQuotes(): SavedQuote[] {
 }
 
 export function saveQuoteSnapshot(quote: SavedQuote): SavedQuote {
-  const compact = compactQuote(quote);
+  const incoming = cloneQuoteLines(quote.quoteLines);
+  const existing = quote.id ? getStoredQuoteLines(quote.id) : undefined;
+  const lines = incoming.length ? incoming : existing;
+  const compact = compactQuote({
+    ...quote,
+    quoteLines: lines ?? incoming,
+    qtyLocked: true,
+  });
+  if (compact.id && (compact.quoteLines?.length ?? 0) > 0) {
+    putQuoteLines(compact.id, compact.quoteLines ?? []);
+  }
   const all = loadSavedQuotes().filter((q) => q.id !== compact.id);
   const next = [compact, ...all].slice(0, 40);
   try {
@@ -138,6 +236,17 @@ export function deleteSavedQuote(id: string): void {
     KEY,
     JSON.stringify(loadSavedQuotes().filter((q) => q.id !== id))
   );
+  const all = readLinesMap();
+  delete all[id];
+  try {
+    localStorage.setItem(LINES_KEY, JSON.stringify(all));
+    sessionStorage.removeItem(`${LINES_KEY}:${id}`);
+  } catch {
+    /* ignore */
+  }
+  if (sessionStorage.getItem(ACTIVE_QUOTE_KEY) === id) {
+    sessionStorage.removeItem(ACTIVE_QUOTE_KEY);
+  }
 }
 
 export function getSavedQuote(id: string): SavedQuote | undefined {

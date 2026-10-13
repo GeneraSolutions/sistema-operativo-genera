@@ -41,10 +41,15 @@ import { FINANCED_MONTH_OPTIONS } from "@/lib/payment-schedule";
 import { buildEpcProposal } from "@/lib/proposal-builder";
 import { saveProposal } from "@/lib/proposal-store";
 import {
+  clearActiveQuote,
   deleteSavedQuote,
+  getStoredQuoteLines,
   idsFromSelection,
   loadSavedQuotes,
   mergeQuotes,
+  pinActiveQuote,
+  putQuoteLines,
+  resolveQuoteLines,
   saveQuoteSnapshot,
   type SavedQuote,
 } from "@/lib/saved-quotes";
@@ -155,9 +160,28 @@ function CotizadorInner() {
     undefined
   );
   const addonsFrozen = useRef(false);
-  const didInit = useRef(false);
+  const bootedKey = useRef<string | null>(null);
   const editingQuoteId = useRef<string | undefined>(undefined);
+  const qtyLockedRef = useRef(false);
   const [qtyLocked, setQtyLocked] = useState(false);
+
+  function lockQuantities(locked: boolean) {
+    qtyLockedRef.current = locked;
+    setQtyLocked(locked);
+  }
+
+  function suggestionsAllowed() {
+    return !qtyLockedRef.current && !editingQuoteId.current;
+  }
+
+  function pinQuoteInUrl(id: string) {
+    pinActiveQuote(id);
+    sessionStorage.removeItem(OPEN_QUOTE_KEY);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("nueva");
+    url.searchParams.set("quote", id);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }
   const [addItemId, setAddItemId] = useState("");
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
   const [applyLey1715, setApplyLey1715] = useState(true);
@@ -230,8 +254,18 @@ function CotizadorInner() {
   );
 
   useEffect(() => {
-    if (didInit.current) return;
-    didInit.current = true;
+    const forceNew = searchParams.get("nueva") === "1";
+    if (forceNew) {
+      clearActiveQuote();
+      sessionStorage.removeItem(OPEN_QUOTE_KEY);
+    }
+    const openId = forceNew
+      ? null
+      : searchParams.get("quote") || sessionStorage.getItem(OPEN_QUOTE_KEY);
+    const bootKey = openId || (forceNew ? "new" : "new");
+    if (bootedKey.current === bootKey) return;
+    bootedKey.current = bootKey;
+
     const items = loadInventory();
     setInventory(items);
     setCustomCats(loadCustomCategories());
@@ -277,18 +311,13 @@ function CotizadorInner() {
     push("protection_dc", seedSel.protectionDc, suggested.protectionDc);
     push("protection_ac", seedSel.protectionAc, suggested.protectionAc);
 
-    const forceNew = searchParams.get("nueva") === "1";
-    if (forceNew) sessionStorage.removeItem(OPEN_QUOTE_KEY);
-    const openId = forceNew
-      ? null
-      : searchParams.get("quote") || sessionStorage.getItem(OPEN_QUOTE_KEY);
-    if (openId) sessionStorage.removeItem(OPEN_QUOTE_KEY);
+    if (openId) pinActiveQuote(openId);
     const saved = openId
       ? loadSavedQuotes().find((q) => q.id === openId)
       : undefined;
 
     const kwpParam = searchParams.get("kwp");
-    if (kwpParam) {
+    if (kwpParam && !openId) {
       const v = Number(kwpParam);
       if (Number.isFinite(v) && v >= 3 && v <= 5000) setSystemKwp(v);
     }
@@ -303,7 +332,11 @@ function CotizadorInner() {
     if (client) setClientName(client);
 
     setKits(loadKits());
-    setSavedQuotes(loadSavedQuotes());
+    const localQuotes = loadSavedQuotes();
+    for (const q of localQuotes) {
+      if (q.quoteLines?.length) putQuoteLines(q.id, q.quoteLines);
+    }
+    setSavedQuotes(localQuotes);
     setTaxConfig(loadTaxConfig());
     if (saved) {
       loadQuote(saved, items);
@@ -323,12 +356,14 @@ function CotizadorInner() {
             }
             loadQuote(q, items);
           } else {
-            setQuoteLines(initial);
+            setQuoteLines(getStoredQuoteLines(openId) ?? initial);
           }
         })
-        .catch(() => setQuoteLines(initial));
+        .catch(() =>
+          setQuoteLines(getStoredQuoteLines(openId) ?? initial)
+        );
     } else {
-      setQtyLocked(false);
+      lockQuantities(false);
       setQuoteLines(initial);
       if (searchParams.get("visita") === "1") {
         const stored = loadStoredSiteVisit();
@@ -611,7 +646,7 @@ function CotizadorInner() {
     add("protection_dc", sel.protectionDc, suggested.protectionDc);
     add("protection_ac", sel.protectionAc, suggested.protectionAc);
     if (kit.includeBattery) add("battery", sel.battery, suggested.batteries);
-    setQtyLocked(false);
+    lockQuantities(false);
     setQuoteLines(next);
   }
 
@@ -631,7 +666,7 @@ function CotizadorInner() {
 
   function changeSystemKwp(nextKwp: number) {
     setSystemKwp(nextKwp);
-    if (qtyLocked) return;
+    if (!suggestionsAllowed()) return;
     setQuoteLines((lines) => withSuggestedQty(lines, nextKwp));
   }
 
@@ -695,14 +730,12 @@ function CotizadorInner() {
   function persistQuote(q: SavedQuote) {
     try {
       editingQuoteId.current = q.id;
-      setQtyLocked(true);
+      lockQuantities(true);
       const saved = saveQuoteSnapshot({ ...q, qtyLocked: true });
+      putQuoteLines(saved.id, saved.quoteLines ?? []);
+      pinQuoteInUrl(saved.id);
       setSavedQuotes(loadSavedQuotes());
       setSaveFlash("Cotización guardada. Ábrala en Archivo.");
-      const url = new URL(window.location.href);
-      url.searchParams.delete("nueva");
-      url.searchParams.set("quote", saved.id);
-      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
       void fetch("/api/archivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -719,7 +752,8 @@ function CotizadorInner() {
   function loadQuote(q: SavedQuote, items?: InventoryItem[]) {
     editingQuoteId.current = q.id;
     addonsFrozen.current = true;
-    setQtyLocked(true);
+    lockQuantities(true);
+    pinQuoteInUrl(q.id);
     const catalog = items ?? inventory;
     const find = (id?: string) => catalog.find((i) => i.id === id) ?? null;
     setClientName(q.clientName);
@@ -760,15 +794,10 @@ function CotizadorInner() {
     setSiteLat(q.siteLat ?? 4.71);
     setSiteLon(q.siteLon ?? -74.15);
     setToggles(q.toggles);
-    if (q.quoteLines?.length) {
-      setQuoteLines(
-        q.quoteLines.map((l) => ({
-          ...l,
-          qty: Number(l.qty) || 0,
-          costUnitCOP: Number(l.costUnitCOP) || 0,
-          marginPercent: Number(l.marginPercent) || 0,
-        }))
-      );
+    const restored = resolveQuoteLines(q);
+    if (restored) {
+      setQuoteLines(restored);
+      putQuoteLines(q.id, restored);
     } else {
       const next: QuoteLineInput[] = [];
       const add = (key: string, id: string | undefined, n: number) => {
@@ -969,7 +998,16 @@ function CotizadorInner() {
           <div className="mt-1 flex flex-wrap gap-2">
             {savedQuotes.slice(0, 6).map((q) => (
               <span key={q.id} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs ring-1 ring-[#d8d2c4]">
-                <button type="button" onClick={() => loadQuote(q)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pinActiveQuote(q.id);
+                    sessionStorage.setItem(OPEN_QUOTE_KEY, q.id);
+                    window.location.assign(
+                      `/cotizador?quote=${encodeURIComponent(q.id)}`
+                    );
+                  }}
+                >
                   {q.name}
                 </button>
                 <button
@@ -1686,9 +1724,9 @@ function CotizadorInner() {
                                 ? lineFromItem(line.key, next, r.qty)
                                 : r
                             );
-                            return qtyLocked
-                              ? mapped
-                              : withSuggestedQty(mapped);
+                            return suggestionsAllowed()
+                              ? withSuggestedQty(mapped)
+                              : mapped;
                           });
                         }}
                       >
@@ -1711,7 +1749,7 @@ function CotizadorInner() {
                           value={line.qty}
                           onChange={(e) => {
                             const n = Math.max(0, Number(e.target.value) || 0);
-                            setQtyLocked(true);
+                            lockQuantities(true);
                             setQuoteLines((rows) =>
                               rows.map((r) =>
                                 r.key === line.key ? { ...r, qty: n } : r

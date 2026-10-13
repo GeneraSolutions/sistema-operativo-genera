@@ -4,9 +4,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import {
+  clearActiveQuote,
   deleteSavedQuote,
   loadSavedQuotes,
   mergeQuotes,
+  pinActiveQuote,
+  putQuoteLines,
   saveQuoteSnapshot,
   type SavedQuote,
 } from "@/lib/saved-quotes";
@@ -54,6 +57,7 @@ export default function ArchivoPage() {
         quotes.forEach((q) => {
           try {
             saveQuoteSnapshot(q);
+            if (q.quoteLines?.length) putQuoteLines(q.id, q.quoteLines);
           } catch {
             /* quota */
           }
@@ -74,8 +78,9 @@ export default function ArchivoPage() {
   }, []);
 
   function openQuote(id: string) {
+    pinActiveQuote(id);
     sessionStorage.setItem(OPEN_QUOTE_KEY, id);
-    router.push(`/cotizador?quote=${encodeURIComponent(id)}`);
+    window.location.assign(`/cotizador?quote=${encodeURIComponent(id)}`);
   }
 
   function openVisit(id: string) {
@@ -101,7 +106,10 @@ export default function ArchivoPage() {
           </h2>
           <a
             href="/cotizador?nueva=1"
-            onClick={() => sessionStorage.removeItem(OPEN_QUOTE_KEY)}
+            onClick={() => {
+              sessionStorage.removeItem(OPEN_QUOTE_KEY);
+              clearActiveQuote();
+            }}
             className="text-sm font-semibold text-[#1f6b45] underline"
           >
             Nueva cotización
