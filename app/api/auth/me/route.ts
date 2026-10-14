@@ -13,9 +13,7 @@ export async function GET() {
   }
   await upsertDirectoryFromSession(user).catch(() => undefined);
   const custom = await listCustomRoles();
-  const modules = user.modules?.length
-    ? user.modules
-    : modulesForRole(user.role, custom);
+  const modules = modulesForRole(user.role, custom);
   return NextResponse.json({
     user: { ...user, modules },
     roleLabel: roleLabel(user.role, custom),

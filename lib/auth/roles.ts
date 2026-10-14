@@ -156,6 +156,11 @@ export function sessionAllowsModule(
   role: string,
   sessionModules?: string[]
 ): boolean {
+  // Built-in cargos: ignore the module list frozen in the cookie so new OS
+  // modules (Informes, etc.) appear without forcing a new login.
+  if (isBuiltinRole(role)) {
+    return canAccessModule(role, mod);
+  }
   if (mod === "archivo") {
     if (sessionModules?.length) {
       return (
