@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  loadArchivoObras,
   loadArchivoPlants,
   loadArchivoQuotes,
   loadArchivoReports,
   loadArchivoVisits,
+  removeArchivoObra,
   removeArchivoPlant,
   removeArchivoQuote,
   removeArchivoReport,
   removeArchivoVisit,
+  upsertArchivoObras,
   upsertArchivoPlants,
   upsertArchivoQuote,
   upsertArchivoQuotes,
@@ -19,6 +22,7 @@ import {
 import { getSessionFromCookies } from "@/lib/auth/request";
 import { canAccessModule } from "@/lib/auth/roles";
 import { listCustomRoles } from "@/lib/auth/custom-roles";
+import type { ObraJob } from "@/lib/obra";
 import type { SavedQuote } from "@/lib/saved-quotes";
 import type { SavedVisit } from "@/lib/saved-visits";
 import type { PlantProfile, SavedReport } from "@/lib/technical-reports";
@@ -45,6 +49,7 @@ async function payload() {
     visits: await loadArchivoVisits(),
     reports: await loadArchivoReports(),
     plants: await loadArchivoPlants(),
+    obras: await loadArchivoObras(),
   };
 }
 
@@ -65,6 +70,7 @@ export async function POST(req: NextRequest) {
     report?: SavedReport;
     reports?: SavedReport[];
     plants?: PlantProfile[];
+    obras?: ObraJob[];
   };
   const stampQuote = (q: SavedQuote): SavedQuote => ({
     ...q,
@@ -90,6 +96,7 @@ export async function POST(req: NextRequest) {
     await upsertArchivoReports(body.reports.map(stampReport));
   }
   if (body.plants?.length) await upsertArchivoPlants(body.plants);
+  if (body.obras?.length) await upsertArchivoObras(body.obras);
   return NextResponse.json(await payload(), { headers: NO_STORE });
 }
 
@@ -101,9 +108,11 @@ export async function DELETE(req: NextRequest) {
   const visitId = searchParams.get("visit");
   const reportId = searchParams.get("report");
   const plantId = searchParams.get("plant");
+  const obraId = searchParams.get("obra");
   if (quoteId) await removeArchivoQuote(quoteId);
   if (visitId) await removeArchivoVisit(visitId);
   if (reportId) await removeArchivoReport(reportId);
   if (plantId) await removeArchivoPlant(plantId);
+  if (obraId) await removeArchivoObra(obraId);
   return NextResponse.json({ ok: true }, { headers: NO_STORE });
 }

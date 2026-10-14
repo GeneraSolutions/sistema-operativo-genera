@@ -17,6 +17,7 @@ const NAV: { href: string; label: string; hint: string; module: AppModule }[] = 
   { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", module: "visita" },
   { href: "/informes", label: "Informes", hint: "Inspección y O&M", module: "informes" },
   { href: "/om", label: "O&M", hint: "Plantas y calendario", module: "om" },
+  { href: "/obra", label: "Obra", hint: "Avance y trámites", module: "obra" },
   { href: "/archivo", label: "Archivo", hint: "Guardados", module: "archivo" },
   { href: "/inventario", label: "Inventario", hint: "Catálogo & TRM", module: "inventario" },
   { href: "/inteligencia", label: "Inteligencia", hint: "Especialistas AI", module: "inteligencia" },

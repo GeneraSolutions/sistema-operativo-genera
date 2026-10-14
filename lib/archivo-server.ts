@@ -3,6 +3,8 @@ import type { SavedQuote } from "@/lib/saved-quotes";
 import { mergeQuotes } from "@/lib/saved-quotes";
 import type { SavedVisit } from "@/lib/saved-visits";
 import { mergeVisits } from "@/lib/saved-visits";
+import type { ObraJob } from "@/lib/obra";
+import { mergeObras } from "@/lib/obra";
 import type { PlantProfile, SavedReport } from "@/lib/technical-reports";
 import { mergePlants, mergeReports } from "@/lib/technical-reports";
 
@@ -13,6 +15,7 @@ const VISIT_IDS_KEY = "genera:archivo-visit-ids";
 const REPORT_IDS_KEY = "genera:archivo-report-ids";
 const REPORTS_KEY = "genera:archivo-reports";
 const PLANTS_KEY = "genera:archivo-plants";
+const OBRAS_KEY = "genera:archivo-obras";
 
 function quoteItemKey(id: string) {
   return `genera:archivo-quote:${id}`;
@@ -209,5 +212,22 @@ export async function upsertArchivoPlants(
 export async function removeArchivoPlant(id: string): Promise<PlantProfile[]> {
   const next = (await loadArchivoPlants()).filter((p) => p.id !== id);
   await persistSet(PLANTS_KEY, next);
+  return next;
+}
+
+export async function loadArchivoObras(): Promise<ObraJob[]> {
+  const stored = await persistGet<ObraJob[]>(OBRAS_KEY);
+  return Array.isArray(stored) ? stored.filter((j) => j?.id) : [];
+}
+
+export async function upsertArchivoObras(jobs: ObraJob[]): Promise<ObraJob[]> {
+  const merged = mergeObras(await loadArchivoObras(), jobs);
+  await persistSet(OBRAS_KEY, merged);
+  return merged;
+}
+
+export async function removeArchivoObra(id: string): Promise<ObraJob[]> {
+  const next = (await loadArchivoObras()).filter((j) => j.id !== id);
+  await persistSet(OBRAS_KEY, next);
   return next;
 }
