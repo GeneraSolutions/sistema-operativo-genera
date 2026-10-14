@@ -15,6 +15,7 @@ import {
 const NAV: { href: string; label: string; hint: string; module: AppModule }[] = [
   { href: "/cotizador", label: "Cotizador", hint: "Paramétrico", module: "cotizador" },
   { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", module: "visita" },
+  { href: "/informes", label: "Informes", hint: "Inspección y O&M", module: "informes" },
   { href: "/archivo", label: "Archivo", hint: "Guardados", module: "archivo" },
   { href: "/inventario", label: "Inventario", hint: "Catálogo & TRM", module: "inventario" },
   { href: "/inteligencia", label: "Inteligencia", hint: "Especialistas AI", module: "inteligencia" },

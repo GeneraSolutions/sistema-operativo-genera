@@ -3,11 +3,15 @@ import type { SavedQuote } from "@/lib/saved-quotes";
 import { mergeQuotes } from "@/lib/saved-quotes";
 import type { SavedVisit } from "@/lib/saved-visits";
 import { mergeVisits } from "@/lib/saved-visits";
+import type { SavedReport } from "@/lib/technical-reports";
+import { mergeReports } from "@/lib/technical-reports";
 
 const QUOTES_KEY = "genera:archivo-quotes";
 const VISITS_KEY = "genera:archivo-visits";
 const QUOTE_IDS_KEY = "genera:archivo-quote-ids";
 const VISIT_IDS_KEY = "genera:archivo-visit-ids";
+const REPORT_IDS_KEY = "genera:archivo-report-ids";
+const REPORTS_KEY = "genera:archivo-reports";
 
 function quoteItemKey(id: string) {
   return `genera:archivo-quote:${id}`;
@@ -15,6 +19,10 @@ function quoteItemKey(id: string) {
 
 function visitItemKey(id: string) {
   return `genera:archivo-visit:${id}`;
+}
+
+function reportItemKey(id: string) {
+  return `genera:archivo-report:${id}`;
 }
 
 function slimQuote(quote: SavedQuote): SavedQuote {
@@ -87,6 +95,66 @@ export async function upsertArchivoQuotes(quotes: SavedQuote[]): Promise<SavedQu
   ].slice(0, 80);
   await persistSet(QUOTE_IDS_KEY, next);
   return loadArchivoQuotes();
+}
+
+function slimReport(row: SavedReport): SavedReport {
+  const photos = (row.report.photos ?? [])
+    .filter((p) => p?.dataUrl && p.dataUrl.length < 160_000)
+    .slice(0, 6);
+  return { ...row, report: { ...row.report, photos } };
+}
+
+export async function loadArchivoReports(): Promise<SavedReport[]> {
+  const ids = await persistGet<string[]>(REPORT_IDS_KEY);
+  if (Array.isArray(ids) && ids.length) {
+    const rows = await Promise.all(
+      ids.map((id) => persistGet<SavedReport>(reportItemKey(id)))
+    );
+    const found = rows.filter((r): r is SavedReport => Boolean(r?.id));
+    if (found.length) return mergeReports(found, []);
+  }
+  const legacy = await persistGet<SavedReport[]>(REPORTS_KEY);
+  return Array.isArray(legacy) ? legacy : [];
+}
+
+async function rememberReportId(id: string) {
+  const ids = (await persistGet<string[]>(REPORT_IDS_KEY)) ?? [];
+  const next = [id, ...ids.filter((x) => x !== id)].slice(0, 80);
+  await persistSet(REPORT_IDS_KEY, next);
+}
+
+export async function upsertArchivoReport(
+  report: SavedReport
+): Promise<SavedReport[]> {
+  const compact = slimReport(report);
+  await persistSet(reportItemKey(compact.id), compact);
+  await rememberReportId(compact.id);
+  return loadArchivoReports();
+}
+
+export async function upsertArchivoReports(
+  reports: SavedReport[]
+): Promise<SavedReport[]> {
+  const list = reports.filter((r) => r?.id).map(slimReport);
+  if (!list.length) return loadArchivoReports();
+  await Promise.all(
+    list.map((row) => persistSet(reportItemKey(row.id), row))
+  );
+  const ids = (await persistGet<string[]>(REPORT_IDS_KEY)) ?? [];
+  const next = [
+    ...list.map((r) => r.id),
+    ...ids.filter((id) => !list.some((r) => r.id === id)),
+  ].slice(0, 80);
+  await persistSet(REPORT_IDS_KEY, next);
+  return loadArchivoReports();
+}
+
+export async function removeArchivoReport(id: string): Promise<SavedReport[]> {
+  const ids = ((await persistGet<string[]>(REPORT_IDS_KEY)) ?? []).filter(
+    (x) => x !== id
+  );
+  await persistSet(REPORT_IDS_KEY, ids);
+  return loadArchivoReports();
 }
 
 export async function upsertArchivoVisit(visit: SavedVisit): Promise<SavedVisit[]> {

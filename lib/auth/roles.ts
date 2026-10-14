@@ -26,6 +26,7 @@ export const ROLE_LABELS: Record<string, string> = {
 export type AppModule =
   | "cotizador"
   | "visita"
+  | "informes"
   | "inventario"
   | "inteligencia"
   | "equipo"
@@ -34,6 +35,7 @@ export type AppModule =
 export const APP_MODULES: { id: AppModule; label: string }[] = [
   { id: "cotizador", label: "Cotizador" },
   { id: "visita", label: "Visitas técnicas" },
+  { id: "informes", label: "Informes técnicos" },
   { id: "archivo", label: "Archivo" },
   { id: "inventario", label: "Inventario" },
   { id: "inteligencia", label: "Inteligencia" },
@@ -56,6 +58,14 @@ const MODULE_ROLES: Record<AppModule, string[]> = {
     "ingenieria",
     "operaciones",
     "sst",
+  ],
+  informes: [
+    "ceo",
+    "gerente",
+    "ingenieria",
+    "operaciones",
+    "sst",
+    "comercial",
   ],
   inventario: ["ceo", "gerente", "compras", "ingenieria", "contabilidad"],
   inteligencia: [
@@ -88,12 +98,12 @@ export interface CustomRoleDef {
 }
 
 export const ROLE_PRESETS: { label: string; modules: AppModule[] }[] = [
-  { label: "Auxiliar", modules: ["visita", "inteligencia"] },
-  { label: "Auxiliar eléctrico", modules: ["visita", "inteligencia"] },
-  { label: "Auxiliar técnico", modules: ["visita", "inteligencia"] },
+  { label: "Auxiliar", modules: ["visita", "informes", "inteligencia"] },
+  { label: "Auxiliar eléctrico", modules: ["visita", "informes", "inteligencia"] },
+  { label: "Auxiliar técnico", modules: ["visita", "informes", "inteligencia"] },
   {
     label: "Coordinador de proyectos",
-    modules: ["cotizador", "visita", "inteligencia", "inventario"],
+    modules: ["cotizador", "visita", "informes", "inteligencia", "inventario"],
   },
 ];
 
@@ -133,7 +143,8 @@ export function canAccessModule(
     return (
       mods.includes("archivo") ||
       mods.includes("cotizador") ||
-      mods.includes("visita")
+      mods.includes("visita") ||
+      mods.includes("informes")
     );
   }
   if (mods.includes(mod)) return true;
@@ -150,7 +161,8 @@ export function sessionAllowsModule(
       return (
         sessionModules.includes("archivo") ||
         sessionModules.includes("cotizador") ||
-        sessionModules.includes("visita")
+        sessionModules.includes("visita") ||
+        sessionModules.includes("informes")
       );
     }
     return canAccessModule(role, "archivo");
@@ -168,6 +180,7 @@ export function roleLabel(role: string, custom: CustomRoleDef[] = []): string {
 export function moduleFromPath(pathname: string): AppModule | null {
   if (pathname.startsWith("/cotizador")) return "cotizador";
   if (pathname.startsWith("/visita-tecnica")) return "visita";
+  if (pathname.startsWith("/informes")) return "informes";
   if (pathname.startsWith("/inventario")) return "inventario";
   if (pathname.startsWith("/inteligencia")) return "inteligencia";
   if (pathname.startsWith("/equipo")) return "equipo";

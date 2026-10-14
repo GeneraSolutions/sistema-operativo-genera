@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   loadArchivoQuotes,
+  loadArchivoReports,
   loadArchivoVisits,
   removeArchivoQuote,
+  removeArchivoReport,
   removeArchivoVisit,
   upsertArchivoQuote,
   upsertArchivoQuotes,
+  upsertArchivoReport,
+  upsertArchivoReports,
   upsertArchivoVisit,
   upsertArchivoVisits,
 } from "@/lib/archivo-server";
@@ -14,6 +18,7 @@ import { canAccessModule } from "@/lib/auth/roles";
 import { listCustomRoles } from "@/lib/auth/custom-roles";
 import type { SavedQuote } from "@/lib/saved-quotes";
 import type { SavedVisit } from "@/lib/saved-visits";
+import type { SavedReport } from "@/lib/technical-reports";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +43,7 @@ export async function GET() {
     {
       quotes: await loadArchivoQuotes(),
       visits: await loadArchivoVisits(),
+      reports: await loadArchivoReports(),
     },
     { headers: NO_STORE }
   );
@@ -51,6 +57,8 @@ export async function POST(req: NextRequest) {
     quotes?: SavedQuote[];
     visit?: SavedVisit;
     visits?: SavedVisit[];
+    report?: SavedReport;
+    reports?: SavedReport[];
   };
   const stampQuote = (q: SavedQuote): SavedQuote => ({
     ...q,
@@ -63,10 +71,23 @@ export async function POST(req: NextRequest) {
   }
   if (body.visit?.id) await upsertArchivoVisit(body.visit);
   if (body.visits?.length) await upsertArchivoVisits(body.visits);
+  const stampReport = (r: SavedReport): SavedReport => ({
+    ...r,
+    report: {
+      ...r.report,
+      savedBy: r.report.savedBy || gate.session.username,
+      savedByName: r.report.savedByName || gate.session.name,
+    },
+  });
+  if (body.report?.id) await upsertArchivoReport(stampReport(body.report));
+  if (body.reports?.length) {
+    await upsertArchivoReports(body.reports.map(stampReport));
+  }
   return NextResponse.json(
     {
       quotes: await loadArchivoQuotes(),
       visits: await loadArchivoVisits(),
+      reports: await loadArchivoReports(),
     },
     { headers: NO_STORE }
   );
@@ -78,7 +99,9 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const quoteId = searchParams.get("quote");
   const visitId = searchParams.get("visit");
+  const reportId = searchParams.get("report");
   if (quoteId) await removeArchivoQuote(quoteId);
   if (visitId) await removeArchivoVisit(visitId);
+  if (reportId) await removeArchivoReport(reportId);
   return NextResponse.json({ ok: true }, { headers: NO_STORE });
 }

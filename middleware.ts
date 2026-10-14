@@ -8,9 +8,14 @@ function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/login")) return true;
   if (pathname.startsWith("/vcard")) return true;
   if (pathname.startsWith("/propuesta")) return true;
+  if (pathname.startsWith("/informe/") || pathname === "/informe") return true;
+  if (pathname.startsWith("/dictamen/") || pathname === "/dictamen") return true;
   if (pathname.startsWith("/api/auth/login")) return true;
   if (pathname.startsWith("/api/auth/logout")) return true;
   if (pathname.startsWith("/api/propuestas/")) return true;
+  if (pathname.startsWith("/api/informes/publico/")) return true;
+  if (pathname.startsWith("/api/dictamenes/") && !pathname.startsWith("/api/dictamenes/publicar"))
+    return true;
   if (pathname === "/favicon.ico") return true;
   if (/\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|map)$/i.test(pathname)) {
     return true;

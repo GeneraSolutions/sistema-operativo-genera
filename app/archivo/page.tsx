@@ -22,6 +22,15 @@ import {
   saveVisitSnapshot,
   type SavedVisit,
 } from "@/lib/saved-visits";
+import {
+  OPEN_REPORT_KEY,
+  REPORT_KIND_LABELS,
+  deleteSavedReport,
+  loadSavedReports,
+  mergeReports,
+  saveReportSnapshot,
+  type SavedReport,
+} from "@/lib/technical-reports";
 
 function when(iso: string) {
   try {
@@ -38,16 +47,19 @@ export default function ArchivoPage() {
   const router = useRouter();
   const [quotes, setQuotes] = useState<SavedQuote[]>([]);
   const [visits, setVisits] = useState<SavedVisit[]>([]);
+  const [reports, setReports] = useState<SavedReport[]>([]);
 
   function refresh() {
     setQuotes(loadSavedQuotes());
     setVisits(loadSavedVisits());
+    setReports(loadSavedReports());
   }
 
   useEffect(() => {
     refresh();
     const localQuotes = loadSavedQuotes();
     const localVisits = loadSavedVisits();
+    const localReports = loadSavedReports();
     void fetch("/api/archivo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -55,6 +67,7 @@ export default function ArchivoPage() {
       body: JSON.stringify({
         quotes: localQuotes,
         visits: localVisits,
+        reports: localReports,
       }),
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -62,8 +75,10 @@ export default function ArchivoPage() {
         if (!data) return;
         const quotes = mergeQuotes(loadSavedQuotes(), data.quotes ?? []);
         const visits = mergeVisits(loadSavedVisits(), data.visits ?? []);
+        const reports = mergeReports(loadSavedReports(), data.reports ?? []);
         setQuotes(quotes);
         setVisits(visits);
+        setReports(reports);
         quotes.forEach((q) => {
           try {
             saveQuoteSnapshot(q, { replaceLines: false });
@@ -83,6 +98,13 @@ export default function ArchivoPage() {
             /* quota */
           }
         });
+        reports.forEach((r) => {
+          try {
+            saveReportSnapshot({ report: r.report, id: r.id });
+          } catch {
+            /* quota */
+          }
+        });
       })
       .catch(() => undefined);
   }, []);
@@ -98,16 +120,20 @@ export default function ArchivoPage() {
     router.push("/visita-tecnica");
   }
 
+  function openReport(id: string) {
+    sessionStorage.setItem(OPEN_REPORT_KEY, id);
+    router.push("/informes");
+  }
+
   return (
     <AppShell
       title="Archivo"
-      subtitle="Cotizaciones y visitas guardadas"
+      subtitle="Cotizaciones, visitas e informes"
     >
       <p className="mb-6 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-        Use <strong>Guardar cotización</strong> en el cotizador y{" "}
-        <strong>Guardar visita técnica</strong> en visitas. Quedan en el
-        servidor: cualquier persona del equipo las ve en Archivo, desde el
-        celular o el computador.
+        Use <strong>Guardar</strong> en cotizador, visitas e informes. Quedan
+        en el servidor: cualquier persona del equipo las ve en Archivo, desde
+        el celular o el computador.
       </p>
 
       <section className="mb-8">
@@ -187,7 +213,7 @@ export default function ArchivoPage() {
         )}
       </section>
 
-      <section>
+      <section className="mb-8">
         <div className="mb-3 flex items-end justify-between gap-3">
           <h2 className="text-lg font-semibold text-[#0f2a1f]">
             Visitas técnicas
@@ -244,6 +270,87 @@ export default function ArchivoPage() {
                               return;
                             deleteSavedVisit(v.id);
                             void fetch(`/api/archivo?visit=${v.id}`, {
+                              method: "DELETE",
+                            });
+                            refresh();
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <h2 className="text-lg font-semibold text-[#0f2a1f]">
+            Informes técnicos
+          </h2>
+          <a
+            href="/informes"
+            className="text-sm font-semibold text-[#1f6b45] underline"
+          >
+            Nuevo informe
+          </a>
+        </div>
+        {reports.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-[#ddd6c8] bg-white px-4 py-8 text-sm text-[#6d7c74]">
+            Aún no hay informes. En Informes pulse Guardar en Archivo.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[#f7f4ee] text-xs uppercase tracking-wide text-[#6d7c74]">
+                <tr>
+                  <th className="px-4 py-3">Tipo</th>
+                  <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3">Sitio</th>
+                  <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3">Fecha visita</th>
+                  <th className="px-4 py-3">Guardada</th>
+                  <th className="px-4 py-3">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((r) => (
+                  <tr key={r.id} className="border-t border-[#eee8dc]">
+                    <td className="px-4 py-3 font-medium">
+                      {REPORT_KIND_LABELS[r.report.kind]}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.report.plant.clientName || "Sin nombre"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.report.plant.siteName || r.report.plant.city || "—"}
+                    </td>
+                    <td className="px-4 py-3">{r.report.status}</td>
+                    <td className="px-4 py-3">{r.report.visitDate}</td>
+                    <td className="px-4 py-3 text-[#6d7c74]">
+                      {when(r.savedAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-[#1f6b45] underline"
+                          onClick={() => openReport(r.id)}
+                        >
+                          Abrir
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-[#9b2c2c] underline"
+                          onClick={() => {
+                            if (!confirm("¿Quitar este informe del archivo?"))
+                              return;
+                            deleteSavedReport(r.id);
+                            void fetch(`/api/archivo?report=${r.id}`, {
                               method: "DELETE",
                             });
                             refresh();
