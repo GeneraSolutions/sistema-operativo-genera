@@ -3,18 +3,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth/request";
 import { appendIntelligenceLog } from "@/lib/intelligence-log";
 import {
+  MAX_RULING_PHOTOS,
   PHOTO_RULING_SYSTEM,
   type PhotoFinding,
+  type PhotoReading,
   type PhotoRuling,
+  type RulingPhoto,
 } from "@/lib/photo-ruling";
 
 export const runtime = "nodejs";
+export const maxDuration = 90;
 
 interface Body {
-  imageDataUrl: string;
+  photos?: RulingPhoto[];
+  imageDataUrl?: string;
   caption?: string;
   siteNote?: string;
   inspector?: string;
+  fieldNotes?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -24,38 +30,76 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No autenticado." }, { status: 401 });
     }
     const body = (await req.json()) as Body;
-    const image = body.imageDataUrl?.trim();
-    if (!image?.startsWith("data:image")) {
+    const photos = (
+      body.photos?.length
+        ? body.photos
+        : body.imageDataUrl
+          ? [
+              {
+                id: "one",
+                caption: body.caption || "",
+                dataUrl: body.imageDataUrl,
+              },
+            ]
+          : []
+    )
+      .filter((p) => p.dataUrl?.startsWith("data:image"))
+      .slice(0, MAX_RULING_PHOTOS);
+
+    if (!photos.length) {
       return NextResponse.json(
-        { error: "Suba una fotografía válida." },
+        { error: "Suba al menos una fotografía válida." },
         { status: 400 }
       );
     }
 
+    const catalog = photos
+      .map(
+        (p, i) =>
+          `Foto ${i + 1}${p.caption ? `: ${p.caption}` : ""}`
+      )
+      .join("\n");
+
     const hint = [
       body.inspector && `Inspector: ${body.inspector}`,
       body.siteNote && `Sitio / contexto: ${body.siteNote}`,
-      body.caption && `Pie de foto: ${body.caption}`,
+      catalog && `Inventario fotográfico:\n${catalog}`,
+      body.fieldNotes?.trim() &&
+        `NOTAS DE CAMPO DEL INSPECTOR (hechos a aplicar en norma, no conformidades y correcciones):\n${body.fieldNotes.trim()}`,
     ]
       .filter(Boolean)
-      .join("\n");
+      .join("\n\n");
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      const offline = offlineRuling(hint);
+      const offline = offlineRuling(hint, photos.length);
       await appendIntelligenceLog(session, {
         mode: "specialist",
         specialistLabel: "Dictamen fotográfico RETIE",
-        question: hint || "Foto de campo",
+        question: hint.slice(0, 4000) || "Fotos de campo",
         answer: offline.resumen,
       });
       return NextResponse.json({ ...offline, offline: true });
     }
 
     const client = new OpenAI({ apiKey });
+    const imageParts = photos.flatMap((p, i) => [
+      {
+        type: "text" as const,
+        text: `— Inicio foto ${i + 1}${p.caption ? ` (${p.caption})` : ""} —`,
+      },
+      {
+        type: "image_url" as const,
+        image_url: { url: p.dataUrl, detail: "high" as const },
+      },
+    ]);
+
     const completion = await client.chat.completions.create({
-      model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini",
-      temperature: 0.2,
+      model:
+        process.env.OPENAI_VISION_MODEL ||
+        process.env.OPENAI_MODEL ||
+        "gpt-4o",
+      temperature: 0.15,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: PHOTO_RULING_SYSTEM },
@@ -64,9 +108,9 @@ export async function POST(req: NextRequest) {
           content: [
             {
               type: "text",
-              text: `Analice la evidencia fotográfica.\n${hint || "Sin contexto adicional."}`,
+              text: `Dictamine como interventor el conjunto de ${photos.length} evidencias.\n\n${hint}`,
             },
-            { type: "image_url", image_url: { url: image } },
+            ...imageParts,
           ],
         },
       ],
@@ -77,7 +121,7 @@ export async function POST(req: NextRequest) {
     await appendIntelligenceLog(session, {
       mode: "specialist",
       specialistLabel: "Dictamen fotográfico RETIE",
-      question: hint || "Foto de campo",
+      question: hint.slice(0, 4000) || "Fotos de campo",
       answer: parsed.resumen,
     });
     return NextResponse.json({ ...parsed, offline: false });
@@ -92,12 +136,19 @@ export async function POST(req: NextRequest) {
 
 function parseDraft(raw: string): Pick<
   PhotoRuling,
-  "resumen" | "hallazgos" | "conformidades" | "limites"
+  "resumen" | "lecturaPorFoto" | "hallazgos" | "conformidades" | "limites"
 > {
   try {
     const parsed = JSON.parse(raw) as Partial<PhotoRuling>;
+    const lectura: PhotoReading[] = Array.isArray(parsed.lecturaPorFoto)
+      ? parsed.lecturaPorFoto.map((row, i) => ({
+          indice: Number(row.indice) || i + 1,
+          descripcion: String(row.descripcion || "").trim(),
+        }))
+      : [];
     return {
       resumen: String(parsed.resumen || "").trim(),
+      lecturaPorFoto: lectura.filter((r) => r.descripcion),
       hallazgos: Array.isArray(parsed.hallazgos)
         ? (parsed.hallazgos as PhotoFinding[])
         : [],
@@ -109,6 +160,7 @@ function parseDraft(raw: string): Pick<
   } catch {
     return {
       resumen: raw,
+      lecturaPorFoto: [],
       hallazgos: [],
       conformidades: [],
       limites: "No se pudo estructurar la respuesta del modelo.",
@@ -116,15 +168,15 @@ function parseDraft(raw: string): Pick<
   }
 }
 
-function offlineRuling(hint: string) {
+function offlineRuling(hint: string, count: number) {
   return {
-    resumen:
-      "Modo demo (sin OPENAI_API_KEY). Con la clave, el inspector virtual lee la foto y cita RETIE, NTC 2050 y, si aplica, NSR-10, RETILAP o SST.",
+    resumen: `Modo demo (sin OPENAI_API_KEY). Hay ${count} foto(s) listas. Con la clave, el interventor lee cada imagen en detalle alto, cruza las notas de campo y cita RETIE / NTC 2050.`,
+    lecturaPorFoto: [] as PhotoReading[],
     hallazgos: [
       {
         titulo: "Análisis pendiente de modelo de visión",
         criticidad: "observacion" as const,
-        hechos: hint || "Hay una fotografía cargada, pero no se analizó en vivo.",
+        hechos: hint || "Hay fotografías cargadas, pero no se analizaron en vivo.",
         norma: "RETIE",
         articulo: "Verificar en edición vigente tras activar inteligencia.",
         fundamento:

@@ -5,7 +5,13 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { RulingDocument } from "@/components/informes/RulingDocument";
 import { compressVisitPhoto } from "@/lib/site-visit";
-import { emptyRuling, type PhotoRuling } from "@/lib/photo-ruling";
+import {
+  MAX_RULING_PHOTOS,
+  emptyRuling,
+  rulingPhotos,
+  withSyncedCover,
+  type PhotoRuling,
+} from "@/lib/photo-ruling";
 
 export default function DictamenPage() {
   const [ruling, setRuling] = useState<PhotoRuling>(() => emptyRuling());
@@ -15,24 +21,31 @@ export default function DictamenPage() {
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const photos = rulingPhotos(ruling);
 
   async function onFile(files: FileList | null) {
-    const file = files?.[0];
-    if (!file) return;
+    if (!files?.length) return;
     setError("");
-    const dataUrl = await compressVisitPhoto(file);
-    setRuling((prev) => ({
-      ...emptyRuling(),
-      inspector: prev.inspector,
-      siteNote: prev.siteNote,
-      imageDataUrl: dataUrl,
-      imageCaption: file.name.replace(/\.[^.]+$/, ""),
-    }));
+    const room = MAX_RULING_PHOTOS - photos.length;
+    const extras = await Promise.all(
+      [...files].slice(0, room).map(async (file) => ({
+        id: crypto.randomUUID(),
+        caption: file.name.replace(/\.[^.]+$/, ""),
+        dataUrl: await compressVisitPhoto(file),
+      }))
+    );
+    setRuling((prev) =>
+      withSyncedCover({
+        ...prev,
+        photos: [...rulingPhotos(prev), ...extras].slice(0, MAX_RULING_PHOTOS),
+      })
+    );
   }
 
   async function analizar() {
-    if (!ruling.imageDataUrl) {
-      setError("Suba una fotografía primero.");
+    const shots = rulingPhotos(ruling);
+    if (!shots.length) {
+      setError("Suba al menos una fotografía.");
       return;
     }
     setAnalyzing(true);
@@ -43,10 +56,10 @@ export default function DictamenPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: ruling.imageDataUrl,
-          caption: ruling.imageCaption,
+          photos: shots,
           siteNote: ruling.siteNote,
           inspector: ruling.inspector,
+          fieldNotes: ruling.fieldNotes,
         }),
       });
       const data = await res.json();
@@ -55,14 +68,15 @@ export default function DictamenPage() {
       setRuling((prev) => ({
         ...prev,
         resumen: data.resumen || "",
+        lecturaPorFoto: data.lecturaPorFoto || [],
         hallazgos: data.hallazgos || [],
         conformidades: data.conformidades || [],
         limites: data.limites || "",
       }));
       setFlash(
         data.offline
-          ? "Borrador local. Configure OPENAI_API_KEY para leer la foto en vivo."
-          : "Dictamen listo. Revise citas y criticidad antes de compartir."
+          ? "Borrador local. Configure OPENAI_API_KEY para leer las fotos en vivo."
+          : "Dictamen listo. Revise lecturas, citas y correcciones antes de compartir."
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
@@ -72,14 +86,18 @@ export default function DictamenPage() {
   }
 
   async function shareLink() {
-    if (!ruling.imageDataUrl) {
-      setError("Suba y analice una foto antes de compartir.");
+    const shots = rulingPhotos(ruling);
+    if (!shots.length) {
+      setError("Suba y analice fotos antes de compartir.");
       return;
     }
     setSharing(true);
     setError("");
     try {
-      const payload = { ...ruling, id: ruling.id || crypto.randomUUID() };
+      const payload = withSyncedCover({
+        ...ruling,
+        id: ruling.id || crypto.randomUUID(),
+      });
       setRuling(payload);
       const res = await fetch("/api/dictamenes/publicar", {
         method: "POST",
@@ -107,13 +125,13 @@ export default function DictamenPage() {
   return (
     <AppShell
       title="Dictamen fotográfico"
-      subtitle="RETIE · NTC 2050 · una foto"
+      subtitle="RETIE · NTC 2050 · hasta 12 fotos"
     >
       <p className="mb-4 max-w-3xl text-sm leading-6 text-[#4d5c55] print:hidden">
-        Herramienta aparte de los cuatro informes. Suba una foto de tablero,
-        cubierta, tierras o arreglo: el inspector virtual propone no
-        conformidades con cita a RETIE, NTC 2050 y, si aplica, NSR-10, RETILAP
-        o SST. El ingeniero revisa; no reemplaza ONAC.
+        Interventoría visual aparte de los cuatro informes. Hasta 12 fotos y un
+        espacio de notas para que el inspector le diga a la mesa qué aplicar
+        (norma, no conformidad, corrección). El ingeniero revisa; no reemplaza
+        ONAC.
       </p>
       <p className="mb-5 print:hidden">
         <Link href="/informes" className="text-sm font-semibold text-[#1f6b45] underline">
@@ -141,10 +159,10 @@ export default function DictamenPage() {
         <button
           type="button"
           className="rounded-xl bg-[#d4b46a] px-4 py-2.5 text-sm font-semibold text-[#12241c] disabled:opacity-50"
-          disabled={analyzing || !ruling.imageDataUrl}
+          disabled={analyzing || !photos.length}
           onClick={() => void analizar()}
         >
-          {analyzing ? "Leyendo la foto…" : "Analizar no conformidad"}
+          {analyzing ? "Leyendo las fotos…" : "Analizar como interventor"}
         </button>
         <button
           type="button"
@@ -166,6 +184,9 @@ export default function DictamenPage() {
       <div className="print:hidden grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
           <h2 className="font-semibold">Evidencia</h2>
+          <p className="mt-1 text-xs text-[#6d7c74]">
+            {photos.length} de {MAX_RULING_PHOTOS} fotos. Puede seguir anexando.
+          </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
               <span className="mb-1 block font-medium">Inspector</span>
@@ -194,45 +215,89 @@ export default function DictamenPage() {
             type="file"
             accept="image/*"
             capture="environment"
-            className="mt-3 text-sm"
-            onChange={(e) => void onFile(e.target.files)}
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              void onFile(e.target.files);
+              e.target.value = "";
+            }}
           />
-          <label className="mt-3 block text-sm">
-            <span className="mb-1 block font-medium">Pie de foto</span>
-            <input
-              className={field}
-              value={ruling.imageCaption}
-              onChange={(e) =>
-                setRuling((p) => ({ ...p, imageCaption: e.target.value }))
-              }
-            />
-          </label>
-          {ruling.imageDataUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={ruling.imageDataUrl}
-              alt=""
-              className="mt-3 max-h-72 w-full rounded-2xl object-contain bg-[#f7f4ee]"
-            />
+          <button
+            type="button"
+            className="mt-3 inline-flex items-center rounded-xl bg-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            disabled={photos.length >= MAX_RULING_PHOTOS}
+            onClick={() => fileRef.current?.click()}
+          >
+            Anexar fotos
+          </button>
+          {photos.length ? (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {photos.map((p, i) => (
+                <div key={p.id} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.dataUrl}
+                    alt=""
+                    className="h-28 w-full rounded-xl object-cover"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1 rounded-full bg-white/90 px-2 text-xs"
+                    onClick={() =>
+                      setRuling((prev) =>
+                        withSyncedCover({
+                          ...prev,
+                          photos: rulingPhotos(prev).filter((x) => x.id !== p.id),
+                        })
+                      )
+                    }
+                  >
+                    ×
+                  </button>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-[#d8d2c4] px-2 py-1 text-[11px]"
+                    value={p.caption}
+                    placeholder={`Foto ${i + 1}`}
+                    onChange={(e) =>
+                      setRuling((prev) =>
+                        withSyncedCover({
+                          ...prev,
+                          photos: rulingPhotos(prev).map((x) =>
+                            x.id === p.id ? { ...x, caption: e.target.value } : x
+                          ),
+                        })
+                      )
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           ) : (
             <p className="mt-3 text-sm text-[#6d7c74]">
-              Tome o suba una foto nítida: tablero abierto, tierra, conector,
-              anclaje o etiqueta.
+              Anexe tablero, tierras, conectores, anclajes, etiquetas y detalles
+              de no conformidad.
             </p>
           )}
         </section>
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5 text-sm leading-6 text-[#4d5c55]">
-          <h2 className="font-semibold text-[#12241c]">Qué mira el modelo</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
-            <li>RETIE: identificaciones, protecciones, tierras, canalización.</li>
-            <li>NTC 2050: tableros, conductores, empalmes, Art. 110 / 250.</li>
-            <li>NSR-10 si hay estructura o cubierta.</li>
-            <li>RETILAP solo alumbrado; Resolución 5018 / SST si hay riesgo.</li>
-            <li>CREG si se ve frontera o medición de autogeneración.</li>
-          </ul>
-          <p className="mt-3">
-            Si la foto no muestra un dato, el dictamen lo deja en límites. Usted
-            corrige el texto igual que un capítulo de informe.
+        <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
+          <h2 className="font-semibold">Complemento para ingeniería</h2>
+          <p className="mt-1 text-xs leading-5 text-[#6d7c74]">
+            Escriba lo que la foto no dice: olores, temperatura, qué midió, qué
+            norma quiere aplicar, corrección que ya acordó con el cliente. La
+            mesa lo toma como hecho de campo.
+          </p>
+          <textarea
+            className={`${field} mt-3`}
+            rows={10}
+            value={ruling.fieldNotes}
+            onChange={(e) =>
+              setRuling((p) => ({ ...p, fieldNotes: e.target.value }))
+            }
+            placeholder="Ej.: El tablero no tiene DPS; el dueño reporta disparos del termomagnético al mediodía; se solicita citar RETIE identificaciones y NTC 2050 Art. 250 para la tierra descubierta en foto 3…"
+          />
+          <p className="mt-3 text-xs leading-5 text-[#4d5c55]">
+            RETIE, NTC 2050, NSR-10 si hay estructura, RETILAP si hay alumbrado,
+            Res. 5018 / SST y CREG si hay frontera.
           </p>
         </section>
       </div>

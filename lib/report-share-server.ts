@@ -6,7 +6,7 @@ import {
   persistSet,
 } from "@/lib/persist";
 import type { TechnicalReport } from "@/lib/technical-reports";
-import type { PhotoRuling } from "@/lib/photo-ruling";
+import { rulingPhotos, type PhotoRuling } from "@/lib/photo-ruling";
 
 function blobAuth() {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
@@ -26,15 +26,22 @@ function compactReport(report: TechnicalReport, dropPhotos = false): TechnicalRe
     ? []
     : (report.photos ?? [])
         .filter((p) => p.dataUrl && p.dataUrl.length < 120_000)
-        .slice(0, 6);
+        .slice(0, 12);
   return { ...report, photos };
 }
 
 function compactRuling(ruling: PhotoRuling, dropImage = false): PhotoRuling {
-  const image = ruling.imageDataUrl || "";
+  const photos = dropImage
+    ? []
+    : rulingPhotos(ruling)
+        .filter((p) => p.dataUrl && p.dataUrl.length < 140_000)
+        .slice(0, 12);
+  const cover = photos[0];
   return {
     ...ruling,
-    imageDataUrl: dropImage || image.length > 220_000 ? "" : image,
+    photos,
+    imageDataUrl: cover?.dataUrl || "",
+    imageCaption: cover?.caption || ruling.imageCaption || "",
   };
 }
 

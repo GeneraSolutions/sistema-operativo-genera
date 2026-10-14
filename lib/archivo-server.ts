@@ -100,7 +100,7 @@ export async function upsertArchivoQuotes(quotes: SavedQuote[]): Promise<SavedQu
 function slimReport(row: SavedReport): SavedReport {
   const photos = (row.report.photos ?? [])
     .filter((p) => p?.dataUrl && p.dataUrl.length < 160_000)
-    .slice(0, 6);
+    .slice(0, 12);
   return { ...row, report: { ...row.report, photos } };
 }
 

@@ -128,7 +128,7 @@ export default function InformesPage() {
   async function addPhotos(files: FileList | null) {
     if (!files?.length) return;
     const extras = await Promise.all(
-      [...files].slice(0, 6).map(async (file) => ({
+      [...files].slice(0, 12).map(async (file) => ({
         id: crypto.randomUUID(),
         caption: file.name.replace(/\.[^.]+$/, ""),
         dataUrl: await compressVisitPhoto(file),
@@ -136,7 +136,7 @@ export default function InformesPage() {
     );
     setReport((prev) => ({
       ...prev,
-      photos: [...prev.photos, ...extras].slice(0, 8),
+      photos: [...prev.photos, ...extras].slice(0, 12),
     }));
   }
 
@@ -466,6 +466,18 @@ export default function InformesPage() {
                 placeholder="Lo que vio el inspector. La mesa lo usa como hecho, no lo inventa."
               />
             </label>
+            <label className="mt-3 block text-sm">
+              <span className="mb-1 block font-medium">
+                Complemento para ingeniería
+              </span>
+              <textarea
+                className={field}
+                rows={4}
+                value={report.engineeringNotes ?? ""}
+                onChange={(e) => patch({ engineeringNotes: e.target.value })}
+                placeholder="Norma que quiere aplicar, no conformidades que ya vio, corrección pedida al cliente, mediciones que la foto no muestra…"
+              />
+            </label>
           </section>
 
           <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
@@ -521,17 +533,28 @@ export default function InformesPage() {
           <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
             <h2 className="font-semibold">Fotos</h2>
             <p className="mt-1 text-xs text-[#6d7c74]">
-              Hasta 8 evidencias. Ponga pie de foto; la mesa no ve la imagen,
-              sí el texto.
+              Hasta 12 evidencias. Ponga pie de foto; la mesa no ve la imagen,
+              sí el texto. El dictamen fotográfico sí lee las fotos.
             </p>
             <input
               ref={photoRef}
               type="file"
               accept="image/*"
               multiple
-              className="mt-3 text-sm"
-              onChange={(e) => void addPhotos(e.target.files)}
+              className="sr-only"
+              onChange={(e) => {
+                void addPhotos(e.target.files);
+                if (photoRef.current) photoRef.current.value = "";
+              }}
             />
+            <button
+              type="button"
+              className="mt-3 inline-flex items-center rounded-xl bg-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              disabled={report.photos.length >= 12}
+              onClick={() => photoRef.current?.click()}
+            >
+              Anexar fotos
+            </button>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {report.photos.map((p) => (
                 <div key={p.id} className="relative">

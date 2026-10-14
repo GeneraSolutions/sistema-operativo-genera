@@ -53,6 +53,8 @@ export interface TechnicalReport {
   visitDate: string;
   purpose: string;
   findings: string;
+  /** Complemento del inspector para que la mesa aplique norma y correcciones. */
+  engineeringNotes?: string;
   recommendations: string;
   nextSteps: string;
   checklist: ChecklistItem[];
@@ -207,6 +209,7 @@ export function emptyReport(kind: ReportKind): TechnicalReport {
     visitDate: todayISO(),
     purpose: "",
     findings: "",
+    engineeringNotes: "",
     recommendations: "",
     nextSteps: "",
     checklist: checklistFor(kind),
@@ -264,7 +267,7 @@ export function loadSavedReports(): SavedReport[] {
 function compactReport(record: SavedReport): SavedReport {
   const photos = (record.report.photos ?? [])
     .filter((p) => p?.dataUrl && p.dataUrl.length < 160_000)
-    .slice(0, 6);
+    .slice(0, 12);
   return {
     ...record,
     report: { ...record.report, photos },
@@ -365,6 +368,9 @@ ${report.purpose || "(sin objeto escrito)"}
 
 Hallazgos de campo:
 ${report.findings || "(sin hallazgos escritos)"}
+
+Complemento para ingeniería (norma, no conformidades, correcciones pedidas por el inspector):
+${report.engineeringNotes || "(sin complemento)"}
 
 Checklist:
 ${checks || "(vacío)"}

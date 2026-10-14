@@ -80,6 +80,17 @@ export function ReportDocument({ report }: { report: TechnicalReport }) {
         </section>
       ) : null}
 
+      {report.engineeringNotes ? (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
+            Complemento para ingeniería
+          </h2>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+            {report.engineeringNotes}
+          </p>
+        </section>
+      ) : null}
+
       <section className="mt-6">
         <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
           Checklist de campo

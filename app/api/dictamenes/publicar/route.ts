@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth/request";
 import { saveSharedRuling } from "@/lib/report-share-server";
-import type { PhotoRuling } from "@/lib/photo-ruling";
+import { rulingPhotos, withSyncedCover, type PhotoRuling } from "@/lib/photo-ruling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
   try {
-    const ruling = (await req.json()) as PhotoRuling;
-    if (!ruling?.id || !ruling.imageDataUrl) {
+    const ruling = withSyncedCover((await req.json()) as PhotoRuling);
+    if (!ruling?.id || !rulingPhotos(ruling).length) {
       return NextResponse.json(
         { error: "Falta la foto del dictamen." },
         { status: 400 }

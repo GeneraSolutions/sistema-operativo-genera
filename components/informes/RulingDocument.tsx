@@ -3,7 +3,9 @@
 import { BrandLogo } from "@/components/BrandLogo";
 import {
   SEVERITY_LABELS,
+  rulingPhotos,
   type FindingSeverity,
+  type PhotoFinding,
   type PhotoRuling,
 } from "@/lib/photo-ruling";
 
@@ -15,7 +17,38 @@ const TONE: Record<FindingSeverity, string> = {
   conforme: "border-[#1f6b45] bg-[#e8f6ee]",
 };
 
+function FindingCard({ h }: { h: PhotoFinding }) {
+  return (
+    <div
+      className={`rounded-2xl border px-3 py-2.5 text-sm ${TONE[h.criticidad] || TONE.observacion}`}
+    >
+      <p className="font-semibold">
+        {SEVERITY_LABELS[h.criticidad] || h.criticidad} · {h.titulo}
+      </p>
+      {h.hechos ? <p className="mt-1 leading-6">{h.hechos}</p> : null}
+      {h.norma || h.articulo ? (
+        <p className="mt-2 text-xs">
+          <strong>{h.norma}</strong>
+          {h.articulo ? ` · ${h.articulo}` : ""}
+        </p>
+      ) : null}
+      {h.fundamento ? <p className="mt-1 leading-6">{h.fundamento}</p> : null}
+      {h.accion ? (
+        <p className="mt-1 leading-6">
+          <strong>Corrección:</strong> {h.accion}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function RulingDocument({ ruling }: { ruling: PhotoRuling }) {
+  const photos = rulingPhotos(ruling);
+  const leftover = ruling.hallazgos.filter((h) => {
+    const n = Number(h.foto);
+    return !n || !photos[n - 1];
+  });
+
   return (
     <article className="mx-auto max-w-3xl bg-white px-6 py-8 text-[#12241c]">
       <header className="flex items-start justify-between gap-4 border-b border-[#eee8dc] pb-4">
@@ -24,11 +57,12 @@ export function RulingDocument({ ruling }: { ruling: PhotoRuling }) {
             Genera Solutions SAS · Dictamen fotográfico
           </p>
           <h1 className="mt-1 text-2xl font-semibold">
-            Lectura RETIE / NTC 2050
+            Interventoría RETIE / NTC 2050
           </h1>
           <p className="mt-1 text-sm text-[#4d5c55]">
             {ruling.inspector || "Inspector"} ·{" "}
-            {new Date(ruling.createdAt).toLocaleDateString("es-CO")}
+            {new Date(ruling.createdAt).toLocaleDateString("es-CO")} ·{" "}
+            {photos.length} foto{photos.length === 1 ? "" : "s"}
           </p>
         </div>
         <BrandLogo height={48} />
@@ -40,24 +74,21 @@ export function RulingDocument({ ruling }: { ruling: PhotoRuling }) {
         </p>
       ) : null}
 
-      {ruling.imageDataUrl ? (
-        <figure className="mt-5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={ruling.imageDataUrl}
-            alt={ruling.imageCaption || "Evidencia"}
-            className="max-h-[420px] w-full rounded-2xl object-contain bg-[#f7f4ee]"
-          />
-          <figcaption className="mt-1 text-xs text-[#6d7c74]">
-            {ruling.imageCaption || "Evidencia de campo"}
-          </figcaption>
-        </figure>
+      {ruling.fieldNotes ? (
+        <section className="mt-5">
+          <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
+            Notas de campo para ingeniería
+          </h2>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+            {ruling.fieldNotes}
+          </p>
+        </section>
       ) : null}
 
       {ruling.resumen ? (
         <section className="mt-6">
           <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
-            Síntesis
+            Síntesis de interventoría
           </h2>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
             {ruling.resumen}
@@ -65,29 +96,68 @@ export function RulingDocument({ ruling }: { ruling: PhotoRuling }) {
         </section>
       ) : null}
 
-      {ruling.hallazgos.length ? (
+      {photos.length ? (
+        <section className="mt-8 space-y-8">
+          <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
+            Evidencia, hallazgos y no conformidades
+          </h2>
+          {photos.map((p, i) => {
+            const n = i + 1;
+            const lectura = ruling.lecturaPorFoto?.find(
+              (row) => Number(row.indice) === n
+            );
+            const items = ruling.hallazgos.filter((h) => Number(h.foto) === n);
+            return (
+              <div
+                key={p.id}
+                className="break-inside-avoid rounded-2xl border border-[#eee8dc] p-3"
+              >
+                <p className="mb-3 text-xs font-semibold tracking-wide text-[#8a6b2a] uppercase">
+                  Foto {n}
+                  {p.caption ? ` · ${p.caption}` : ""}
+                </p>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                  <figure>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.dataUrl}
+                      alt={p.caption || `Foto ${n}`}
+                      className="max-h-72 w-full rounded-xl object-contain bg-[#f7f4ee]"
+                    />
+                  </figure>
+                  <div className="space-y-2">
+                    {lectura?.descripcion ? (
+                      <p className="whitespace-pre-wrap text-sm leading-6">
+                        <strong>Lectura. </strong>
+                        {lectura.descripcion}
+                      </p>
+                    ) : null}
+                    {items.length ? (
+                      items.map((h, hi) => (
+                        <FindingCard key={`${h.titulo}-${hi}`} h={h} />
+                      ))
+                    ) : (
+                      <p className="text-sm text-[#6d7c74]">
+                        {ruling.resumen
+                          ? "Sin no conformidad asignada a esta foto."
+                          : "Analice como interventor para ver hallazgos junto a cada imagen."}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
+
+      {leftover.length ? (
         <section className="mt-6 space-y-3">
           <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
-            Hallazgos
+            Hallazgos sin foto asignada
           </h2>
-          {ruling.hallazgos.map((h, i) => (
-            <div
-              key={`${h.titulo}-${i}`}
-              className={`rounded-2xl border px-4 py-3 text-sm ${TONE[h.criticidad] || TONE.observacion}`}
-            >
-              <p className="font-semibold">
-                {SEVERITY_LABELS[h.criticidad] || h.criticidad} · {h.titulo}
-              </p>
-              <p className="mt-1 leading-6">{h.hechos}</p>
-              <p className="mt-2 text-xs">
-                <strong>{h.norma}</strong>
-                {h.articulo ? ` · ${h.articulo}` : ""}
-              </p>
-              <p className="mt-1 leading-6">{h.fundamento}</p>
-              <p className="mt-1 leading-6">
-                <strong>Acción:</strong> {h.accion}
-              </p>
-            </div>
+          {leftover.map((h, i) => (
+            <FindingCard key={`${h.titulo}-x-${i}`} h={h} />
           ))}
         </section>
       ) : null}
@@ -108,7 +178,7 @@ export function RulingDocument({ ruling }: { ruling: PhotoRuling }) {
       {ruling.limites ? (
         <section className="mt-6">
           <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
-            Límites de la foto
+            Límites de la evidencia
           </h2>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
             {ruling.limites}
@@ -117,10 +187,10 @@ export function RulingDocument({ ruling }: { ruling: PhotoRuling }) {
       ) : null}
 
       <footer className="mt-10 border-t border-[#eee8dc] pt-4 text-xs leading-5 text-[#6d7c74]">
-        Apoyo técnico GENERA con inteligencia artificial y criterio RETIE / NTC
-        2050. No reemplaza el dictamen de un organismo de inspección acreditado
-        ONAC ni la firma del ingeniero competente. Verificar numerales en la
-        edición vigente de la norma.
+        Memoria de interventoría GENERA con apoyo de visión e inteligencia
+        artificial (RETIE / NTC 2050 y normas conexas). No reemplaza el
+        dictamen de un organismo de inspección acreditado ONAC ni la firma del
+        ingeniero competente. Verificar numerales en la edición vigente.
       </footer>
     </article>
   );
