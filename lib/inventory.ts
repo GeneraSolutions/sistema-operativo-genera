@@ -178,3 +178,40 @@ export function filterByCategory(
 ): InventoryItem[] {
   return items.filter((i) => i.category === category && i.active);
 }
+
+export function groupInventoryByCategory(
+  items: InventoryItem[],
+  custom: CustomCategory[] = [],
+  query = ""
+): { id: string; label: string; items: InventoryItem[] }[] {
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? items.filter((item) =>
+        `${item.brand} ${item.model} ${item.name} ${categoryLabel(item.category, custom)}`
+          .toLowerCase()
+          .includes(q)
+      )
+    : items;
+  const order = allCategoryIds(custom);
+  const seen = new Set(order);
+  for (const item of filtered) {
+    if (!seen.has(item.category)) {
+      order.push(item.category);
+      seen.add(item.category);
+    }
+  }
+  return order
+    .map((id) => ({
+      id,
+      label: categoryLabel(id, custom),
+      items: filtered
+        .filter((item) => item.category === id)
+        .slice()
+        .sort(
+          (a, b) =>
+            a.brand.localeCompare(b.brand, "es") ||
+            (a.model || a.name).localeCompare(b.model || b.name, "es")
+        ),
+    }))
+    .filter((group) => group.items.length > 0);
+}

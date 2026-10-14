@@ -215,6 +215,12 @@ export function saleFromCost(cost: number, marginPercent: number) {
   return Math.round(Math.max(0, cost) * (1 + Math.max(0, marginPercent) / 100));
 }
 
+export function marginFromSale(cost: number, saleCOP: number) {
+  if (cost <= 0) return 0;
+  const margin = ((Math.max(0, saleCOP) / cost) - 1) * 100;
+  return Math.round(Math.max(0, margin) * 10) / 10;
+}
+
 export function emptyAddonState(): AddonState[] {
   return ENG_LABOR_ADDON_DEFS.map((d) => ({
     id: d.id,

@@ -11,11 +11,13 @@ import {
   categoryLabel,
   filterByCategory,
   getDefaultsByCategory,
+  groupInventoryByCategory,
   loadCustomCategories,
   loadInventory,
 } from "@/lib/inventory";
 import {
   addonsToState,
+  marginFromSale,
   saleFromCost,
   type AddonState,
 } from "@/lib/eng-labor-addons";
@@ -199,6 +201,7 @@ function CotizadorInner() {
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }
   const [addItemId, setAddItemId] = useState("");
+  const [addItemQuery, setAddItemQuery] = useState("");
   const [toggles, setToggles] = useState<ProposalToggles>(DEFAULT_TOGGLES);
   const [warranties, setWarranties] = useState<SystemWarranties>(() =>
     cloneWarranties()
@@ -962,6 +965,10 @@ function CotizadorInner() {
     .filter(Boolean) as string[];
 
   const activeInventory = inventory.filter((i) => i.active);
+  const addInventoryGroups = useMemo(
+    () => groupInventoryByCategory(activeInventory, customCats, addItemQuery),
+    [activeInventory, customCats, addItemQuery]
+  );
 
   function toggleVisitLink(next: boolean) {
     setVisitLinked(next);
@@ -1813,9 +1820,24 @@ function CotizadorInner() {
             <div className="mt-4 space-y-3">
               {quoteLines.map((line) => {
                 const item = inventory.find((i) => i.id === line.itemId);
-                const options = item
-                  ? activeInventory.filter((i) => i.category === item.category)
-                  : activeInventory;
+                const saleUnit = saleFromCost(
+                  line.costUnitCOP,
+                  line.marginPercent
+                );
+                const saleLine = saleUnit * line.qty;
+                const gainUnit = Math.max(0, saleUnit - line.costUnitCOP);
+                const gainLine = gainUnit * line.qty;
+                const options = (
+                  item
+                    ? activeInventory.filter((i) => i.category === item.category)
+                    : activeInventory
+                )
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      a.brand.localeCompare(b.brand, "es") ||
+                      (a.model || a.name).localeCompare(b.model || b.name, "es")
+                  );
                 return (
                   <div
                     key={line.key}
@@ -1864,7 +1886,7 @@ function CotizadorInner() {
                         ))}
                       </select>
                     </label>
-                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                       <label className="block text-sm">
                         <span className="mb-1 block font-medium">
                           Cant. ({item?.unit || "und"})
@@ -1946,6 +1968,67 @@ function CotizadorInner() {
                           }}
                         />
                       </label>
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium">
+                          Aumento / und
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-full rounded-xl border border-[#1f6b45]/35 bg-[#e8f6ee] px-2 py-2 font-medium"
+                          value={gainUnit}
+                          onChange={(e) => {
+                            const n = Math.max(0, Number(e.target.value) || 0);
+                            setQuoteLines((rows) =>
+                              rows.map((r) =>
+                                r.key === line.key
+                                  ? {
+                                      ...r,
+                                      marginPercent: marginFromSale(
+                                        r.costUnitCOP,
+                                        r.costUnitCOP + n
+                                      ),
+                                    }
+                                  : r
+                              )
+                            );
+                          }}
+                        />
+                        <span className="mt-1 block text-[11px] text-[#1f6b45]">
+                          Venta − costo · línea {copFmt.format(gainLine)}
+                        </span>
+                      </label>
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium">
+                          Venta / und
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-full rounded-xl border border-[#1f6b45]/35 bg-[#e8f6ee] px-2 py-2 font-medium"
+                          value={saleUnit}
+                          onChange={(e) => {
+                            const n = Math.max(0, Number(e.target.value) || 0);
+                            setQuoteLines((rows) =>
+                              rows.map((r) =>
+                                r.key === line.key
+                                  ? {
+                                      ...r,
+                                      marginPercent: marginFromSale(
+                                        r.costUnitCOP,
+                                        n
+                                      ),
+                                    }
+                                  : r
+                              )
+                            );
+                          }}
+                        />
+                        <span className="mt-1 block text-[11px] text-[#1f6b45]">
+                          Costo + {numFmt.format(line.marginPercent)}% · línea{" "}
+                          {copFmt.format(saleLine)}
+                        </span>
+                      </label>
                       <label className="flex items-end gap-2 pb-2 text-sm font-medium">
                         <input
                           type="checkbox"
@@ -1967,19 +2050,38 @@ function CotizadorInner() {
                 );
               })}
               <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-[#d8d2c4] p-3">
-                <label className="min-w-[220px] flex-1 text-sm">
+                <label className="min-w-[160px] flex-1 text-sm">
+                  <span className="mb-1 block font-medium">Buscar</span>
+                  <input
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2"
+                    value={addItemQuery}
+                    onChange={(e) => setAddItemQuery(e.target.value)}
+                    placeholder="Marca, modelo o tipo…"
+                  />
+                </label>
+                <label className="min-w-[220px] flex-[2] text-sm">
                   <span className="mb-1 block font-medium">Agregar del inventario</span>
                   <select
                     className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2"
                     value={addItemId}
                     onChange={(e) => setAddItemId(e.target.value)}
                   >
-                    <option value="">Seleccionar producto…</option>
-                    {activeInventory.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {categoryLabel(opt.category, customCats)} · {opt.brand}{" "}
-                        {opt.model || opt.name}
-                      </option>
+                    <option value="">
+                      {addInventoryGroups.length
+                        ? "Seleccionar producto…"
+                        : "Sin coincidencias"}
+                    </option>
+                    {addInventoryGroups.map((group) => (
+                      <optgroup
+                        key={group.id}
+                        label={`${group.label} (${group.items.length})`}
+                      >
+                        {group.items.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.brand} · {opt.model || opt.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </label>
