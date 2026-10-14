@@ -69,6 +69,7 @@ export interface SavedQuote {
   engAddons?: AddonState[];
   toggles: ProposalToggles;
   warranties?: SystemWarranties;
+  bonusIds?: string[];
 }
 
 const KEY = "genera.saved-quotes.v1";
@@ -182,6 +183,7 @@ function pickRicher(newer: SavedQuote, older: SavedQuote): SavedQuote {
     qtyLocked: newer.qtyLocked || older.qtyLocked,
     engAddons: newer.engAddons?.length ? newer.engAddons : older.engAddons,
     warranties: newer.warranties?.items?.length ? newer.warranties : older.warranties,
+    bonusIds: newer.bonusIds ?? older.bonusIds,
   };
 }
 

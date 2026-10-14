@@ -2,6 +2,7 @@
 
 import { BrandLogo } from "@/components/BrandLogo";
 import { MonthlyEnergyChart } from "@/components/proposal/MonthlyEnergyChart";
+import { resolveClientDeliverables } from "@/lib/proposal-bonuses";
 import {
   cloneWarranties,
   visibleWarrantyItems,
@@ -86,6 +87,7 @@ export function EpcProposalView({
   const km = Math.round(co2Kg / 0.192);
   const warranties = cloneWarranties(p.warranties);
   const warrantyItems = visibleWarrantyItems(warranties, p.includeBattery);
+  const clientDocs = resolveClientDeliverables(p.toggles);
 
   return (
     <div className={`proposal-print bg-[#070b16] text-[#e8eef8] ${embedded ? "" : "min-h-screen"}`}>
@@ -95,12 +97,14 @@ export function EpcProposalView({
           {p.companyName} · Cotización EPC
         </div>
         <div className="flex items-center gap-2 print:hidden">
-          <a
-            href={`/propuesta/epc/${p.id}/fichas`}
-            className="rounded-lg border border-[#2a3d63] bg-[#121a2e] px-3 py-1.5 text-sm text-[#5eead4] hover:bg-[#1a2744]"
-          >
-            Fichas técnicas
-          </a>
+          {clientDocs.fichas ? (
+            <a
+              href={`/propuesta/epc/${p.id}/fichas`}
+              className="rounded-lg border border-[#2a3d63] bg-[#121a2e] px-3 py-1.5 text-sm text-[#5eead4] hover:bg-[#1a2744]"
+            >
+              Fichas técnicas
+            </a>
+          ) : null}
           <button
             type="button"
             onClick={() => window.print()}
@@ -430,6 +434,9 @@ export function EpcProposalView({
           </div>
         </section>
 
+        {p.bonuses.filter(
+          (b) => b.id !== "ev-charger" && !/cargador\s*ev/i.test(b.title)
+        ).length ? (
         <section className="mt-12">
           <SectionHead
             n={6}
@@ -451,14 +458,24 @@ export function EpcProposalView({
                 <h3 className="font-semibold text-white">{b.title}</h3>
                 <p className="mt-1 text-xs font-medium text-[#5eead4]">{b.tagline}</p>
                 <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">{b.description}</p>
+                {b.document && clientDocs[b.document.slug] ? (
+                  <a
+                    href={`/propuesta/epc/${p.id}/${b.document.slug}`}
+                    className="mt-3 inline-flex text-sm font-medium text-[#5eead4] underline"
+                  >
+                    {b.document.cta}
+                  </a>
+                ) : null}
               </article>
             ))}
           </div>
           <p className="mt-3 text-xs text-[#6b7c99]">
             * Bonos y compromisos sujetos a condiciones del contrato y alcance del
-            proyecto cotizado.
+            proyecto cotizado. Los documentos se personalizan con los equipos de
+            esta oferta.
           </p>
         </section>
+        ) : null}
 
         <section className="mt-12">
           <SectionHead

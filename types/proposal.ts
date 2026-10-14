@@ -26,6 +26,11 @@ export interface ProposalBonus {
   title: string;
   tagline: string;
   description: string;
+  document?: {
+    slug: "explicacion" | "manual" | "primera-factura" | "certificado";
+    cta: string;
+    moment: "quote" | "handover";
+  };
 }
 
 export interface TaxIncentives {
@@ -66,6 +71,15 @@ export interface PaymentSchedule {
   ppaContractTotalCOP?: number;
 }
 
+export type ClientDeliverableKey =
+  | "fichas"
+  | "explicacion"
+  | "manual"
+  | "primera-factura"
+  | "certificado";
+
+export type ClientDeliverables = Record<ClientDeliverableKey, boolean>;
+
 export interface ProposalToggles {
   showTir: boolean;
   showRoiPayback: boolean;
@@ -73,6 +87,9 @@ export interface ProposalToggles {
   showIvaAranceles: boolean;
   showDepreciacion: boolean;
   showCharts: boolean;
+  /** @deprecated use deliverables */
+  showDeliverables?: boolean;
+  deliverables?: Partial<ClientDeliverables>;
 }
 
 export interface EpcProposal {

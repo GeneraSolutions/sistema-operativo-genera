@@ -1,4 +1,4 @@
-import { GENERA_BONUSES } from "@/lib/proposal-bonuses";
+import { bonusesFromIds } from "@/lib/proposal-bonuses";
 import { buildMonthlyEnergy } from "@/lib/monthly-energy";
 import { buildPaymentSchedule, type PaymentInput } from "@/lib/payment-schedule";
 import type { QuoteBreakdown, QuoteEquipmentSelection } from "@/lib/quote-engine";
@@ -51,6 +51,7 @@ export interface BuildProposalInput {
   toggles: ProposalToggles;
   applyLey1715: boolean;
   warranties?: SystemWarranties;
+  bonusIds?: string[];
 }
 
 const MOUNT_COPY = {
@@ -217,7 +218,7 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
     irrPercentage: metrics.irrPercentage,
     paybackYearsSimple: metrics.paybackYearsSimple,
     npvCOP: metrics.npvCOP,
-    bonuses: GENERA_BONUSES,
+    bonuses: bonusesFromIds(input.bonusIds),
     toggles,
     warranties: cloneWarranties(input.warranties),
     datasheets: buildDatasheets(selection, includeBattery),

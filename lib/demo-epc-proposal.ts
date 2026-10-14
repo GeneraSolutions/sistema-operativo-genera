@@ -210,5 +210,12 @@ export const DEMO_EPC_PROPOSAL: EpcProposal = {
     showIvaAranceles: true,
     showDepreciacion: true,
     showCharts: true,
+    deliverables: {
+      fichas: true,
+      explicacion: true,
+      manual: true,
+      "primera-factura": true,
+      certificado: true,
+    },
   },
 };

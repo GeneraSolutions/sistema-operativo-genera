@@ -1,4 +1,15 @@
-import type { ProposalBonus } from "@/types/proposal";
+import type {
+  ClientDeliverableKey,
+  ClientDeliverables,
+  ProposalBonus,
+  ProposalToggles,
+} from "@/types/proposal";
+
+export type BonusDocumentSlug =
+  | "explicacion"
+  | "manual"
+  | "primera-factura"
+  | "certificado";
 
 /** Valor agregado incluido en cada propuesta comercial Genera. */
 export const GENERA_BONUSES: ProposalBonus[] = [
@@ -7,104 +18,200 @@ export const GENERA_BONUSES: ProposalBonus[] = [
     title: "Monitoreo inteligente 24/7",
     tagline: "App web · alertas en tiempo real",
     description:
-      "Plataforma de monitoreo GENERA con acceso web, historial de producción y alertas automáticas ante fallas o bajo rendimiento.",
+      "Usted ve su planta en el celular: producción del día, historial y avisos si algo baja de lo esperado. No tiene que ser electricista para saber si el sistema está trabajando.",
   },
   {
     id: "proactive-alerts",
     title: "Alertas proactivas GENERA",
     tagline: "Ingeniería revisa · no solo app de fábrica",
     description:
-      "Equipo GENERA monitorea anomalías de producción y contacta al cliente antes de que la falla se convierta en pérdida de ahorro.",
+      "Además de la app, ingeniería GENERA mira anomalías de producción. Si el sistema se queda corto, nosotros llamamos: usted no tiene que descubrirlo en la factura.",
   },
   {
     id: "priority-support",
     title: "Soporte técnico prioritario GENERA",
     tagline: "Respuesta en 48 h hábiles",
     description:
-      "Canal directo con ingeniería GENERA para incidencias técnicas con tiempos de respuesta preferenciales.",
+      "Canal directo con ingeniería GENERA. Una falla, una duda de monitoreo o un ruido raro: responde el equipo que instaló, no un call center genérico.",
   },
   {
     id: "90-days",
     title: "Línea de acompañamiento 90 días",
     tagline: "Post puesta en marcha · canal directo",
     description:
-      "Durante los primeros 90 días tras la energización, acompañamiento preferencial para dudas operativas y ajustes de expectativa de ahorro.",
+      "Los primeros 90 días después de energizar son de afinación: expectativas de ahorro, lectura de la factura y hábitos de consumo. Ese periodo va incluido.",
   },
   {
     id: "user-manual",
     title: "Manual de Usuario GENERA (PDF)",
-    tagline: "Operación · factura · emergencias · contactos",
+    tagline: "Operación · emergencias · contactos · su planta",
     description:
-      "Entregable PDF personalizado: cómo operar su sistema, leer el monitoreo, interpretar la factura con solar, protocolos de emergencia y contactos GENERA.",
+      "Cuando el sistema quede instalado según esta cotización, GENERA le entrega un manual con los equipos reales de su proyecto: cómo se opera, qué hacer en una emergencia, a quién llamar y dónde están las fichas técnicas.",
+    document: {
+      slug: "manual",
+      cta: "Abrir manual de esta planta",
+      moment: "handover",
+    },
   },
   {
     id: "bill-review",
     title: "Revisión factura vs. producción",
     tagline: "Mes 1 y mes 3 · cruce con comercializador",
     description:
-      "Ingeniería GENERA cruza producción del monitoreo con su factura de energía en el mes 1 y 3 para validar el ahorro real.",
+      "En el mes 1 y el mes 3 cruzamos lo que produjo el monitoreo con su factura real. Si el ahorro no cuadra, lo revisamos con números, no con promesas.",
   },
   {
     id: "first-bill-guide",
     title: "Guía: su primera factura con solar",
-    tagline: "Autoconsumo · excedentes · pro-rata",
+    tagline: "Autoconsumo · excedentes · por qué se ve rara",
     description:
-      "Documento y sesión breve para entender cómo leer la factura del comercializador después de la conexión del sistema.",
+      "La primera factura con paneles casi siempre confunde. Esta guía le explica, en lenguaje claro, qué es autoconsumo, qué son excedentes y por qué el primer ciclo suele salir distinto. Incluye una sesión breve para resolver dudas.",
+    document: {
+      slug: "primera-factura",
+      cta: "Abrir guía de la primera factura",
+      moment: "handover",
+    },
   },
   {
     id: "bill-session",
     title: "Sesión «Cómo leer tu factura con solar»",
     tagline: "45 min · presencial o virtual",
     description:
-      "Capacitación práctica para el equipo del cliente sobre autoconsumo, excedentes y variaciones de la factura de energía.",
+      "Capacitación de 45 minutos para usted o su equipo: autoconsumo, excedentes y por qué la factura sube o baja mes a mes aunque el sol sea el mismo.",
   },
   {
     id: "gen-guarantee",
     title: "Garantía de producción — año 1",
     tagline: "Compromiso de generación",
     description:
-      "Seguimiento de producción del primer año con revisión técnica si el rendimiento cae bajo el umbral acordado.",
+      "El primer año hacemos seguimiento a la generación. Si el rendimiento cae bajo lo razonable para su ubicación y el diseño cotizado, ingeniería abre revisión técnica.",
   },
   {
     id: "firmware",
     title: "Actualizaciones de firmware incluidas",
     tagline: "3 años · inversores certificados",
     description:
-      "Gestión de actualizaciones de firmware de inversores y equipos de medición durante el periodo incluido.",
+      "Durante 3 años GENERA gestiona las actualizaciones de firmware de inversores y medición certificada, para no dejar el equipo desactualizado.",
   },
   {
     id: "commissioning-cert",
     title: "Certificado de puesta en marcha",
-    tagline: "PDF oficial · kWp · RETIE · fecha PM",
+    tagline: "PDF oficial · kWp · RETIE · fecha de energización",
     description:
-      "Documento oficial GENERA con datos de la planta, fecha de energización y referencia de legalización para seguros, bancos y auditorías.",
+      "Acta formal GENERA con los datos de su planta, fecha de energización y referencia de legalización. Sirve para seguros, bancos, contabilidad y auditorías.",
+    document: {
+      slug: "certificado",
+      cta: "Abrir certificado",
+      moment: "handover",
+    },
   },
   {
     id: "annual-checklist",
     title: "Checklist anual + revisión remota",
     tagline: "Auto-inspección · 1 videollamada/año",
     description:
-      "Guía de auto-inspección visual anual para el cliente y revisión remota con ingeniería GENERA (15 min).",
+      "Una vez al año le enviamos una guía visual (qué mirar en techo, tablero e inversor) y agendamos 15 minutos remotos con ingeniería.",
   },
   {
     id: "warranty-desk",
     title: "Gestor de garantías GENERA — año 1",
     tagline: "Intermediario con fabricante",
     description:
-      "GENERA gestiona el trámite de garantía con fabricantes de paneles e inversores durante el primer año de operación.",
+      "Si un panel o un inversor falla en el primer año, GENERA gestiona el trámite con el fabricante. Usted no tiene que pelear el caso en inglés ni con un call center de fábrica.",
   },
   {
     id: "regulatory-bulletin",
     title: "Boletín normativo anual",
     tagline: "CREG · UPME · cambios aplicables",
     description:
-      "Resumen anual de cambios normativos que puedan afectar su sistema solar y recomendaciones de acción.",
+      "Una vez al año le resumimos, en una página, qué cambió en CREG/UPME que pueda tocar su sistema y qué conviene hacer.",
   },
   {
     id: "quote-explainer",
     title: "Explicación de cotización (PDF)",
-    tagline: "Precio · procedimiento · alcance",
+    tagline: "Memoria técnica-comercial · alcance y precio",
     description:
-      "PDF personalizado para enviar con la cotización: explica la inversión, el procedimiento GENERA y el alcance técnico de este proyecto.",
+      "Anexo formal de esta cotización: describe el objeto de la oferta, la estructura del precio, el alcance por sistemas, las exclusiones, el procedimiento de ejecución y el significado de cada bono incluido.",
+    document: {
+      slug: "explicacion",
+      cta: "Abrir memoria explicativa",
+      moment: "quote",
+    },
   },
 ];
+
+export function defaultBonusIds(): string[] {
+  return GENERA_BONUSES.map((b) => b.id);
+}
+
+export function cloneBonus(bonus: ProposalBonus): ProposalBonus {
+  return {
+    ...bonus,
+    document: bonus.document ? { ...bonus.document } : undefined,
+  };
+}
+
+/** `undefined` = todos (cotizaciones viejas). Array vacío = ninguno. */
+export function bonusesFromIds(ids?: string[] | null): ProposalBonus[] {
+  if (ids == null) return GENERA_BONUSES.map(cloneBonus);
+  const set = new Set(ids);
+  return GENERA_BONUSES.filter((b) => set.has(b.id)).map(cloneBonus);
+}
+
+export function bonusById(id: string): ProposalBonus | undefined {
+  return GENERA_BONUSES.find((b) => b.id === id);
+}
+
+export const DEFAULT_CLIENT_DELIVERABLES: ClientDeliverables = {
+  fichas: true,
+  explicacion: true,
+  manual: true,
+  "primera-factura": true,
+  certificado: true,
+};
+
+export const CLIENT_DELIVERABLE_LABELS: {
+  key: ClientDeliverableKey;
+  label: string;
+  description: string;
+}[] = [
+  {
+    key: "fichas",
+    label: "Fichas técnicas",
+    description: "Botón de fichas del fabricante en la cotización",
+  },
+  {
+    key: "explicacion",
+    label: "Memoria explicativa",
+    description: "Anexo de alcance y precio para enviar con la oferta",
+  },
+  {
+    key: "manual",
+    label: "Manual de usuario",
+    description: "Manual de la planta al finalizar la obra",
+  },
+  {
+    key: "primera-factura",
+    label: "Guía de la primera factura",
+    description: "Autoconsumo, excedentes y lectura de factura",
+  },
+  {
+    key: "certificado",
+    label: "Certificado de puesta en marcha",
+    description: "Acta oficial con kWp, RETIE y fecha de energización",
+  },
+];
+
+export function resolveClientDeliverables(
+  toggles?: ProposalToggles | null
+): ClientDeliverables {
+  const fallback = toggles?.showDeliverables !== false;
+  const d = toggles?.deliverables ?? {};
+  return {
+    fichas: d.fichas ?? fallback,
+    explicacion: d.explicacion ?? fallback,
+    manual: d.manual ?? fallback,
+    "primera-factura": d["primera-factura"] ?? fallback,
+    certificado: d.certificado ?? fallback,
+  };
+}

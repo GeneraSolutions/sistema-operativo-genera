@@ -74,6 +74,13 @@ import {
   type ColombiaTaxConfig,
 } from "@/lib/colombia-tax";
 import {
+  CLIENT_DELIVERABLE_LABELS,
+  defaultBonusIds,
+  DEFAULT_CLIENT_DELIVERABLES,
+  GENERA_BONUSES,
+  resolveClientDeliverables,
+} from "@/lib/proposal-bonuses";
+import {
   cloneWarranties,
   loadCompanyWarranties,
   saveCompanyWarranties,
@@ -82,7 +89,7 @@ import {
   type WarrantyItem,
 } from "@/lib/warranties";
 import type { InventoryItem } from "@/types/inventory";
-import type { PaymentKind } from "@/types/proposal";
+import type { ClientDeliverables, PaymentKind } from "@/types/proposal";
 
 const numFmt = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
 const copFmt = new Intl.NumberFormat("es-CO", {
@@ -132,6 +139,8 @@ export interface ProposalToggles {
   showIvaAranceles: boolean;
   showDepreciacion: boolean;
   showCharts: boolean;
+  showDeliverables?: boolean;
+  deliverables?: Partial<ClientDeliverables>;
 }
 
 const DEFAULT_TOGGLES: ProposalToggles = {
@@ -141,6 +150,7 @@ const DEFAULT_TOGGLES: ProposalToggles = {
   showIvaAranceles: true,
   showDepreciacion: true,
   showCharts: true,
+  deliverables: { ...DEFAULT_CLIENT_DELIVERABLES },
 };
 
 function CotizadorInner() {
@@ -194,6 +204,7 @@ function CotizadorInner() {
     cloneWarranties()
   );
   const [warrantyFlash, setWarrantyFlash] = useState("");
+  const [bonusIds, setBonusIds] = useState<string[]>(() => defaultBonusIds());
   const [applyLey1715, setApplyLey1715] = useState(true);
   const [clientName, setClientName] = useState("Cliente Corporativo");
   const [clientCity, setClientCity] = useState("Bogotá");
@@ -228,6 +239,7 @@ function CotizadorInner() {
     costeo: false,
     propuesta: false,
     garantias: true,
+    bonos: true,
   });
   const [kits, setKits] = useState<EquipmentKit[]>([]);
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
@@ -554,6 +566,7 @@ function CotizadorInner() {
       toggles,
       applyLey1715,
       warranties,
+      bonusIds,
     });
   }, [
     hydrated,
@@ -589,6 +602,7 @@ function CotizadorInner() {
     toggles,
     applyLey1715,
     warranties,
+    bonusIds,
   ]);
 
   useEffect(() => {
@@ -606,6 +620,19 @@ function CotizadorInner() {
 
   function updateToggle<K extends keyof ProposalToggles>(key: K, value: boolean) {
     setToggles((t) => ({ ...t, [key]: value }));
+  }
+
+  function updateDeliverable(
+    key: (typeof CLIENT_DELIVERABLE_LABELS)[number]["key"],
+    value: boolean
+  ) {
+    setToggles((t) => ({
+      ...t,
+      deliverables: {
+        ...resolveClientDeliverables(t),
+        [key]: value,
+      },
+    }));
   }
 
   function patchWarranty(id: string, patch: Partial<WarrantyItem>) {
@@ -786,6 +813,7 @@ function CotizadorInner() {
       engAddons: addonsToState(quote.addons),
       toggles,
       warranties: cloneWarranties(warranties),
+      bonusIds,
     };
   }
 
@@ -878,8 +906,13 @@ function CotizadorInner() {
     setPpaPricePerKWh(q.ppaPricePerKWhCOP ?? 650);
     setSiteLat(q.siteLat ?? 4.71);
     setSiteLon(q.siteLon ?? -74.15);
-    setToggles(q.toggles);
+    setToggles({
+      ...DEFAULT_TOGGLES,
+      ...q.toggles,
+      deliverables: resolveClientDeliverables(q.toggles),
+    });
     setWarranties(cloneWarranties(q.warranties ?? loadCompanyWarranties()));
+    setBonusIds(q.bonusIds ?? defaultBonusIds());
     const restored = resolveQuoteLines(q);
     if (restored) {
       setQuoteLines(restored);
@@ -2748,6 +2781,89 @@ function CotizadorInner() {
           </QuoteFold>
 
           <QuoteFold
+            title="Bonos y compromisos GENERA"
+            summary={`${bonusIds.length} de ${GENERA_BONUSES.length} encendidos`}
+            open={openFolds.bonos}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, bonos: !s.bonos }))
+            }
+            printHidden
+          >
+            <p className="text-xs text-[#6d7c74]">
+              Encienda solo lo que va en esta cotización. Los documentos (manual,
+              explicación, factura y certificado) se arman con los equipos de
+              este proyecto. No hace falta adjuntar fichas aquí: si el inventario
+              ya tiene URL o PDF del fabricante, el manual las enlaza.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-1.5 text-xs"
+                onClick={() => setBonusIds(defaultBonusIds())}
+              >
+                Encender todos
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-1.5 text-xs"
+                onClick={() => setBonusIds([])}
+              >
+                Apagar todos
+              </button>
+            </div>
+            <div className="mt-4 grid gap-2">
+              {GENERA_BONUSES.map((bonus) => {
+                const on = bonusIds.includes(bonus.id);
+                return (
+                  <div
+                    key={bonus.id}
+                    className={`rounded-xl border px-3 py-3 ${
+                      on
+                        ? "border-[#1f6b45]/35 bg-[#e8f6ee]"
+                        : "border-[#ddd6c8] bg-[#fbfaf6] opacity-70"
+                    }`}
+                  >
+                    <Toggle
+                      checked={on}
+                      onChange={(next) =>
+                        setBonusIds((ids) =>
+                          next
+                            ? [...ids, bonus.id]
+                            : ids.filter((id) => id !== bonus.id)
+                        )
+                      }
+                      label={bonus.title}
+                      description={bonus.tagline}
+                    />
+                    <p className="mt-2 text-xs leading-5 text-[#4d5c55]">
+                      {bonus.description}
+                    </p>
+                    {on && bonus.document && liveProposal ? (
+                      <button
+                        type="button"
+                        className="mt-2 text-sm font-medium text-[#1f6b45] underline"
+                        onClick={() => {
+                          saveProposal(liveProposal);
+                          window.open(
+                            `/propuesta/epc/${liveProposal.id}/${bonus.document!.slug}`,
+                            "_blank",
+                            "noopener,noreferrer"
+                          );
+                        }}
+                      >
+                        {bonus.document.cta}
+                        {bonus.document.moment === "handover"
+                          ? " · se entrega al finalizar"
+                          : " · para enviar con la cotización"}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </QuoteFold>
+
+          <QuoteFold
             title="Panel de control · Propuesta"
             summary="TIR, ROI, Ley 1715 y gráficos para el cliente"
             open={openFolds.propuesta}
@@ -2796,6 +2912,24 @@ function CotizadorInner() {
                 label="Gráficos de flujo y ahorro 25 años"
                 description="Visualización ejecutiva"
               />
+            </div>
+            <p className="mt-5 text-xs font-semibold tracking-wide text-[#8a6b2a] uppercase">
+              Entregables visibles para el cliente
+            </p>
+            <p className="mt-1 text-xs text-[#6d7c74]">
+              Cada interruptor muestra u oculta ese documento en la cotización.
+              Usted sigue pudiendo abrirlos desde Bonos.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {CLIENT_DELIVERABLE_LABELS.map((item) => (
+                <Toggle
+                  key={item.key}
+                  checked={resolveClientDeliverables(toggles)[item.key]}
+                  onChange={(v) => updateDeliverable(item.key, v)}
+                  label={item.label}
+                  description={item.description}
+                />
+              ))}
             </div>
           </QuoteFold>
         </div>
