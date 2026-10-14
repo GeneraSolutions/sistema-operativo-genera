@@ -3,8 +3,8 @@ import type { SavedQuote } from "@/lib/saved-quotes";
 import { mergeQuotes } from "@/lib/saved-quotes";
 import type { SavedVisit } from "@/lib/saved-visits";
 import { mergeVisits } from "@/lib/saved-visits";
-import type { SavedReport } from "@/lib/technical-reports";
-import { mergeReports } from "@/lib/technical-reports";
+import type { PlantProfile, SavedReport } from "@/lib/technical-reports";
+import { mergePlants, mergeReports } from "@/lib/technical-reports";
 
 const QUOTES_KEY = "genera:archivo-quotes";
 const VISITS_KEY = "genera:archivo-visits";
@@ -12,6 +12,7 @@ const QUOTE_IDS_KEY = "genera:archivo-quote-ids";
 const VISIT_IDS_KEY = "genera:archivo-visit-ids";
 const REPORT_IDS_KEY = "genera:archivo-report-ids";
 const REPORTS_KEY = "genera:archivo-reports";
+const PLANTS_KEY = "genera:archivo-plants";
 
 function quoteItemKey(id: string) {
   return `genera:archivo-quote:${id}`;
@@ -190,4 +191,23 @@ export async function removeArchivoVisit(id: string): Promise<SavedVisit[]> {
   );
   await persistSet(VISIT_IDS_KEY, ids);
   return loadArchivoVisits();
+}
+
+export async function loadArchivoPlants(): Promise<PlantProfile[]> {
+  const stored = await persistGet<PlantProfile[]>(PLANTS_KEY);
+  return Array.isArray(stored) ? stored.filter((p) => p?.id) : [];
+}
+
+export async function upsertArchivoPlants(
+  plants: PlantProfile[]
+): Promise<PlantProfile[]> {
+  const merged = mergePlants(await loadArchivoPlants(), plants);
+  await persistSet(PLANTS_KEY, merged);
+  return merged;
+}
+
+export async function removeArchivoPlant(id: string): Promise<PlantProfile[]> {
+  const next = (await loadArchivoPlants()).filter((p) => p.id !== id);
+  await persistSet(PLANTS_KEY, next);
+  return next;
 }

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  loadArchivoPlants,
   loadArchivoQuotes,
   loadArchivoReports,
   loadArchivoVisits,
+  removeArchivoPlant,
   removeArchivoQuote,
   removeArchivoReport,
   removeArchivoVisit,
+  upsertArchivoPlants,
   upsertArchivoQuote,
   upsertArchivoQuotes,
   upsertArchivoReport,
@@ -18,7 +21,7 @@ import { canAccessModule } from "@/lib/auth/roles";
 import { listCustomRoles } from "@/lib/auth/custom-roles";
 import type { SavedQuote } from "@/lib/saved-quotes";
 import type { SavedVisit } from "@/lib/saved-visits";
-import type { SavedReport } from "@/lib/technical-reports";
+import type { PlantProfile, SavedReport } from "@/lib/technical-reports";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,17 +39,19 @@ async function requireArchivo() {
   return { session };
 }
 
+async function payload() {
+  return {
+    quotes: await loadArchivoQuotes(),
+    visits: await loadArchivoVisits(),
+    reports: await loadArchivoReports(),
+    plants: await loadArchivoPlants(),
+  };
+}
+
 export async function GET() {
   const gate = await requireArchivo();
   if ("error" in gate && gate.error) return gate.error;
-  return NextResponse.json(
-    {
-      quotes: await loadArchivoQuotes(),
-      visits: await loadArchivoVisits(),
-      reports: await loadArchivoReports(),
-    },
-    { headers: NO_STORE }
-  );
+  return NextResponse.json(await payload(), { headers: NO_STORE });
 }
 
 export async function POST(req: NextRequest) {
@@ -59,6 +64,7 @@ export async function POST(req: NextRequest) {
     visits?: SavedVisit[];
     report?: SavedReport;
     reports?: SavedReport[];
+    plants?: PlantProfile[];
   };
   const stampQuote = (q: SavedQuote): SavedQuote => ({
     ...q,
@@ -83,14 +89,8 @@ export async function POST(req: NextRequest) {
   if (body.reports?.length) {
     await upsertArchivoReports(body.reports.map(stampReport));
   }
-  return NextResponse.json(
-    {
-      quotes: await loadArchivoQuotes(),
-      visits: await loadArchivoVisits(),
-      reports: await loadArchivoReports(),
-    },
-    { headers: NO_STORE }
-  );
+  if (body.plants?.length) await upsertArchivoPlants(body.plants);
+  return NextResponse.json(await payload(), { headers: NO_STORE });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -100,8 +100,10 @@ export async function DELETE(req: NextRequest) {
   const quoteId = searchParams.get("quote");
   const visitId = searchParams.get("visit");
   const reportId = searchParams.get("report");
+  const plantId = searchParams.get("plant");
   if (quoteId) await removeArchivoQuote(quoteId);
   if (visitId) await removeArchivoVisit(visitId);
   if (reportId) await removeArchivoReport(reportId);
+  if (plantId) await removeArchivoPlant(plantId);
   return NextResponse.json({ ok: true }, { headers: NO_STORE });
 }

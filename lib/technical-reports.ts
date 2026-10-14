@@ -11,6 +11,8 @@ export type ReportStatus = "borrador" | "revisado" | "publicado";
 
 export type CheckStatus = "pendiente" | "ok" | "no" | "na";
 
+export type OmContract = "ninguno" | "preventivo" | "correctivo" | "integral";
+
 export interface PlantProfile {
   id: string;
   clientName: string;
@@ -22,6 +24,12 @@ export interface PlantProfile {
   yearInstalled: string;
   ours: boolean;
   notes: string;
+  contact?: string;
+  contract?: OmContract;
+  intervalMonths?: number;
+  lastMaintenance?: string;
+  nextMaintenance?: string;
+  updatedAt?: string;
 }
 
 export interface ReportPhoto {
@@ -157,6 +165,8 @@ const CHAPTERS: Record<ReportKind, SpecialistId[]> = {
 const PLANTS_KEY = "genera.plants.v1";
 const REPORTS_KEY = "genera.saved-reports.v1";
 export const OPEN_REPORT_KEY = "genera:open-report";
+export const OPEN_OM_PLANT_KEY = "genera:open-om-plant";
+export const OPEN_REPORT_KIND_KEY = "genera:open-report-kind";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -174,6 +184,12 @@ export function emptyPlant(): PlantProfile {
     yearInstalled: "",
     ours: false,
     notes: "",
+    contact: "",
+    contract: "ninguno",
+    intervalMonths: 12,
+    lastMaintenance: "",
+    nextMaintenance: "",
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -246,10 +262,40 @@ export function loadPlants(): PlantProfile[] {
 }
 
 export function upsertPlant(plant: PlantProfile): PlantProfile[] {
+  const stamped = { ...plant, updatedAt: new Date().toISOString() };
   const all = loadPlants();
-  const next = [plant, ...all.filter((p) => p.id !== plant.id)].slice(0, 80);
+  const next = [stamped, ...all.filter((p) => p.id !== stamped.id)].slice(0, 80);
   localStorage.setItem(PLANTS_KEY, JSON.stringify(next));
   return next;
+}
+
+export function deletePlant(id: string): PlantProfile[] {
+  const next = loadPlants().filter((p) => p.id !== id);
+  localStorage.setItem(PLANTS_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function replacePlants(plants: PlantProfile[]): PlantProfile[] {
+  const next = plants.filter((p) => p?.id).slice(0, 80);
+  localStorage.setItem(PLANTS_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function mergePlants(
+  local: PlantProfile[],
+  remote: PlantProfile[]
+): PlantProfile[] {
+  const byId = new Map<string, PlantProfile>();
+  for (const plant of [...remote, ...local]) {
+    if (!plant?.id) continue;
+    const prev = byId.get(plant.id);
+    const prevT = Date.parse(prev?.updatedAt || "") || 0;
+    const nextT = Date.parse(plant.updatedAt || "") || 0;
+    if (!prev || nextT >= prevT) byId.set(plant.id, plant);
+  }
+  return [...byId.values()].sort((a, b) =>
+    (a.clientName || "").localeCompare(b.clientName || "", "es")
+  );
 }
 
 export function loadSavedReports(): SavedReport[] {

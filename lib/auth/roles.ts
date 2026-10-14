@@ -27,6 +27,7 @@ export type AppModule =
   | "cotizador"
   | "visita"
   | "informes"
+  | "om"
   | "inventario"
   | "inteligencia"
   | "equipo"
@@ -36,6 +37,7 @@ export const APP_MODULES: { id: AppModule; label: string }[] = [
   { id: "cotizador", label: "Cotizador" },
   { id: "visita", label: "Visitas técnicas" },
   { id: "informes", label: "Informes técnicos" },
+  { id: "om", label: "O&M" },
   { id: "archivo", label: "Archivo" },
   { id: "inventario", label: "Inventario" },
   { id: "inteligencia", label: "Inteligencia" },
@@ -67,6 +69,7 @@ const MODULE_ROLES: Record<AppModule, string[]> = {
     "sst",
     "comercial",
   ],
+  om: ["ceo", "gerente", "operaciones", "ingenieria", "comercial"],
   inventario: ["ceo", "gerente", "compras", "ingenieria", "contabilidad"],
   inteligencia: [
     "ceo",
@@ -100,10 +103,10 @@ export interface CustomRoleDef {
 export const ROLE_PRESETS: { label: string; modules: AppModule[] }[] = [
   { label: "Auxiliar", modules: ["visita", "informes", "inteligencia"] },
   { label: "Auxiliar eléctrico", modules: ["visita", "informes", "inteligencia"] },
-  { label: "Auxiliar técnico", modules: ["visita", "informes", "inteligencia"] },
+  { label: "Auxiliar técnico", modules: ["visita", "informes", "om", "inteligencia"] },
   {
     label: "Coordinador de proyectos",
-    modules: ["cotizador", "visita", "informes", "inteligencia", "inventario"],
+    modules: ["cotizador", "visita", "informes", "om", "inteligencia", "inventario"],
   },
 ];
 
@@ -144,7 +147,8 @@ export function canAccessModule(
       mods.includes("archivo") ||
       mods.includes("cotizador") ||
       mods.includes("visita") ||
-      mods.includes("informes")
+      mods.includes("informes") ||
+      mods.includes("om")
     );
   }
   if (mods.includes(mod)) return true;
@@ -167,7 +171,8 @@ export function sessionAllowsModule(
         sessionModules.includes("archivo") ||
         sessionModules.includes("cotizador") ||
         sessionModules.includes("visita") ||
-        sessionModules.includes("informes")
+        sessionModules.includes("informes") ||
+        sessionModules.includes("om")
       );
     }
     return canAccessModule(role, "archivo");
@@ -186,6 +191,7 @@ export function moduleFromPath(pathname: string): AppModule | null {
   if (pathname.startsWith("/cotizador")) return "cotizador";
   if (pathname.startsWith("/visita-tecnica")) return "visita";
   if (pathname.startsWith("/informes")) return "informes";
+  if (pathname.startsWith("/om")) return "om";
   if (pathname.startsWith("/inventario")) return "inventario";
   if (pathname.startsWith("/inteligencia")) return "inteligencia";
   if (pathname.startsWith("/equipo")) return "equipo";

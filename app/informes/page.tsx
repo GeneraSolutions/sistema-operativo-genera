@@ -6,6 +6,8 @@ import { ReportDocument } from "@/components/informes/ReportDocument";
 import { loadSpecialistManuals } from "@/lib/specialist-manuals";
 import { compressVisitPhoto } from "@/lib/site-visit";
 import {
+  OPEN_OM_PLANT_KEY,
+  OPEN_REPORT_KIND_KEY,
   OPEN_REPORT_KEY,
   REPORT_KIND_HINTS,
   REPORT_KIND_LABELS,
@@ -21,6 +23,7 @@ import {
   type ReportKind,
   type TechnicalReport,
 } from "@/lib/technical-reports";
+import { markMaintenanceDone } from "@/lib/om";
 
 const KINDS = Object.keys(REPORT_KIND_LABELS) as ReportKind[];
 const CHECK_OPTS: { id: CheckStatus; label: string }[] = [
@@ -51,10 +54,31 @@ export default function InformesPage() {
   useEffect(() => {
     setPlants(loadPlants());
     const openId = sessionStorage.getItem(OPEN_REPORT_KEY);
+    const plantId = sessionStorage.getItem(OPEN_OM_PLANT_KEY);
+    const kind = sessionStorage.getItem(OPEN_REPORT_KIND_KEY) as
+      | ReportKind
+      | null;
     if (openId) {
       sessionStorage.removeItem(OPEN_REPORT_KEY);
       const row = loadSavedReports().find((r) => r.id === openId);
       if (row) setReport(row.report);
+    } else if (plantId) {
+      sessionStorage.removeItem(OPEN_OM_PLANT_KEY);
+      sessionStorage.removeItem(OPEN_REPORT_KIND_KEY);
+      const plant = loadPlants().find((p) => p.id === plantId);
+      const next = emptyReport(
+        kind === "pre-mantenimiento" || kind === "post-mantenimiento"
+          ? kind
+          : "pre-mantenimiento"
+      );
+      if (plant) {
+        next.plant = plant;
+        next.purpose =
+          kind === "post-mantenimiento"
+            ? `Informe post-mantenimiento de ${plant.clientName || "la planta"}.`
+            : `Diagnóstico pre-mantenimiento de ${plant.clientName || "la planta"}.`;
+      }
+      setReport(next);
     }
     setSaved(loadSavedReports());
   }, []);
@@ -141,10 +165,24 @@ export default function InformesPage() {
   }
 
   function saveAll() {
-    upsertPlant(report.plant);
-    setPlants(loadPlants());
-    persist(report);
-    setFlash("Informe guardado en Archivo y planta recordada.");
+    let plant = report.plant;
+    if (report.kind === "post-mantenimiento" && report.visitDate) {
+      plant = markMaintenanceDone(plant, report.visitDate);
+      setReport((prev) => ({ ...prev, plant }));
+    }
+    const nextPlants = upsertPlant(plant);
+    setPlants(nextPlants);
+    void fetch("/api/archivo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plants: nextPlants }),
+    }).catch(() => undefined);
+    persist({ ...report, plant });
+    setFlash(
+      report.kind === "post-mantenimiento"
+        ? "Informe guardado. O&M actualizó último mantenimiento y la próxima fecha."
+        : "Informe guardado en Archivo y planta recordada."
+    );
   }
 
   function publish() {
