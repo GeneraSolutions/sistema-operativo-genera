@@ -248,6 +248,12 @@ export default function ObraPage() {
                       </button>
                     ) : null}
                     <a
+                      href={`/obra/upme?obra=${encodeURIComponent(j.id)}`}
+                      className="text-xs font-semibold text-[#1f6b45] underline"
+                    >
+                      Expediente UPME
+                    </a>
+                    <a
                       href="/om"
                       className="text-xs font-semibold text-[#1f6b45] underline"
                     >
@@ -487,6 +493,130 @@ export default function ObraPage() {
             {tramiteSelect("retie", "RETIE")}
             {tramiteSelect("operadorRed", "Operador de red")}
           </div>
+
+          <div className="mt-5 rounded-2xl border border-[#eee8dc] bg-[#fbfaf6] p-4">
+            <h3 className="text-sm font-semibold">Datos para el certificado UPME</h3>
+            <p className="mt-1 text-xs leading-5 text-[#6d7c74]">
+              El solicitante en Bizagi es el dueño del proyecto. Genera arma el
+              expediente; la radicación la hace quien tiene el usuario SUU.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Tipo de persona</span>
+                <select
+                  className={field}
+                  value={draft.upmePersonType || ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      upmePersonType: e.target.value as ObraJob["upmePersonType"],
+                    }))
+                  }
+                >
+                  <option value="">Seleccionar…</option>
+                  <option value="natural">Natural</option>
+                  <option value="juridica">Jurídica</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">NIT o cédula</span>
+                <input
+                  className={field}
+                  value={draft.upmeNit || ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, upmeNit: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">
+                  Representante / contacto
+                </span>
+                <input
+                  className={field}
+                  value={draft.upmeRepName || ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, upmeRepName: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Correo</span>
+                <input
+                  className={field}
+                  value={draft.upmeEmail || ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, upmeEmail: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Teléfono</span>
+                <input
+                  className={field}
+                  value={draft.upmePhone || ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, upmePhone: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="text-sm sm:col-span-2">
+                <span className="mb-1 block font-medium">Dirección del predio</span>
+                <input
+                  className={field}
+                  value={draft.upmeAddress || ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, upmeAddress: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="text-sm sm:col-span-2">
+                <span className="mb-1 block font-medium">
+                  Radicado registro de generación UPME
+                </span>
+                <input
+                  className={field}
+                  value={draft.upmeRegistroGen || ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, upmeRegistroGen: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Referencia pago tarifa</span>
+                <input
+                  className={field}
+                  value={draft.upmeTarifaRef || ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, upmeTarifaRef: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(draft.upmeTarifaPaid)}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, upmeTarifaPaid: e.target.checked }))
+                  }
+                />
+                Tarifa UPME pagada
+              </label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(draft.upmeCertExistencia)}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      upmeCertExistencia: e.target.checked,
+                    }))
+                  }
+                />
+                Ya tengo certificado de existencia o cédula para adjuntar
+              </label>
+            </div>
+          </div>
           <label className="mt-3 block text-sm">
             <span className="mb-1 block font-medium">Notas de obra</span>
             <textarea
@@ -503,6 +633,22 @@ export default function ObraPage() {
               onClick={saveDraft}
             >
               Guardar obra
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
+              onClick={() => {
+                if (!draft.clientName.trim()) {
+                  setFlash("Indique al menos el cliente.");
+                  return;
+                }
+                const next = upsertObra(draft);
+                setJobs(next);
+                persistCloud(next);
+                router.push(`/obra/upme?obra=${encodeURIComponent(draft.id)}`);
+              }}
+            >
+              Expediente UPME
             </button>
             <button
               type="button"

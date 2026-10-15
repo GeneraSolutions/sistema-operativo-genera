@@ -28,6 +28,16 @@ export interface ObraJob {
   retie: TramiteStatus;
   operadorRed: TramiteStatus;
   notes: string;
+  upmePersonType?: "" | "natural" | "juridica";
+  upmeNit?: string;
+  upmeRepName?: string;
+  upmeEmail?: string;
+  upmePhone?: string;
+  upmeAddress?: string;
+  upmeRegistroGen?: string;
+  upmeTarifaPaid?: boolean;
+  upmeTarifaRef?: string;
+  upmeCertExistencia?: boolean;
   updatedAt: string;
 }
 
@@ -67,6 +77,16 @@ export function emptyObra(): ObraJob {
     retie: "pendiente",
     operadorRed: "pendiente",
     notes: "",
+    upmePersonType: "",
+    upmeNit: "",
+    upmeRepName: "",
+    upmeEmail: "",
+    upmePhone: "",
+    upmeAddress: "",
+    upmeRegistroGen: "",
+    upmeTarifaPaid: false,
+    upmeTarifaRef: "",
+    upmeCertExistencia: false,
     updatedAt: new Date().toISOString(),
   };
 }
