@@ -8,12 +8,12 @@ interface VCardData {
   fullName: string;
   company: string;
   role: string;
-  department: string;
-  phone: string;
-  whatsappNumber: string;
-  email: string;
+  department?: string;
+  phone?: string;
+  whatsappNumber?: string;
+  email?: string;
   website: string;
-  bookingUrl: string;
+  bookingUrl?: string;
   avatarUrl: string;
   logoUrl: string;
   defaultWaMessage: string;
@@ -73,6 +73,27 @@ const PROFILES_DB: Record<string, VCardData> = {
       "Estructuración PPA",
     ],
   },
+  jhons: {
+    firstName: "Jhons",
+    lastName: "Sanchez Ospina",
+    fullName: "Jhons Sanchez Ospina",
+    company: "Genera Solutions SAS",
+    role: "Técnico/Especialista en sistemas fotovoltaicos",
+    phone: "+573142916848",
+    whatsappNumber: "573142916848",
+    website: "https://generasolutions.com",
+    websiteUrl: "https://generasolutions.com",
+    portfolioUrl: "https://generasolutions.com/#portafolio",
+    instagramUrl: "https://instagram.com/",
+    tiktokUrl: "https://tiktok.com/",
+    facebookUrl: "https://facebook.com/",
+    bookingUrl: "https://calendly.com",
+    avatarUrl: "/brand/jhons.jpg",
+    logoUrl: "/brand/logo-genera.png?v=2",
+    defaultWaMessage:
+      "Hola Jhons, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
+    tags: ["Sistemas Fotovoltaicos", "Instalación Solar"],
+  },
 };
 
 function displayHost(url: string): string {
@@ -117,15 +138,15 @@ export default function VCardPage({
   }, [qrOpen]);
 
   const handleDownloadVCF = () => {
+    const phoneLine = profile.phone ? `TEL;TYPE=CELL:${profile.phone}\n` : "";
+    const emailLine = profile.email ? `EMAIL:${profile.email}\n` : "";
     const vcfData = `BEGIN:VCARD
 VERSION:3.0
 N:${profile.lastName};${profile.firstName};;;
 FN:${profile.fullName}
 ORG:${profile.company}
 TITLE:${profile.role}
-TEL;TYPE=CELL:${profile.phone}
-EMAIL:${profile.email}
-URL:${siteUrl}
+${phoneLine}${emailLine}URL:${siteUrl}
 END:VCARD`;
 
     const blob = new Blob([vcfData], { type: "text/vcard;charset=utf-8;" });
@@ -217,7 +238,9 @@ END:VCARD`;
             alt={profile.fullName}
             style={styles.avatar}
           />
-          <span style={styles.department}>{profile.department}</span>
+          {profile.department ? (
+            <span style={styles.department}>{profile.department}</span>
+          ) : null}
           <h1 style={styles.name}>{profile.fullName}</h1>
           <p style={styles.role}>{profile.role}</p>
           <p style={styles.company}>{profile.company}</p>
@@ -232,33 +255,37 @@ END:VCARD`;
             Guardar en Contactos (.VCF)
           </button>
 
-          <a
-            href={`https://wa.me/${profile.whatsappNumber}?text=${encodeURIComponent(
-              profile.defaultWaMessage
-            )}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={styles.btnSecondary}
-          >
-            <div>
-              <strong>Enviar WhatsApp</strong>
-              <div style={styles.btnSubtitle}>Respuesta comercial directa</div>
-            </div>
-            <span>WhatsApp</span>
-          </a>
+          {profile.whatsappNumber ? (
+            <a
+              href={`https://wa.me/${profile.whatsappNumber}?text=${encodeURIComponent(
+                profile.defaultWaMessage
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={styles.btnSecondary}
+            >
+              <div>
+                <strong>Enviar WhatsApp</strong>
+                <div style={styles.btnSubtitle}>Respuesta comercial directa</div>
+              </div>
+              <span>WhatsApp</span>
+            </a>
+          ) : null}
 
-          <a
-            href={profile.bookingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={styles.btnSecondary}
-          >
-            <div>
-              <strong>Agendar reunión</strong>
-              <div style={styles.btnSubtitle}>Abrir calendario en línea</div>
-            </div>
-            <span>Calendly</span>
-          </a>
+          {profile.bookingUrl ? (
+            <a
+              href={profile.bookingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={styles.btnSecondary}
+            >
+              <div>
+                <strong>Agendar reunión</strong>
+                <div style={styles.btnSubtitle}>Abrir calendario en línea</div>
+              </div>
+              <span>Calendly</span>
+            </a>
+          ) : null}
 
           {profile.portfolioUrl ? (
             <a
