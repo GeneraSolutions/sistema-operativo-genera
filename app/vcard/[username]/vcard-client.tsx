@@ -32,8 +32,8 @@ const GENERA_PUBLIC = {
   websiteUrl: "https://generasolutions.com",
   portfolioUrl: "https://portafolio-genera.vercel.app",
   instagramUrl: "https://www.instagram.com/generasolutions/",
-  tiktokUrl: "https://www.tiktok.com/@genera.solution",
-  facebookUrl: "https://www.facebook.com/generasolutions",
+  tiktokUrl: "https://www.tiktok.com/@genera.solutions",
+  facebookUrl: "https://www.facebook.com/share/1WTxZpzd4b/",
   bookingUrl: "https://calendly.com",
   logoUrl: "/brand/logo-genera.png?v=2",
 };
