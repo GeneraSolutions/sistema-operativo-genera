@@ -85,7 +85,7 @@ const PROFILES_DB: Record<string, VCardData> = {
     phone: "+573142916848",
     whatsappNumber: "573142916848",
     ...GENERA_PUBLIC,
-    avatarUrl: "/brand/jhons.jpg?v=2",
+    avatarUrl: "/brand/jhons.jpg?v=3",
     defaultWaMessage:
       "Hola Jhons, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: ["Sistemas Fotovoltaicos", "Instalación Solar"],
