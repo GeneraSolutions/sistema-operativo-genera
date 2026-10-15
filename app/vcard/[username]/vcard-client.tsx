@@ -26,6 +26,18 @@ interface VCardData {
   websiteUrl?: string;
 }
 
+const GENERA_PUBLIC = {
+  company: "Genera Solutions SAS",
+  website: "https://generasolutions.com",
+  websiteUrl: "https://generasolutions.com",
+  portfolioUrl: "https://portafolio-genera.vercel.app",
+  instagramUrl: "https://www.instagram.com/generasolutions/",
+  tiktokUrl: "https://www.tiktok.com/@genera.solution",
+  facebookUrl: "https://www.facebook.com/generasolutions",
+  bookingUrl: "https://calendly.com",
+  logoUrl: "/brand/logo-genera.png?v=2",
+};
+
 const PROFILES_DB: Record<string, VCardData> = {
   victor: {
     firstName: "Victor",
@@ -56,15 +68,8 @@ const PROFILES_DB: Record<string, VCardData> = {
     phone: "+573174553288",
     whatsappNumber: "573174553288",
     email: "camilo@generasolutions.com",
-    website: "https://generasolutions.com",
-    websiteUrl: "https://generasolutions.com",
-    portfolioUrl: "https://generasolutions.com/#portafolio",
-    instagramUrl: "https://instagram.com/",
-    tiktokUrl: "https://tiktok.com/",
-    facebookUrl: "https://facebook.com/",
-    bookingUrl: "https://calendly.com",
+    ...GENERA_PUBLIC,
     avatarUrl: "/brand/camilo.jpg",
-    logoUrl: "/brand/logo-genera.png?v=2",
     defaultWaMessage:
       "Hola Camilo, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: [
@@ -81,15 +86,8 @@ const PROFILES_DB: Record<string, VCardData> = {
     role: "Técnico/Especialista en sistemas fotovoltaicos",
     phone: "+573142916848",
     whatsappNumber: "573142916848",
-    website: "https://generasolutions.com",
-    websiteUrl: "https://generasolutions.com",
-    portfolioUrl: "https://generasolutions.com/#portafolio",
-    instagramUrl: "https://instagram.com/",
-    tiktokUrl: "https://tiktok.com/",
-    facebookUrl: "https://facebook.com/",
-    bookingUrl: "https://calendly.com",
+    ...GENERA_PUBLIC,
     avatarUrl: "/brand/jhons.jpg",
-    logoUrl: "/brand/logo-genera.png?v=2",
     defaultWaMessage:
       "Hola Jhons, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: ["Sistemas Fotovoltaicos", "Instalación Solar"],
