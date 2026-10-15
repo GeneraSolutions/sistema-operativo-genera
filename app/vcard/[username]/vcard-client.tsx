@@ -64,7 +64,7 @@ const PROFILES_DB: Record<string, VCardData> = {
     fullName: "Camilo Rendón Chacón",
     role: "CEO y Director de Proyectos",
     department: "Dirección Ejecutiva",
-    phone: "+573174553288",
+    phone: "317 455 3288",
     whatsappNumber: "573174553288",
     email: "camilo@generasolutions.com",
     ...GENERA_PUBLIC,
