@@ -43,11 +43,12 @@ export default function LoginPage() {
         <p className="mt-2 text-sm text-[#4d5c55]">
           Ingrese con su usuario y clave. El acceso depende de su cargo.
         </p>
-        <form onSubmit={onSubmit} className="mt-6 space-y-3">
+        <form onSubmit={onSubmit} className="mt-6 space-y-3" autoComplete="off">
           <label className="block text-sm">
             <span className="mb-1 block font-medium">Usuario</span>
             <input
-              autoComplete="username"
+              name="usuario"
+              autoComplete="off"
               className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -57,7 +58,8 @@ export default function LoginPage() {
             <span className="mb-1 block font-medium">Clave</span>
             <input
               type="password"
-              autoComplete="current-password"
+              name="clave"
+              autoComplete="new-password"
               className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -74,10 +76,6 @@ export default function LoginPage() {
             {loading ? "Ingresando…" : "Ingresar"}
           </button>
         </form>
-        <p className="mt-4 text-[11px] leading-5 text-[#6d7c74]">
-          Primer ingreso del CEO: usuario <strong>camilo</strong> · clave{" "}
-          <strong>GeneraCEO2026</strong>. Cámbiela en Equipo después de entrar.
-        </p>
       </div>
     </div>
   );

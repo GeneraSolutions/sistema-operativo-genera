@@ -47,7 +47,7 @@ export function UserManual({ proposal: p }: { proposal: EpcProposal }) {
               Contactos GENERA
             </p>
             <p className="mt-3 text-sm leading-6 text-[#c9d7cf]">
-              Soporte: 317 455 3288 · 302 106 6719
+              Soporte: 317 455 3288
               <br />
               Correo: info@generasolutions.co
               <br />

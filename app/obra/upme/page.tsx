@@ -59,11 +59,11 @@ function UpmeInner() {
     );
   }
 
-  const { job } = pack;
+  const { job, pasteText } = pack;
 
   async function copyPaste() {
     try {
-      await navigator.clipboard.writeText(pack.pasteText);
+      await navigator.clipboard.writeText(pasteText);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2500);
     } catch {
@@ -315,7 +315,7 @@ function UpmeInner() {
           </section>
         </div>
         <footer className="mt-8 pb-8 text-center text-xs leading-5 text-[#6d7c74] print:mt-6">
-          Genera Solutions SAS · 317 455 3288 · 302 106 6719
+          Genera Solutions SAS · 317 455 3288
           <br />
           www.generasolutions.com.co
         </footer>

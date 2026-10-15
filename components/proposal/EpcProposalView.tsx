@@ -573,7 +573,7 @@ export function EpcProposalView({
             </p>
             <p>
               <span className="block text-xs text-[#6b7c99]">Contacto</span>
-              317 455 3288 · 302 106 6719
+              317 455 3288
             </p>
           </div>
           <p className="mt-6 text-xs text-[#6b7c99]">

@@ -347,7 +347,7 @@ export function QuoteExplainer({ proposal: p }: { proposal: EpcProposal }) {
         </p>
         <p className="mt-4 border-t border-white/15 pt-4 text-sm leading-7 text-white">
           Autorice el inicio hoy. Una llamada al{" "}
-          <strong>317 455 3288</strong> · <strong>302 106 6719</strong> basta
+          <strong>317 455 3288</strong> basta
           para confirmar el cierre, bloquear el suministro y fijar fecha de
           montaje. El resto lo ejecuta Genera.
         </p>

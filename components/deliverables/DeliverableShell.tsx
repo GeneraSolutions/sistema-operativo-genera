@@ -67,7 +67,7 @@ export function DeliverableShell({
           <div className="mt-8 space-y-10">{children}</div>
         </div>
         <footer className="mt-8 pb-8 text-center text-xs leading-5 text-[#6d7c74] print:mt-6">
-          Genera Solutions SAS · 317 455 3288 · 302 106 6719
+          Genera Solutions SAS · 317 455 3288
           <br />
           www.generasolutions.com.co
         </footer>
