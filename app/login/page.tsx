@@ -22,7 +22,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo ingresar");
       const next = new URLSearchParams(window.location.search).get("next");
-      window.location.href = next || data.home || "/cotizador";
+      window.location.href = next || data.home || "/inicio";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
     } finally {

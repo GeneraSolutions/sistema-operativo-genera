@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import {
   OBRA_STATUS_LABELS,
+  OPEN_OBRA_KEY,
   TRAMITE_LABELS,
   deleteObra,
   emptyObra,
@@ -56,7 +57,14 @@ export default function ObraPage() {
   useEffect(() => {
     setQuotes(loadSavedQuotes());
     setVisits(loadSavedVisits());
-    setJobs(loadObras());
+    const local = loadObras();
+    setJobs(local);
+    const openId = sessionStorage.getItem(OPEN_OBRA_KEY);
+    if (openId) {
+      const found = local.find((j) => j.id === openId);
+      if (found) setDraft({ ...emptyObra(), ...found });
+      sessionStorage.removeItem(OPEN_OBRA_KEY);
+    }
     void fetch("/api/archivo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -64,6 +72,10 @@ export default function ObraPage() {
         const merged = mergeObras(loadObras(), data.obras);
         replaceObras(merged);
         setJobs(merged);
+        const stillOpen = openId
+          ? merged.find((j) => j.id === openId)
+          : undefined;
+        if (stillOpen) setDraft({ ...emptyObra(), ...stillOpen });
       })
       .catch(() => undefined);
   }, []);

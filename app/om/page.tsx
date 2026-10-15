@@ -58,6 +58,12 @@ export default function OmPage() {
   useEffect(() => {
     const local = loadPlants();
     setPlants(local);
+    const openId = sessionStorage.getItem(OPEN_OM_PLANT_KEY);
+    if (openId) {
+      const found = local.find((p) => p.id === openId);
+      if (found) setDraft({ ...emptyPlant(), ...found });
+      sessionStorage.removeItem(OPEN_OM_PLANT_KEY);
+    }
     void fetch("/api/archivo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -65,6 +71,10 @@ export default function OmPage() {
         const merged = mergePlants(loadPlants(), data.plants);
         replacePlants(merged);
         setPlants(merged);
+        const stillOpen = openId
+          ? merged.find((p) => p.id === openId)
+          : undefined;
+        if (stillOpen) setDraft({ ...emptyPlant(), ...stillOpen });
       })
       .catch(() => undefined);
   }, []);

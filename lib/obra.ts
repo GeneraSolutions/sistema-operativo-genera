@@ -32,6 +32,7 @@ export interface ObraJob {
 }
 
 const KEY = "genera.obra.v1";
+export const OPEN_OBRA_KEY = "genera:open-obra";
 
 export const OBRA_STATUS_LABELS: Record<ObraStatus, string> = {
   "por-iniciar": "Por iniciar",

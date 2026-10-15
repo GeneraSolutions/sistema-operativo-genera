@@ -23,6 +23,12 @@ import {
   getSavedVisit,
   saveVisitSnapshot,
 } from "@/lib/saved-visits";
+import {
+  OPEN_LEAD_KEY,
+  attachVisitToLead,
+  loadLeads,
+  persistLeadsCloud,
+} from "@/lib/pipeline";
 
 const inputClass =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
@@ -58,6 +64,17 @@ export default function VisitaTecnicaPage() {
       setVisit(stored.visit);
       setLinked(stored.linked);
     }
+    const leadId = sessionStorage.getItem(OPEN_LEAD_KEY);
+    if (leadId && !openId) {
+      const lead = loadLeads().find((l) => l.id === leadId);
+      if (lead) {
+        setVisit((prev) => ({
+          ...prev,
+          clientName: lead.clientName || prev.clientName,
+          location: lead.siteName || lead.city || prev.location,
+        }));
+      }
+    }
     setHydrated(true);
   }, []);
 
@@ -83,6 +100,12 @@ export default function VisitaTecnicaPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ visit: archived }),
       });
+      const leadId = sessionStorage.getItem(OPEN_LEAD_KEY);
+      if (leadId) {
+        const leads = attachVisitToLead(leadId, archived.id);
+        persistLeadsCloud(leads);
+        sessionStorage.removeItem(OPEN_LEAD_KEY);
+      }
       setFlash(
         res.ok
           ? "Visita técnica guardada. Ya aparece en Archivo en todos los equipos."

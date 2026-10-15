@@ -24,6 +24,7 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 export type AppModule =
+  | "pipeline"
   | "cotizador"
   | "visita"
   | "informes"
@@ -35,6 +36,7 @@ export type AppModule =
   | "archivo";
 
 export const APP_MODULES: { id: AppModule; label: string }[] = [
+  { id: "pipeline", label: "Pipeline comercial" },
   { id: "cotizador", label: "Cotizador" },
   { id: "visita", label: "Visitas técnicas" },
   { id: "informes", label: "Informes técnicos" },
@@ -47,6 +49,7 @@ export const APP_MODULES: { id: AppModule; label: string }[] = [
 ];
 
 const MODULE_ROLES: Record<AppModule, string[]> = {
+  pipeline: ["ceo", "gerente", "comercial"],
   cotizador: [
     "ceo",
     "gerente",
@@ -117,6 +120,7 @@ export const ROLE_PRESETS: { label: string; modules: AppModule[] }[] = [
   {
     label: "Coordinador de proyectos",
     modules: [
+      "pipeline",
       "cotizador",
       "visita",
       "informes",
@@ -167,7 +171,8 @@ export function canAccessModule(
       mods.includes("visita") ||
       mods.includes("informes") ||
       mods.includes("om") ||
-      mods.includes("obra")
+      mods.includes("obra") ||
+      mods.includes("pipeline")
     );
   }
   if (mods.includes(mod)) return true;
@@ -192,7 +197,8 @@ export function sessionAllowsModule(
         sessionModules.includes("visita") ||
         sessionModules.includes("informes") ||
         sessionModules.includes("om") ||
-        sessionModules.includes("obra")
+        sessionModules.includes("obra") ||
+        sessionModules.includes("pipeline")
       );
     }
     return canAccessModule(role, "archivo");
@@ -208,6 +214,7 @@ export function roleLabel(role: string, custom: CustomRoleDef[] = []): string {
 }
 
 export function moduleFromPath(pathname: string): AppModule | null {
+  if (pathname.startsWith("/pipeline")) return "pipeline";
   if (pathname.startsWith("/cotizador")) return "cotizador";
   if (pathname.startsWith("/visita-tecnica")) return "visita";
   if (pathname.startsWith("/informes")) return "informes";
@@ -221,13 +228,8 @@ export function moduleFromPath(pathname: string): AppModule | null {
 }
 
 export function defaultHomeForRole(
-  role: string,
-  custom: CustomRoleDef[] = []
+  _role?: string,
+  _custom: CustomRoleDef[] = []
 ): string {
-  const mods = modulesForRole(role, custom);
-  if (mods.includes("cotizador")) return "/cotizador";
-  if (mods.includes("inteligencia")) return "/inteligencia";
-  if (mods.includes("visita")) return "/visita-tecnica";
-  if (mods.includes("inventario")) return "/inventario";
-  return "/inteligencia";
+  return "/inicio";
 }

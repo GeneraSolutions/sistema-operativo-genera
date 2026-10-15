@@ -6,13 +6,20 @@ import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import {
   ROLE_LABELS,
-  defaultHomeForRole,
   sessionAllowsModule,
   type AppModule,
   type Role,
 } from "@/lib/auth/roles";
 
-const NAV: { href: string; label: string; hint: string; module: AppModule }[] = [
+const NAV: {
+  href: string;
+  label: string;
+  hint: string;
+  module?: AppModule;
+  always?: boolean;
+}[] = [
+  { href: "/inicio", label: "Hoy", hint: "Qué está caliente", always: true },
+  { href: "/pipeline", label: "Pipeline", hint: "Leads y cierre", module: "pipeline" },
   { href: "/cotizador", label: "Cotizador", hint: "Paramétrico", module: "cotizador" },
   { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", module: "visita" },
   { href: "/informes", label: "Informes", hint: "Inspección y O&M", module: "informes" },
@@ -54,6 +61,8 @@ export function AppShell({
   }, []);
 
   const nav = NAV.filter((item) => {
+    if (item.always) return true;
+    if (!item.module) return true;
     if (!me) return item.module !== "equipo";
     return sessionAllowsModule(item.module, me.role, me.modules);
   });
@@ -71,7 +80,7 @@ export function AppShell({
             <div className="flex min-w-0 items-center gap-3">
               <BrandLogo height={52} />
               <Link
-                href={me ? defaultHomeForRole(me.role) : "/inteligencia"}
+                href="/inicio"
                 className="group min-w-0"
               >
                 <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d4b46a] uppercase">

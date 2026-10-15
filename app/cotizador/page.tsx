@@ -58,6 +58,11 @@ import {
 } from "@/lib/saved-quotes";
 import { OPEN_QUOTE_KEY } from "@/lib/saved-visits";
 import {
+  OPEN_LEAD_KEY,
+  attachQuoteToLead,
+  persistLeadsCloud,
+} from "@/lib/pipeline";
+import {
   applyVisitToAddons,
   applyVisitToQuoteLines,
   isVisitLockedLineKey,
@@ -357,6 +362,8 @@ function CotizadorInner() {
     if (ley === "0" || ley === "false") setApplyLey1715(false);
     const client = searchParams.get("cliente");
     if (client) setClientName(client);
+    const cityParam = searchParams.get("ciudad");
+    if (cityParam) setClientCity(cityParam);
 
     setKits(loadKits());
     const localQuotes = loadSavedQuotes();
@@ -856,6 +863,12 @@ function CotizadorInner() {
         setSaveFlash(
           "Cotización guardada. Ya aparece en Archivo en todos los equipos."
         );
+        const leadId = sessionStorage.getItem(OPEN_LEAD_KEY);
+        if (leadId) {
+          const leads = attachQuoteToLead(leadId, saved.id, saved.name);
+          persistLeadsCloud(leads);
+          sessionStorage.removeItem(OPEN_LEAD_KEY);
+        }
       }
     } catch {
       setSaveFlash(
