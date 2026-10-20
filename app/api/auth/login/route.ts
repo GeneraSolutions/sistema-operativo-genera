@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { username?: string; password?: string };
     const username = body.username?.trim() ?? "";
-    const password = body.password ?? "";
+    const password = body.password?.trim() ?? "";
     if (!username || !password) {
       return NextResponse.json(
         { error: "Usuario y clave son obligatorios." },

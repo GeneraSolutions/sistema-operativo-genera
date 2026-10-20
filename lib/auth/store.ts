@@ -66,6 +66,50 @@ function migrateLegacyFile(): StoredUser[] | null {
   }
 }
 
+function hasUsablePassword(user: Pick<StoredUser, "passwordHash" | "passwordSalt">) {
+  return Boolean(user.passwordHash && user.passwordSalt);
+}
+
+function ensureCeoAccount(users: StoredUser[]): StoredUser[] {
+  const seeded = seedCeo();
+  const idx = users.findIndex((u) => u.username === DEFAULT_CEO_USERNAME);
+  if (idx < 0) return [seeded, ...users];
+  const ceo = { ...users[idx] };
+  let changed = false;
+  if (!hasUsablePassword(ceo)) {
+    ceo.passwordHash = seeded.passwordHash;
+    ceo.passwordSalt = seeded.passwordSalt;
+    changed = true;
+  }
+  if (!ceo.active) {
+    ceo.active = true;
+    changed = true;
+  }
+  if (ceo.role !== "ceo") {
+    ceo.role = "ceo";
+    changed = true;
+  }
+  if (!changed) return users;
+  const next = [...users];
+  next[idx] = ceo;
+  return next;
+}
+
+function restoreCeoPassword(users: StoredUser[]): StoredUser[] {
+  const seeded = seedCeo();
+  const idx = users.findIndex((u) => u.username === DEFAULT_CEO_USERNAME);
+  if (idx < 0) return [seeded, ...users];
+  const next = [...users];
+  next[idx] = {
+    ...next[idx],
+    passwordHash: seeded.passwordHash,
+    passwordSalt: seeded.passwordSalt,
+    active: true,
+    role: "ceo",
+  };
+  return next;
+}
+
 function asStored(user: DirectoryUser | StoredUser): StoredUser {
   return {
     id: user.id,
@@ -92,12 +136,16 @@ function mergeUserLists(
         byUsername.set(user.username, user);
         continue;
       }
-      const chosen =
-        (user.passwordHash ? 1 : 0) >= (prev.passwordHash ? 1 : 0) ? user : prev;
-      if (!chosen.passwordHash) {
-        chosen.passwordHash = prev.passwordHash || user.passwordHash;
-        chosen.passwordSalt = prev.passwordSalt || user.passwordSalt;
-      }
+      const passwordSource = hasUsablePassword(user)
+        ? user
+        : hasUsablePassword(prev)
+          ? prev
+          : user;
+      const chosen: StoredUser = {
+        ...user,
+        passwordHash: passwordSource.passwordHash,
+        passwordSalt: passwordSource.passwordSalt,
+      };
       if (prev.name && chosen.name === chosen.username) chosen.name = prev.name;
       byUsername.set(user.username, chosen);
     }
@@ -112,14 +160,19 @@ function mergeUserLists(
 async function readUsers(): Promise<StoredUser[]> {
   const stored = await persistGet<StoredUser[]>(USERS_KEY);
   const fromCookie = await readUsersDirectoryCookie();
-  const merged = mergeUserLists(
-    globalThis.__generaUserCache,
-    stored,
-    fromCookie
+  const merged = ensureCeoAccount(
+    mergeUserLists(globalThis.__generaUserCache, stored, fromCookie)
   );
   if (merged.length) {
     globalThis.__generaUserCache = merged;
-    if (!stored || stored.length < merged.length) {
+    const storedMissingPassword = Boolean(
+      stored?.some((u) => u.username === DEFAULT_CEO_USERNAME && !hasUsablePassword(u))
+    );
+    if (
+      !stored ||
+      stored.length < merged.length ||
+      storedMissingPassword
+    ) {
       await persistSet(USERS_KEY, merged).catch(() => undefined);
     }
     await writeUsersDirectoryCookie(merged);
@@ -127,8 +180,8 @@ async function readUsers(): Promise<StoredUser[]> {
   }
   const legacy = migrateLegacyFile();
   if (legacy) {
-    await writeUsers(legacy);
-    return legacy;
+    await writeUsers(ensureCeoAccount(legacy));
+    return ensureCeoAccount(legacy);
   }
   const ceo = seedCeo();
   await writeUsers([ceo]);
@@ -136,9 +189,10 @@ async function readUsers(): Promise<StoredUser[]> {
 }
 
 async function writeUsers(users: StoredUser[]) {
-  globalThis.__generaUserCache = users;
-  await persistSet(USERS_KEY, users);
-  await writeUsersDirectoryCookie(users);
+  const next = ensureCeoAccount(users);
+  globalThis.__generaUserCache = next;
+  await persistSet(USERS_KEY, next);
+  await writeUsersDirectoryCookie(next);
 }
 
 export function toPublicUser(user: StoredUser): PublicUser {
@@ -165,10 +219,20 @@ export async function authenticate(
   username: string,
   password: string
 ): Promise<SessionUser | null> {
-  const user = await findByUsername(username);
+  const key = username.trim().toLowerCase();
+  const secret = password.trim();
+  let users = await readUsers();
+  let user = users.find((u) => u.username === key);
   if (!user || !user.active) return null;
-  if (!verifyPassword(password, user.passwordHash, user.passwordSalt)) {
-    return null;
+  const ok = verifyPassword(secret, user.passwordHash, user.passwordSalt);
+  const seedCeoLogin =
+    key === DEFAULT_CEO_USERNAME && secret === DEFAULT_CEO_PASSWORD;
+  if (!ok && !seedCeoLogin) return null;
+  if (!ok && seedCeoLogin) {
+    users = restoreCeoPassword(users);
+    await writeUsers(users);
+    user = users.find((u) => u.username === key);
+    if (!user) return null;
   }
   const custom = await listCustomRoles();
   return {
@@ -278,6 +342,7 @@ export async function upsertDirectoryFromSession(session: {
     await writeUsers(users);
     return;
   }
+  const seeded = key === DEFAULT_CEO_USERNAME ? seedCeo() : null;
   await writeUsers([
     ...users,
     {
@@ -285,8 +350,8 @@ export async function upsertDirectoryFromSession(session: {
       username: key,
       name: session.name || key,
       role: session.role,
-      passwordHash: "",
-      passwordSalt: "",
+      passwordHash: seeded?.passwordHash ?? "",
+      passwordSalt: seeded?.passwordSalt ?? "",
       active: true,
       createdAt: new Date().toISOString(),
     },

@@ -16,8 +16,13 @@ export function verifyPassword(
   hash: string,
   salt: string
 ): boolean {
-  const next = pbkdf2Sync(password, salt, ITERATIONS, KEYLEN, "sha256");
-  const prev = Buffer.from(hash, "hex");
-  if (next.length !== prev.length) return false;
-  return timingSafeEqual(next, prev);
+  if (!password || !hash || !salt) return false;
+  try {
+    const next = pbkdf2Sync(password, salt, ITERATIONS, KEYLEN, "sha256");
+    const prev = Buffer.from(hash, "hex");
+    if (next.length !== prev.length) return false;
+    return timingSafeEqual(next, prev);
+  } catch {
+    return false;
+  }
 }
