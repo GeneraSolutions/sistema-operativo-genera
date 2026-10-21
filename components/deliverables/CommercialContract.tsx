@@ -452,7 +452,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           diez (10) días hábiles desde el requerimiento escrito. Si el Cliente
           desiste sin causa después del anticipo o del pedido de equipos, y
           antes de la puesta en operación, Genera Solutions SAS retiene los
-          costos ya comprometidos y hasta el treinta por ciento (30 %) del valor
+          costos ya comprometidos y hasta el cincuenta por ciento (50 %) del valor
           del contrato como cláusula penal, sin perjuicio de mayores daños
           demostrados. Si el sistema ya está en operación y el Cliente pide
           cancelar, liquida el 100 % del valor pactado. Lo pagado de más, si lo
