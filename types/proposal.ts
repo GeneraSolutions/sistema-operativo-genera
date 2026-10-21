@@ -44,7 +44,12 @@ export interface TaxIncentives {
   panelsIvaExclusion: boolean;
 }
 
-export type PaymentKind = "two_shot" | "three_shot" | "financed" | "ppa";
+export type PaymentKind =
+  | "one_shot"
+  | "two_shot"
+  | "three_shot"
+  | "financed"
+  | "ppa";
 
 export interface PaymentInstallment {
   key: string;

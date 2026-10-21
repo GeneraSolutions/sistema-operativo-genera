@@ -298,7 +298,11 @@ function CotizadorEquiposInner() {
     setValidUntilDays(q.validUntilDays ?? 15);
     setIssuedAt(q.issuedAt || localISODate());
     setAdvancePercent(q.advancePercent || 50);
-    setPaymentKind(q.paymentKind ?? "two_shot");
+    setPaymentKind(
+      q.paymentKind === "one_shot" || q.paymentKind === "two_shot"
+        ? q.paymentKind
+        : "two_shot"
+    );
     setCommercialProposalId(q.commercialProposalId ?? "");
     if (q.toggles) setToggles(q.toggles);
     if (q.partnerCompanyName) setPartnerCompanyName(q.partnerCompanyName);
@@ -732,22 +736,48 @@ function CotizadorEquiposInner() {
 
           <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
             <h2 className="font-semibold">Pago y vigencia</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(
+                [
+                  ["one_shot", "1 contado"],
+                  ["two_shot", "2 contados"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                    paymentKind === value
+                      ? "bg-[#0f2a1f] text-white"
+                      : "border border-[#d8d2c4] bg-white text-[#12241c]"
+                  }`}
+                  onClick={() => {
+                    setPaymentKind(value);
+                    setAdvancePercent(value === "one_shot" ? 100 : 50);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                Anticipo %
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  className={`${field} mt-1`}
-                  value={advancePercent}
-                  onChange={(e) =>
-                    setAdvancePercent(
-                      Math.min(100, Math.max(0, Number(e.target.value) || 0))
-                    )
-                  }
-                />
-              </label>
+              {paymentKind === "two_shot" ? (
+                <label className="block text-sm">
+                  Anticipo %
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className={`${field} mt-1`}
+                    value={advancePercent}
+                    onChange={(e) =>
+                      setAdvancePercent(
+                        Math.min(100, Math.max(0, Number(e.target.value) || 0))
+                      )
+                    }
+                  />
+                </label>
+              ) : null}
               <label className="block text-sm">
                 Vigencia (días)
                 <input
@@ -771,19 +801,6 @@ function CotizadorEquiposInner() {
                   value={issuedAt}
                   onChange={(e) => setIssuedAt(e.target.value || localISODate())}
                 />
-              </label>
-              <label className="block text-sm">
-                Modalidad
-                <select
-                  className={`${field} mt-1`}
-                  value={paymentKind}
-                  onChange={(e) =>
-                    setPaymentKind(e.target.value as PaymentKind)
-                  }
-                >
-                  <option value="two_shot">Dos contados</option>
-                  <option value="three_shot">Tres contados</option>
-                </select>
               </label>
             </div>
           </section>

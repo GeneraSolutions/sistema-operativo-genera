@@ -42,6 +42,27 @@ export function buildPaymentSchedule(input: PaymentInput): PaymentSchedule {
   const total = Math.max(0, input.totalCOP);
   const kind = input.kind;
 
+  if (kind === "one_shot") {
+    return {
+      kind,
+      modality: "Un contado",
+      summary: "100% contra aceptación de la oferta",
+      installments: [
+        {
+          key: "full",
+          label: "Contado",
+          percent: 100,
+          amountCOP: total,
+          hint: "Pago único al aceptar la cotización",
+        },
+      ],
+      advancePercent: 100,
+      deliveryPercent: 0,
+      advanceCOP: total,
+      deliveryCOP: 0,
+    };
+  }
+
   if (kind === "three_shot") {
     const start = clampPct(input.threeStartPercent);
     const equip = clampPct(input.threeEquipmentPercent, 0, 100 - start);

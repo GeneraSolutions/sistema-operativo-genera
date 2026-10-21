@@ -206,6 +206,16 @@ export function buildEquipmentProposal(input: {
     ppaYears: 0,
     ppaPricePerKWhCOP: 0,
   });
+  if (payment.kind === "one_shot") {
+    payment.installments = payment.installments.map((row) =>
+      row.key === "full"
+        ? {
+            ...row,
+            hint: "Pago único para confirmar y despachar el pedido",
+          }
+        : row
+    );
+  }
   if (payment.kind === "two_shot") {
     payment.installments = payment.installments.map((row) =>
       row.key === "start"
