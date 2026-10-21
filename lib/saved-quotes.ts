@@ -1,3 +1,7 @@
+import {
+  compactClientParty,
+  type ClientParty,
+} from "@/lib/client-party";
 import type { EnergyBill } from "@/lib/energy-bill";
 import type { AddonState } from "@/lib/eng-labor-addons";
 import type {
@@ -7,15 +11,22 @@ import type {
   QuoteQuantities,
 } from "@/lib/quote-engine";
 import type { SystemWarranties } from "@/lib/warranties";
-import type { PaymentKind, ProposalToggles } from "@/types/proposal";
+import type { PaymentKind, ProposalKind, ProposalToggles } from "@/types/proposal";
 import type { AliadoTripId } from "@/lib/aliado-install";
 
 export interface SavedQuote {
   id: string;
   name: string;
   savedAt: string;
+  kind?: ProposalKind;
   clientName: string;
   clientCity: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  clientAddress?: string;
+  clientNit?: string;
+  clientDv?: string;
+  clientParty?: ClientParty;
   systemKwp: number;
   peakSunHours: number;
   energyTariff: number;
@@ -176,6 +187,7 @@ function compactQuote(quote: SavedQuote): SavedQuote {
   return {
     ...quote,
     siteImageDataUrl: image.length > 120_000 ? undefined : quote.siteImageDataUrl,
+    clientParty: compactClientParty(quote.clientParty),
   };
 }
 
@@ -226,18 +238,29 @@ export function isAliadoQuote(q: SavedQuote) {
 
 export function quotesForCotizador(
   quotes: SavedQuote[],
-  opts: { aliado: boolean; username?: string }
+  opts: { aliado: boolean; username?: string; kind?: ProposalKind }
 ): SavedQuote[] {
-  if (opts.aliado) {
-    return quotes.filter(
-      (q) =>
-        isAliadoQuote(q) &&
-        (!opts.username ||
-          q.savedBy === opts.username ||
-          !q.savedBy)
-    );
+  const channel = opts.aliado
+    ? quotes.filter(
+        (q) =>
+          isAliadoQuote(q) &&
+          (!opts.username || q.savedBy === opts.username || !q.savedBy)
+      )
+    : quotes.filter((q) => !isAliadoQuote(q));
+  if (opts.kind === "equipos") {
+    return channel.filter((q) => q.kind === "equipos");
   }
-  return quotes.filter((q) => !isAliadoQuote(q));
+  if (opts.kind === "epc") {
+    return channel.filter((q) => q.kind !== "equipos");
+  }
+  return channel;
+}
+
+export function quoteDeskPath(quote: SavedQuote): string {
+  const q = encodeURIComponent(quote.id);
+  return quote.kind === "equipos"
+    ? `/cotizador/equipos?quote=${q}`
+    : `/cotizador?quote=${q}`;
 }
 
 export function loadSavedQuotes(): SavedQuote[] {

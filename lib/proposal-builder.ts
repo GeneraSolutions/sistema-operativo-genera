@@ -19,6 +19,12 @@ export interface BuildProposalInput {
   id?: string;
   clientName: string;
   clientCity: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  clientAddress?: string;
+  clientNit?: string;
+  clientDv?: string;
+  withholdingsNote?: string;
   systemKwp: number;
   peakSunHours: number;
   energyTariffCOP: number;
@@ -165,6 +171,7 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
 
   return {
     id: input.id ?? crypto.randomUUID(),
+    kind: "epc",
     createdAt: (input.issuedAt || new Date().toLocaleDateString("en-CA")).slice(
       0,
       10
@@ -181,6 +188,12 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
         : "COTIZACIÓN EPC · GENERA"),
     clientName: input.clientName.trim() || "Cliente",
     clientCity: input.clientCity.trim() || "Colombia",
+    clientEmail: input.clientEmail?.trim() || "",
+    clientPhone: input.clientPhone?.trim() || "",
+    clientAddress: input.clientAddress?.trim() || "",
+    clientNit: input.clientNit?.trim() || "",
+    clientDv: input.clientDv?.trim() || "",
+    withholdingsNote: input.withholdingsNote,
     executionDays: input.executionDays,
     systemKwp,
     inverterKwAc,

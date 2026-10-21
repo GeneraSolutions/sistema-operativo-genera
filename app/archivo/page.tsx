@@ -11,6 +11,7 @@ import {
   mergeQuotes,
   pinActiveQuote,
   putQuoteLines,
+  quoteDeskPath,
   saveQuoteSnapshot,
   isAliadoQuote,
   type SavedQuote,
@@ -119,10 +120,10 @@ export default function ArchivoPage() {
       .catch(() => undefined);
   }, []);
 
-  function openQuote(id: string) {
-    pinActiveQuote(id);
-    sessionStorage.setItem(OPEN_QUOTE_KEY, id);
-    window.location.assign(`/cotizador?quote=${encodeURIComponent(id)}`);
+  function openQuote(q: SavedQuote) {
+    pinActiveQuote(q.id);
+    sessionStorage.setItem(OPEN_QUOTE_KEY, q.id);
+    window.location.assign(quoteDeskPath(q));
   }
 
   function openVisit(id: string) {
@@ -188,7 +189,11 @@ export default function ArchivoPage() {
                     <td className="px-4 py-3 font-medium">{q.name}</td>
                     <td className="px-4 py-3">{q.clientName}</td>
                     <td className="px-4 py-3">{q.clientCity}</td>
-                    <td className="px-4 py-3">{q.systemKwp} kWp</td>
+                    <td className="px-4 py-3">
+                      {q.kind === "equipos"
+                        ? "Equipos"
+                        : `${q.systemKwp} kWp`}
+                    </td>
                     <td className="px-4 py-3">{q.savedByName || q.savedBy || "—"}</td>
                     <td className="px-4 py-3 text-[#6d7c74]">{when(q.savedAt)}</td>
                     <td className="px-4 py-3">
@@ -196,7 +201,7 @@ export default function ArchivoPage() {
                         <button
                           type="button"
                           className="text-xs font-semibold text-[#1f6b45] underline"
-                          onClick={() => openQuote(q.id)}
+                          onClick={() => openQuote(q)}
                         >
                           Abrir
                         </button>
@@ -251,13 +256,14 @@ export default function ArchivoPage() {
                     <span className="font-medium">{q.name}</span>
                     <span className="mt-0.5 block text-xs text-[#6d7c74]">
                       {q.partnerCompanyName || q.savedByName || q.savedBy} ·{" "}
-                      {q.systemKwp} kWp · {when(q.savedAt)}
+                      {q.kind === "equipos" ? "equipos" : `${q.systemKwp} kWp`} ·{" "}
+                      {when(q.savedAt)}
                     </span>
                   </span>
                   <button
                     type="button"
                     className="text-xs font-semibold text-[#1f6b45] underline"
-                    onClick={() => openQuote(q.id)}
+                    onClick={() => openQuote(q)}
                   >
                     Abrir
                   </button>

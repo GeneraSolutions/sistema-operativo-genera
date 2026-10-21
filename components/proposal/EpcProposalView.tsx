@@ -2,6 +2,7 @@
 
 import { BrandLogo } from "@/components/BrandLogo";
 import { MonthlyEnergyChart } from "@/components/proposal/MonthlyEnergyChart";
+import { formatNit } from "@/lib/client-party";
 import { resolveClientDeliverables } from "@/lib/proposal-bonuses";
 import {
   cloneWarranties,
@@ -88,6 +89,11 @@ export function EpcProposalView({
   const warranties = cloneWarranties(p.warranties);
   const warrantyItems = visibleWarrantyItems(warranties, p.includeBattery);
   const clientDocs = resolveClientDeliverables(p.toggles);
+  const isEquipos = p.kind === "equipos";
+  const nitLabel = formatNit(p.clientNit || "", p.clientDv);
+  const showLinePrices = p.commercialLines.some(
+    (line) => line.saleTotalCOP != null
+  );
 
   return (
     <div className={`proposal-print bg-[#070b16] text-[#e8eef8] ${embedded ? "" : "min-h-screen"}`}>
@@ -103,7 +109,7 @@ export function EpcProposalView({
           ) : (
             <BrandLogo height={32} />
           )}
-          {p.companyName} · Cotización
+          {p.companyName} · {isEquipos ? "Cotización de equipos" : "Cotización"}
         </div>
         <div className="flex items-center gap-2 print:hidden">
           {clientDocs.fichas ? (
@@ -139,6 +145,17 @@ export function EpcProposalView({
             Fecha: {formatProposalDate(p.createdAt)} · Vigencia: {p.validUntilDays}{" "}
             días
           </p>
+          {isEquipos ? (
+            <p className="mt-2 text-sm text-[#8aa0c2]">
+              {[
+                nitLabel ? `NIT ${nitLabel}` : "",
+                p.clientEmail,
+                p.clientPhone,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          ) : null}
         </div>
 
         {p.siteImageDataUrl ? (
@@ -153,18 +170,45 @@ export function EpcProposalView({
         ) : null}
 
         <div className="mt-8 grid gap-3 md:grid-cols-3">
-          <InfoTile label="Cliente" value={p.clientName} hint={p.clientCity} />
           <InfoTile
-            label="Forma de pago"
-            value={p.payment.modality}
-            hint={p.payment.summary}
+            label="Cliente"
+            value={p.clientName}
+            hint={[nitLabel ? `NIT ${nitLabel}` : "", p.clientCity]
+              .filter(Boolean)
+              .join(" · ")}
           />
-          <InfoTile
-            label="Tiempo de ejecución"
-            value={`${p.executionDays} días hábiles`}
-          />
+          {isEquipos ? (
+            <>
+              <InfoTile
+                label="Contacto"
+                value={p.clientEmail || p.clientPhone || "—"}
+                hint={[p.clientEmail && p.clientPhone ? p.clientPhone : "", p.clientCity]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
+              <InfoTile
+                label="Dirección"
+                value={p.clientAddress || p.clientCity || "—"}
+                hint={p.payment.modality}
+              />
+            </>
+          ) : (
+            <>
+              <InfoTile
+                label="Forma de pago"
+                value={p.payment.modality}
+                hint={p.payment.summary}
+              />
+              <InfoTile
+                label="Tiempo de ejecución"
+                value={`${p.executionDays} días hábiles`}
+              />
+            </>
+          )}
         </div>
 
+        {!isEquipos ? (
+        <>
         <section className="mt-12">
           <SectionHead
             n={1}
@@ -255,16 +299,24 @@ export function EpcProposalView({
             Ingeniería integral · NTC 2050 · NSR-10 — {p.companyName}
           </p>
         </section>
+        </>
+        ) : null}
 
         <section className="mt-12">
           <SectionHead
-            n={2}
-            title="Equipos y servicios"
-            subtitle="Technical Bundling · 8 categorías comerciales"
+            n={isEquipos ? 1 : 2}
+            title={isEquipos ? "Equipos cotizados" : "Equipos y servicios"}
+            subtitle={
+              isEquipos
+                ? "Suministro de equipos · sin instalación"
+                : "Technical Bundling · 8 categorías comerciales"
+            }
           />
           <div className="overflow-hidden rounded-2xl border border-[#1e2d4a] bg-[#10182c]">
             <div className="border-b border-[#1e2d4a] px-4 py-3 text-xs font-semibold tracking-[0.16em] text-[#8aa0c2] uppercase">
-              Suministros y servicios integrales · 8 categorías
+              {isEquipos
+                ? `${p.commercialLines.length} equipo${p.commercialLines.length === 1 ? "" : "s"} · máximo 5`
+                : "Suministros y servicios integrales · 8 categorías"}
             </div>
             <table className="w-full text-left text-sm">
               <thead className="text-[#6b7c99]">
@@ -272,6 +324,12 @@ export function EpcProposalView({
                   <th className="px-4 py-2 font-medium">#</th>
                   <th className="px-4 py-2 font-medium">Descripción</th>
                   <th className="px-4 py-2 text-right font-medium">Cant.</th>
+                  {showLinePrices ? (
+                    <>
+                      <th className="px-4 py-2 text-right font-medium">Precio</th>
+                      <th className="px-4 py-2 text-right font-medium">Total</th>
+                    </>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -283,6 +341,16 @@ export function EpcProposalView({
                       <p className="text-xs leading-5 text-[#8aa0c2]">{line.description}</p>
                     </td>
                     <td className="px-4 py-3 text-right text-white">{line.qty}</td>
+                    {showLinePrices ? (
+                      <>
+                        <td className="px-4 py-3 text-right text-white">
+                          {cop.format(line.saleUnitCOP ?? 0)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-white">
+                          {cop.format(line.saleTotalCOP ?? 0)}
+                        </td>
+                      </>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -295,13 +363,18 @@ export function EpcProposalView({
               />
               <Row k="Valor total" v={cop.format(p.totalCOP)} strong />
               <p className="pt-1 text-xs text-[#6b7c99]">
-                Inversión llave en mano. El desglose de costos unitarios es interno
-                de Genera.
+                {isEquipos
+                  ? "Suministro de equipos. No incluye instalación, ingeniería, visita técnica ni obra civil."
+                  : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera."}
               </p>
+              {p.withholdingsNote ? (
+                <p className="pt-1 text-xs text-[#5eead4]">{p.withholdingsNote}</p>
+              ) : null}
             </div>
           </div>
         </section>
 
+        {!isEquipos ? (
         <section className="mt-12">
           <SectionHead
             n={3}
@@ -354,10 +427,11 @@ export function EpcProposalView({
             ))}
           </ul>
         </section>
+        ) : null}
 
         <section className="mt-12">
           <SectionHead
-            n={4}
+            n={isEquipos ? 2 : 4}
             title="Forma de pago"
             subtitle={`Modalidad: ${p.payment.modality}`}
           />
@@ -405,6 +479,7 @@ export function EpcProposalView({
           ) : null}
         </section>
 
+        {!isEquipos ? (
         <section className="mt-12">
           <SectionHead
             n={5}
@@ -454,8 +529,9 @@ export function EpcProposalView({
             ) : null}
           </div>
         </section>
+        ) : null}
 
-        {p.bonuses.filter(
+        {!isEquipos && p.bonuses.filter(
           (b) => b.id !== "ev-charger" && !/cargador\s*ev/i.test(b.title)
         ).length ? (
         <section className="mt-12">
@@ -498,6 +574,7 @@ export function EpcProposalView({
         </section>
         ) : null}
 
+        {!isEquipos ? (
         <section className="mt-12">
           <SectionHead
             n={7}
@@ -523,14 +600,17 @@ export function EpcProposalView({
               : ""}
           </p>
         </section>
+        ) : null}
 
         <section className="mt-12 grid gap-6 md:grid-cols-2">
           <div>
-            <h2 className="text-lg font-semibold text-white">Mantenimiento</h2>
+            <h2 className="text-lg font-semibold text-white">
+              {isEquipos ? "Alcance" : "Mantenimiento"}
+            </h2>
             <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">
-              Mantenimiento preventivo anual recomendado: limpieza de paneles, inspección
-              de estructura y conexiones, revisión de inversores y monitoreo. Primer
-              mantenimiento incluido el primer año posterior a la puesta en marcha.
+              {isEquipos
+                ? "Esta oferta cubre únicamente los equipos listados, con fichas de fábrica cuando estén disponibles. Entrega en las condiciones comerciales de esta cotización. No incluye instalación, tableros, cableado de obra, RETIE ni tramites UPME."
+                : "Mantenimiento preventivo anual recomendado: limpieza de paneles, inspección de estructura y conexiones, revisión de inversores y monitoreo. Primer mantenimiento incluido el primer año posterior a la puesta en marcha."}
             </p>
           </div>
           <div>
@@ -560,11 +640,27 @@ export function EpcProposalView({
 
         <section className="mt-12 grid gap-6 md:grid-cols-2">
           <div>
-            <h2 className="text-lg font-semibold text-white">Marco legal</h2>
+            <h2 className="text-lg font-semibold text-white">
+              {isEquipos ? "Facturación" : "Marco legal"}
+            </h2>
             <ul className="mt-2 space-y-1 text-sm text-[#c5d4ea]">
-              <li>Ley 1715 de 2014</li>
-              <li>Ley 2099 de 2021</li>
-              <li>RETIE · UPME</li>
+              {isEquipos ? (
+                <>
+                  <li>Factura de venta de equipos · IVA según ítem</li>
+                  {p.withholdingsNote ? (
+                    <li>{p.withholdingsNote}</li>
+                  ) : (
+                    <li>Retenciones según RUT del cliente al momento de facturar</li>
+                  )}
+                  <li>Garantía de fábrica, no de instalación</li>
+                </>
+              ) : (
+                <>
+                  <li>Ley 1715 de 2014</li>
+                  <li>Ley 2099 de 2021</li>
+                  <li>RETIE · UPME</li>
+                </>
+              )}
             </ul>
           </div>
           <div>
@@ -572,7 +668,11 @@ export function EpcProposalView({
             <ul className="mt-2 space-y-1 text-sm text-[#c5d4ea]">
               <li>Cotización válida por {p.validUntilDays} días calendario</li>
               <li>Precios sujetos a disponibilidad de equipos</li>
-              <li>No incluye obras civiles ni adecuaciones MT salvo mención expresa</li>
+              <li>
+                {isEquipos
+                  ? "No incluye instalación, ingeniería ni adecuaciones de sitio"
+                  : "No incluye obras civiles ni adecuaciones MT salvo mención expresa"}
+              </li>
             </ul>
           </div>
         </section>
@@ -664,7 +764,7 @@ function PayCard({
       </p>
       <p className="mt-2 text-3xl font-semibold text-white">{amount}</p>
       <p className="mt-1 text-sm text-[#c5d4ea]">{pct}</p>
-      <p className="mt-3 text-xs text-[#6b7c99]">Total proyecto: {total}</p>
+      <p className="mt-3 text-xs text-[#6b7c99]">Total de esta oferta: {total}</p>
     </article>
   );
 }

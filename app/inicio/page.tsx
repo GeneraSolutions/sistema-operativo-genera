@@ -357,6 +357,14 @@ export default function InicioPage() {
             Nueva cotización
           </Link>
         ) : null}
+        {can("cotizador") ? (
+          <Link
+            href="/cotizador/equipos"
+            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
+          >
+            Cotizar equipos
+          </Link>
+        ) : null}
         {can("visita") ? (
           <Link
             href="/visita-tecnica"

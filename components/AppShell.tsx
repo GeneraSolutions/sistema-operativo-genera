@@ -23,6 +23,7 @@ const NAV: {
   { href: "/inicio", label: "Hoy", hint: "Qué está caliente", always: true },
   { href: "/pipeline", label: "Pipeline", hint: "Leads y cierre", module: "pipeline" },
   { href: "/cotizador", label: "Cotizador", hint: "Paramétrico", module: "cotizador" },
+  { href: "/cotizador/equipos", label: "Solo equipos", hint: "1 a 5 ítems", module: "cotizador" },
   { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", module: "visita" },
   { href: "/informes", label: "Informes", hint: "Inspección y O&M", module: "informes" },
   { href: "/om", label: "O&M", hint: "Plantas y calendario", module: "om" },
@@ -105,7 +106,14 @@ export function AppShell({
             <OsLookToggle />
             <nav className="os-shell-nav flex flex-wrap gap-1 rounded-xl bg-[#0a1f17] p-1 ring-1 ring-[#1f4636]">
               {nav.map((item) => {
-                const active = pathname.startsWith(item.href);
+                const matches = nav
+                  .map((n) => n.href)
+                  .filter(
+                    (href) =>
+                      pathname === href || pathname.startsWith(`${href}/`)
+                  )
+                  .sort((a, b) => b.length - a.length);
+                const active = (matches[0] ?? "") === item.href;
                 return (
                   <Link
                     key={item.href}
@@ -161,6 +169,30 @@ export function AppShell({
             ) : null}
           </div>
         </div>
+        {pathname.startsWith("/cotizador") ? (
+          <div className="mb-5 flex flex-wrap gap-1 rounded-xl bg-[#0f2a1f] p-1 print:hidden">
+            <Link
+              href="/cotizador"
+              className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+                pathname === "/cotizador"
+                  ? "bg-[#1f6b45] text-white"
+                  : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
+              }`}
+            >
+              Planta / proyecto
+            </Link>
+            <Link
+              href="/cotizador/equipos"
+              className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+                pathname.startsWith("/cotizador/equipos")
+                  ? "bg-[#1f6b45] text-white"
+                  : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
+              }`}
+            >
+              Solo equipos (1 a 5)
+            </Link>
+          </div>
+        ) : null}
         {children}
       </main>
     </div>

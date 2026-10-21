@@ -19,6 +19,9 @@ export interface CommercialLine {
   title: string;
   description: string;
   qty: number;
+  unit?: string;
+  saleUnitCOP?: number;
+  saleTotalCOP?: number;
 }
 
 export interface ProposalBonus {
@@ -94,8 +97,12 @@ export interface ProposalToggles {
   deliverables?: Partial<ClientDeliverables>;
 }
 
+export type ProposalKind = "epc" | "equipos";
+
 export interface EpcProposal {
   id: string;
+  /** epc = planta llave en mano; equipos = 1 a 5 SKUs sin obra. */
+  kind?: ProposalKind;
   createdAt: string;
   validUntilDays: number;
   siteImageDataUrl?: string;
@@ -105,6 +112,12 @@ export interface EpcProposal {
   companyTag: string;
   clientName: string;
   clientCity: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  clientAddress?: string;
+  clientNit?: string;
+  clientDv?: string;
+  withholdingsNote?: string;
   executionDays: number;
   systemKwp: number;
   inverterKwAc: number;

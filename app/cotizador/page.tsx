@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import { AppShell } from "@/components/AppShell";
 import { WorkFold } from "@/components/WorkFold";
 import { BrandLogo } from "@/components/BrandLogo";
+import { ClientRutPanel } from "@/components/ClientRutPanel";
 import { EnergyBillPanel } from "@/components/EnergyBillPanel";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
 import { Toggle } from "@/components/Toggle";
@@ -25,6 +26,13 @@ import {
   type AddonState,
 } from "@/lib/eng-labor-addons";
 import { isAliadoRole } from "@/lib/auth/roles";
+import {
+  clientWithholdsFromParty,
+  displayClientName,
+  emptyClientParty,
+  withholdingNote,
+  type ClientParty,
+} from "@/lib/client-party";
 import {
   DEFAULT_ALIADO_INSTALL,
   suggestInstallBreakdown,
@@ -250,6 +258,12 @@ function CotizadorInner() {
   const [applyLey1715, setApplyLey1715] = useState(true);
   const [clientName, setClientName] = useState("Cliente Corporativo");
   const [clientCity, setClientCity] = useState("Bogotá");
+  const [clientEmail, setClientEmail] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [clientAddress, setClientAddress] = useState("");
+  const [clientNit, setClientNit] = useState("");
+  const [clientDv, setClientDv] = useState("");
+  const [clientParty, setClientParty] = useState<ClientParty>(emptyClientParty);
   const [monthlyConsumption, setMonthlyConsumption] = useState(800);
   const [executionDays, setExecutionDays] = useState(7);
   const [validUntilDays, setValidUntilDays] = useState(15);
@@ -300,6 +314,7 @@ function CotizadorInner() {
       quotesForCotizador(savedQuotes, {
         aliado,
         username: sessionUser?.username,
+        kind: "epc",
       }),
     [savedQuotes, aliado, sessionUser?.username]
   );
@@ -446,6 +461,12 @@ function CotizadorInner() {
       })
       .catch(() => undefined);
     setTaxConfig(loadTaxConfig());
+    if (saved?.kind === "equipos") {
+      window.location.replace(
+        `/cotizador/equipos?quote=${encodeURIComponent(saved.id)}`
+      );
+      return;
+    }
     if (saved) {
       loadQuote(saved, items);
     } else if (openId) {
@@ -676,6 +697,19 @@ function CotizadorInner() {
       id: "preview",
       clientName,
       clientCity,
+      clientEmail,
+      clientPhone,
+      clientAddress,
+      clientNit,
+      clientDv,
+      withholdingsNote: clientParty.nit
+        ? withholdingNote({
+            ...clientParty,
+            agenteRetenedorFuente:
+              clientWithholds || clientParty.agenteRetenedorFuente,
+            granContribuyente: clientGranContribuyente,
+          })
+        : undefined,
       systemKwp,
       peakSunHours,
       energyTariffCOP: energyTariff,
@@ -721,6 +755,14 @@ function CotizadorInner() {
     hydrated,
     clientName,
     clientCity,
+    clientEmail,
+    clientPhone,
+    clientAddress,
+    clientNit,
+    clientDv,
+    clientParty,
+    clientWithholds,
+    clientGranContribuyente,
     systemKwp,
     peakSunHours,
     energyTariff,
@@ -952,10 +994,17 @@ function CotizadorInner() {
   function snapshotCurrent(name?: string): SavedQuote {
     return {
       id: editingQuoteId.current || crypto.randomUUID(),
+      kind: "epc",
       name: name || `${clientName} · ${systemKwp} kWp`,
       savedAt: new Date().toISOString(),
       clientName,
       clientCity,
+      clientEmail,
+      clientPhone,
+      clientAddress,
+      clientNit,
+      clientDv,
+      clientParty,
       systemKwp,
       peakSunHours,
       energyTariff,
@@ -1065,7 +1114,29 @@ function CotizadorInner() {
     window.setTimeout(() => setSaveFlash(""), 4500);
   }
 
+  function applyParty(party: ClientParty) {
+    setClientParty(party);
+    const name = displayClientName(party);
+    if (name) setClientName(name);
+    if (party.city) setClientCity(party.city);
+    if (party.email) setClientEmail(party.email);
+    if (party.phone) setClientPhone(party.phone);
+    if (party.address) setClientAddress(party.address);
+    if (party.nit) setClientNit(party.nit);
+    if (party.dv) setClientDv(party.dv);
+    setClientWithholds(clientWithholdsFromParty(party));
+    setClientGranContribuyente(
+      party.granContribuyente || party.agenteRetenedorIva
+    );
+  }
+
   function loadQuote(q: SavedQuote, items?: InventoryItem[]) {
+    if (q.kind === "equipos") {
+      window.location.replace(
+        `/cotizador/equipos?quote=${encodeURIComponent(q.id)}`
+      );
+      return;
+    }
     editingQuoteId.current = q.id;
     addonsFrozen.current = true;
     lockQuantities(true);
@@ -1074,6 +1145,14 @@ function CotizadorInner() {
     const find = (id?: string) => catalog.find((i) => i.id === id) ?? null;
     setClientName(q.clientName);
     setClientCity(q.clientCity);
+    setClientEmail(q.clientEmail || "");
+    setClientPhone(q.clientPhone || "");
+    setClientAddress(q.clientAddress || "");
+    setClientNit(q.clientNit || "");
+    setClientDv(q.clientDv || "");
+    if (q.clientParty) {
+      setClientParty({ ...emptyClientParty(), ...q.clientParty });
+    }
     setSystemKwp(q.systemKwp);
     setPeakSunHours(q.peakSunHours);
     setEnergyTariff(q.energyTariff);
@@ -1651,6 +1730,13 @@ function CotizadorInner() {
                 </WorkFold>
               </div>
 
+              <div className="os-panel rounded-2xl border border-[#eee8dc] p-3">
+                <ClientRutPanel
+                  party={clientParty}
+                  onChange={setClientParty}
+                  onApply={applyParty}
+                />
+              </div>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium">Cliente / proyecto</span>
                 <input
@@ -1660,6 +1746,51 @@ function CotizadorInner() {
                 />
               </label>
               <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">Correo</span>
+                  <input
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    type="email"
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">Teléfono</span>
+                  <input
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">Dirección</span>
+                <input
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={clientAddress}
+                  onChange={(e) => setClientAddress(e.target.value)}
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">NIT / DV</span>
+                  <div className="flex gap-2">
+                    <input
+                      className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                      placeholder="NIT"
+                      value={clientNit}
+                      onChange={(e) => setClientNit(e.target.value)}
+                    />
+                    <input
+                      className="w-16 rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                      placeholder="DV"
+                      maxLength={1}
+                      value={clientDv}
+                      onChange={(e) => setClientDv(e.target.value)}
+                    />
+                  </div>
+                </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium">Ciudad</span>
                   <input
