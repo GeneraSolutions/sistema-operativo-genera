@@ -73,6 +73,7 @@ function CotizadorEquiposInner() {
   const [customCats, setCustomCats] = useState<CustomCategory[]>([]);
   const [quoteLines, setQuoteLines] = useState<QuoteLineInput[]>([]);
   const [addItemId, setAddItemId] = useState("");
+  const [addItemQuery, setAddItemQuery] = useState("");
   const [clientName, setClientName] = useState("");
   const [clientCity, setClientCity] = useState("");
   const [clientEmail, setClientEmail] = useState("");
@@ -121,7 +122,11 @@ function CotizadorEquiposInner() {
     kind: "equipos",
   });
   const activeInventory = inventory.filter((i) => i.active);
-  const grouped = groupInventoryByCategory(activeInventory, customCats);
+  const grouped = groupInventoryByCategory(
+    activeInventory,
+    customCats,
+    addItemQuery
+  );
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -266,13 +271,13 @@ function CotizadorEquiposInner() {
   }
 
   function addLine(itemId: string) {
-    const item = inventory.find((i) => i.id === itemId);
+    const id = itemId || addItemId;
+    const item = inventory.find((i) => i.id === id);
     if (!item) return;
-    if (quoteLines.length >= MAX_EQUIPMENT_LINES) return;
-    setQuoteLines((rows) => [
-      ...rows,
-      lineFromItem(`eq-${crypto.randomUUID().slice(0, 8)}`, item, 1),
-    ]);
+    setQuoteLines((rows) => {
+      if (rows.length >= MAX_EQUIPMENT_LINES) return rows;
+      return [...rows, lineFromItem(`eq-${crypto.randomUUID().slice(0, 8)}`, item, 1)];
+    });
     setAddItemId("");
   }
 
@@ -441,7 +446,7 @@ function CotizadorEquiposInner() {
   return (
     <AppShell
       title="Cotizador de equipos"
-      subtitle="1 a 5 ítems · sin proyecto llave en mano"
+      subtitle="Hasta 12 ítems · sin proyecto llave en mano"
     >
       <div className="mb-4 flex flex-wrap gap-2 print:hidden">
         <button
@@ -597,30 +602,58 @@ function CotizadorEquiposInner() {
             <h2 className="font-semibold">
               Equipos ({quoteLines.length}/{MAX_EQUIPMENT_LINES})
             </h2>
-            <p className="os-page-intro mt-1 text-sm text-[#4d5c55]">
-              Inversores, baterías, paneles, protecciones o cargadores. Máximo cinco
-              referencias. Sin cuadrilla ni ingeniería.
+            <p className="mt-1 text-sm text-[#4d5c55]">
+              {activeInventory.length} referencias en catálogo. Puede sumar hasta{" "}
+              {MAX_EQUIPMENT_LINES} en esta cotización (inversor, batería, panel,
+              protecciones…).
             </p>
-            <label className="mt-3 block text-sm">
-              <span className="mb-1 block font-medium">Agregar del catálogo</span>
-              <select
-                className={field}
-                value={addItemId}
-                disabled={quoteLines.length >= MAX_EQUIPMENT_LINES}
-                onChange={(e) => addLine(e.target.value)}
+            <div className="mt-3 flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-[#d8d2c4] p-3">
+              <label className="min-w-[140px] flex-1 text-sm">
+                <span className="mb-1 block font-medium">Buscar</span>
+                <input
+                  className={field}
+                  value={addItemQuery}
+                  onChange={(e) => setAddItemQuery(e.target.value)}
+                  placeholder="Marca, modelo o tipo…"
+                  disabled={quoteLines.length >= MAX_EQUIPMENT_LINES}
+                />
+              </label>
+              <label className="min-w-[200px] flex-[2] text-sm">
+                <span className="mb-1 block font-medium">Agregar del catálogo</span>
+                <select
+                  className={field}
+                  value={addItemId}
+                  disabled={quoteLines.length >= MAX_EQUIPMENT_LINES}
+                  onChange={(e) => setAddItemId(e.target.value)}
+                >
+                  <option value="">
+                    {grouped.length ? "Seleccionar producto…" : "Sin coincidencias"}
+                  </option>
+                  {grouped.map((g) => (
+                    <optgroup
+                      key={g.id}
+                      label={`${g.label} (${g.items.length})`}
+                    >
+                      {g.items.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.brand} · {item.model || item.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="rounded-xl bg-[#0f3d2e] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={
+                  !addItemId || quoteLines.length >= MAX_EQUIPMENT_LINES
+                }
+                onClick={() => addLine(addItemId)}
               >
-                <option value="">Seleccione un equipo…</option>
-                {grouped.map((g) => (
-                  <optgroup key={g.id} label={g.label}>
-                    {g.items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.brand} {item.model || item.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
+                Agregar producto
+              </button>
+            </div>
             <div className="mt-4 space-y-3">
               {quoteLines.map((line) => {
                 const item = inventory.find((i) => i.id === line.itemId);

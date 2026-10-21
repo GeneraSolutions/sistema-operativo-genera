@@ -23,7 +23,7 @@ const NAV: {
   { href: "/inicio", label: "Hoy", hint: "Qué está caliente", always: true },
   { href: "/pipeline", label: "Pipeline", hint: "Leads y cierre", module: "pipeline" },
   { href: "/cotizador", label: "Cotizador", hint: "Paramétrico", module: "cotizador" },
-  { href: "/cotizador/equipos", label: "Solo equipos", hint: "1 a 5 ítems", module: "cotizador" },
+  { href: "/cotizador/equipos", label: "Solo equipos", hint: "Hasta 12 ítems", module: "cotizador" },
   { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", module: "visita" },
   { href: "/informes", label: "Informes", hint: "Inspección y O&M", module: "informes" },
   { href: "/om", label: "O&M", hint: "Plantas y calendario", module: "om" },
@@ -189,7 +189,7 @@ export function AppShell({
                   : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
               }`}
             >
-              Solo equipos (1 a 5)
+              Solo equipos
             </Link>
           </div>
         ) : null}

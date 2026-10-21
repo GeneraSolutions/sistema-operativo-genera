@@ -101,7 +101,7 @@ export type ProposalKind = "epc" | "equipos";
 
 export interface EpcProposal {
   id: string;
-  /** epc = planta llave en mano; equipos = 1 a 5 SKUs sin obra. */
+  /** epc = planta llave en mano; equipos = suministro de SKUs sin obra. */
   kind?: ProposalKind;
   createdAt: string;
   validUntilDays: number;

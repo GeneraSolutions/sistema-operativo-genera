@@ -17,7 +17,7 @@ import type {
   PaymentKind,
 } from "@/types/proposal";
 
-export const MAX_EQUIPMENT_LINES = 5;
+export const MAX_EQUIPMENT_LINES = 12;
 
 export interface PricedEquipmentLine {
   key: string;

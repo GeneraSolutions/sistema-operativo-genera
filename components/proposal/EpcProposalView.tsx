@@ -315,7 +315,7 @@ export function EpcProposalView({
           <div className="overflow-hidden rounded-2xl border border-[#1e2d4a] bg-[#10182c]">
             <div className="border-b border-[#1e2d4a] px-4 py-3 text-xs font-semibold tracking-[0.16em] text-[#8aa0c2] uppercase">
               {isEquipos
-                ? `${p.commercialLines.length} equipo${p.commercialLines.length === 1 ? "" : "s"} · máximo 5`
+                ? `${p.commercialLines.length} equipo${p.commercialLines.length === 1 ? "" : "s"}`
                 : "Suministros y servicios integrales · 8 categorías"}
             </div>
             <table className="w-full text-left text-sm">
