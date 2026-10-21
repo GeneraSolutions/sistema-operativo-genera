@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { GENERA_LEGAL } from "@/lib/company-legal";
 import type { EpcProposal } from "@/types/proposal";
 
 export function DeliverableShell({
@@ -48,7 +49,9 @@ export function DeliverableShell({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <BrandLogo height={56} />
             <p className="text-right text-[11px] leading-5 text-[#6d7c74]">
-              Genera Solutions SAS
+              {GENERA_LEGAL.name}
+              <br />
+              NIT {GENERA_LEGAL.nit}
               <br />
               {proposal.clientCity} · {proposal.clientName}
             </p>
@@ -67,9 +70,9 @@ export function DeliverableShell({
           <div className="mt-8 space-y-10">{children}</div>
         </div>
         <footer className="mt-8 pb-8 text-center text-xs leading-5 text-[#6d7c74] print:mt-6">
-          Genera Solutions SAS · 317 455 3288
+          {GENERA_LEGAL.name} · NIT {GENERA_LEGAL.nit} · {GENERA_LEGAL.phone}
           <br />
-          www.generasolutions.com.co
+          {GENERA_LEGAL.web}
         </footer>
       </article>
       <style>{`
