@@ -437,7 +437,11 @@ export function EpcProposalView({
           />
           <div
             className={`grid gap-3 ${
-              p.payment.installments.length > 2 ? "md:grid-cols-3" : "md:grid-cols-2"
+              p.payment.installments.length === 1
+                ? "md:grid-cols-1"
+                : p.payment.installments.length > 2
+                  ? "md:grid-cols-3"
+                  : "md:grid-cols-2"
             }`}
           >
             {p.payment.installments.map((item) => (

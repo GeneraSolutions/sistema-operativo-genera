@@ -207,10 +207,12 @@ export function buildEquipmentProposal(input: {
     ppaPricePerKWhCOP: 0,
   });
   if (payment.kind === "one_shot") {
+    payment.modality = "1 solo contado";
     payment.installments = payment.installments.map((row) =>
       row.key === "full"
         ? {
             ...row,
+            label: "1 solo contado",
             hint: "Pago único para confirmar y despachar el pedido",
           }
         : row

@@ -45,12 +45,12 @@ export function buildPaymentSchedule(input: PaymentInput): PaymentSchedule {
   if (kind === "one_shot") {
     return {
       kind,
-      modality: "Un contado",
-      summary: "100% contra aceptación de la oferta",
+      modality: "1 solo contado",
+      summary: "100% en un solo pago",
       installments: [
         {
           key: "full",
-          label: "Contado",
+          label: "1 solo contado",
           percent: 100,
           amountCOP: total,
           hint: "Pago único al aceptar la cotización",

@@ -447,6 +447,38 @@ function CotizadorEquiposInner() {
   const field =
     "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5";
 
+  function setPayMode(value: "one_shot" | "two_shot") {
+    setPaymentKind(value);
+    setAdvancePercent(value === "one_shot" ? 100 : 50);
+  }
+
+  const payModes = (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
+          paymentKind === "one_shot"
+            ? "bg-[#0f2a1f] text-white"
+            : "border border-[#d8d2c4] bg-white text-[#12241c]"
+        }`}
+        onClick={() => setPayMode("one_shot")}
+      >
+        1 solo contado
+      </button>
+      <button
+        type="button"
+        className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
+          paymentKind === "two_shot"
+            ? "bg-[#0f2a1f] text-white"
+            : "border border-[#d8d2c4] bg-white text-[#12241c]"
+        }`}
+        onClick={() => setPayMode("two_shot")}
+      >
+        2 contados
+      </button>
+    </div>
+  );
+
   return (
     <AppShell
       title="Cotizador de equipos"
@@ -479,6 +511,18 @@ function CotizadorEquiposInner() {
       </div>
       {saveFlash ? <p className="mb-3 text-sm text-[#1f6b45]">{saveFlash}</p> : null}
       {linkFlash ? <p className="mb-3 text-sm text-[#1f6b45]">{linkFlash}</p> : null}
+
+      <section className="os-panel mb-5 rounded-2xl border border-[#ddd6c8] bg-white p-4 print:hidden">
+        <p className="text-[11px] font-semibold tracking-[0.16em] text-[#6d7c74] uppercase">
+          Forma de pago
+        </p>
+        <div className="mt-2">{payModes}</div>
+        <p className="mt-2 text-xs text-[#6d7c74]">
+          {paymentKind === "one_shot"
+            ? "El cliente paga el 100% en un solo contado."
+            : `Dos contados: ${advancePercent}% anticipo y ${100 - advancePercent}% contra despacho.`}
+        </p>
+      </section>
 
       {visibleQuotes.length ? (
         <p className="os-page-intro mb-4 text-xs text-[#6b6458]">
@@ -736,30 +780,7 @@ function CotizadorEquiposInner() {
 
           <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
             <h2 className="font-semibold">Pago y vigencia</h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(
-                [
-                  ["one_shot", "1 contado"],
-                  ["two_shot", "2 contados"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-                    paymentKind === value
-                      ? "bg-[#0f2a1f] text-white"
-                      : "border border-[#d8d2c4] bg-white text-[#12241c]"
-                  }`}
-                  onClick={() => {
-                    setPaymentKind(value);
-                    setAdvancePercent(value === "one_shot" ? 100 : 50);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <div className="mt-3">{payModes}</div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {paymentKind === "two_shot" ? (
                 <label className="block text-sm">
