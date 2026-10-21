@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import {
   APP_MODULES,
   ROLE_LABELS,
@@ -61,6 +62,7 @@ export default function EquipoPage() {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [showCargo, setShowCargo] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState({
     name: "",
     username: "",
@@ -217,15 +219,21 @@ export default function EquipoPage() {
       title="Equipo y cargos"
       subtitle="Usuarios del sistema operativo"
     >
-      <p className="mb-6 max-w-3xl text-sm leading-6 text-[#4d5c55]">
+      <p className="os-page-intro mb-6 max-w-3xl text-sm leading-6 text-[#4d5c55]">
         Cree un usuario por persona. El cargo define a qué módulos entra. Las
         consultas de Inteligencia del CEO no las ve nadie más; el CEO sí ve las
         de todo el equipo.
       </p>
 
+      <section className="os-panel mb-4 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title="Nuevo usuario"
+          open={formOpen}
+          onToggle={() => setFormOpen((v) => !v)}
+        >
       <form
         onSubmit={onCreate}
-        className="mb-4 grid gap-3 rounded-2xl border border-[#ddd6c8] bg-white p-5 sm:grid-cols-2 lg:grid-cols-5"
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
       >
         <label className="text-sm lg:col-span-1">
           <span className="mb-1 block font-medium">Nombre</span>
@@ -285,23 +293,19 @@ export default function EquipoPage() {
           </button>
         </div>
       </form>
+        </WorkFold>
+      </section>
 
-      <div className="mb-8 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setShowCargo((v) => !v)}
-          className="rounded-xl bg-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-white"
+      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title="Cargos"
+          open={showCargo}
+          onToggle={() => setShowCargo((v) => !v)}
         >
-          {showCargo ? "Cerrar cargos" : "Crear más cargos"}
-        </button>
-        <p className="text-sm text-[#4d5c55]">
-          Auxiliar, auxiliar eléctrico, coordinador de proyectos y los que
-          necesite.
-        </p>
-      </div>
-
-      {showCargo ? (
-        <div className="mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+          <p className="os-page-intro mb-3 text-xs text-[#4d5c55]">
+            Auxiliar, auxiliar eléctrico, coordinador de proyectos y los que
+            necesite.
+          </p>
           <p className="mb-3 text-sm font-semibold text-[#0f2a1f]">
             Cargos rápidos
           </p>
@@ -390,13 +394,13 @@ export default function EquipoPage() {
                 ))}
             </ul>
           ) : null}
-        </div>
-      ) : null}
+        </WorkFold>
+      </section>
 
       {error ? <p className="mb-3 text-sm text-[#9b2c2c]">{error}</p> : null}
       {ok ? <p className="mb-3 text-sm text-[#1f6b45]">{ok}</p> : null}
 
-      <div className="overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
+      <div className="os-panel overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-[#f7f4ee] text-xs uppercase tracking-wide text-[#6d7c74]">
             <tr>

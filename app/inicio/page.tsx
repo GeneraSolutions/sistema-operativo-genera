@@ -158,7 +158,7 @@ export default function InicioPage() {
 
   return (
     <AppShell title="Hoy" subtitle="Qué está caliente">
-      <p className="mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
+      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
         Esto no es un plan semanal: son las fichas que ya piden un paso.
         Toque una y el OS abre Pipeline, Obra u O&M.
       </p>
@@ -167,7 +167,7 @@ export default function InicioPage() {
         {can("pipeline") ? (
           <Link
             href="/pipeline"
-            className="rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
+            className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
           >
             <p className="text-2xl font-semibold text-[#9a5b00]">{dueLeads.length}</p>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
@@ -181,7 +181,7 @@ export default function InicioPage() {
         {can("obra") ? (
           <Link
             href="/obra"
-            className="rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
+            className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
           >
             <p className="text-2xl font-semibold text-[#2a5f8f]">{hotJobs.length}</p>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
@@ -192,7 +192,7 @@ export default function InicioPage() {
         {can("om") ? (
           <Link
             href="/om"
-            className="rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
+            className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
           >
             <p className="text-2xl font-semibold text-[#9b2c2c]">{omVencido}</p>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
@@ -203,7 +203,7 @@ export default function InicioPage() {
         {can("om") ? (
           <Link
             href="/om"
-            className="rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
+            className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
           >
             <p className="text-2xl font-semibold text-[#9a5b00]">{omProximo}</p>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
@@ -215,7 +215,7 @@ export default function InicioPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {can("pipeline") ? (
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white">
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
             <div className="flex items-center justify-between gap-2 border-b border-[#eee8dc] px-4 py-3">
               <h2 className="font-semibold">Pipeline · llamar o mover</h2>
               <Link href="/pipeline" className="text-xs font-semibold text-[#1f6b45] underline">
@@ -223,9 +223,11 @@ export default function InicioPage() {
               </Link>
             </div>
             {dueLeads.length === 0 ? (
-              <p className="px-4 py-8 text-sm text-[#6d7c74]">
-                Nada vencido. Cuando entre un contacto, póngale fecha de
-                seguimiento en Pipeline.
+              <p className="px-4 py-5 text-sm text-[#6d7c74]">
+                Nada vencido.
+                <span className="os-page-intro mt-1 block text-xs">
+                  Ponga fecha de seguimiento en Pipeline.
+                </span>
               </p>
             ) : (
               <ul className="divide-y divide-[#eee8dc]">
@@ -251,7 +253,7 @@ export default function InicioPage() {
         ) : null}
 
         {can("obra") ? (
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white">
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
             <div className="flex items-center justify-between gap-2 border-b border-[#eee8dc] px-4 py-3">
               <h2 className="font-semibold">Obra · UPME / RETIE / OR</h2>
               <Link href="/obra" className="text-xs font-semibold text-[#1f6b45] underline">
@@ -259,9 +261,11 @@ export default function InicioPage() {
               </Link>
             </div>
             {hotJobs.length === 0 ? (
-              <p className="px-4 py-8 text-sm text-[#6d7c74]">
-                No hay trámites pendientes. Las obras ganadas desde Pipeline
-                aparecen aquí.
+              <p className="px-4 py-5 text-sm text-[#6d7c74]">
+                Sin trámites pendientes.
+                <span className="os-page-intro mt-1 block text-xs">
+                  Las obras ganadas desde Pipeline aparecen aquí.
+                </span>
               </p>
             ) : (
               <ul className="divide-y divide-[#eee8dc]">
@@ -288,7 +292,7 @@ export default function InicioPage() {
         ) : null}
 
         {can("om") ? (
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white">
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
             <div className="flex items-center justify-between gap-2 border-b border-[#eee8dc] px-4 py-3">
               <h2 className="font-semibold">O&M · calendario</h2>
               <Link href="/om" className="text-xs font-semibold text-[#1f6b45] underline">
@@ -296,9 +300,11 @@ export default function InicioPage() {
               </Link>
             </div>
             {hotPlants.length === 0 ? (
-              <p className="px-4 py-8 text-sm text-[#6d7c74]">
-                Ninguna planta vence en 30 días. Al energizar, pásela a O&M
-                desde Obra.
+              <p className="px-4 py-5 text-sm text-[#6d7c74]">
+                Nada vence en 30 días.
+                <span className="os-page-intro mt-1 block text-xs">
+                  Al energizar, pásela a O&M desde Obra.
+                </span>
               </p>
             ) : (
               <ul className="divide-y divide-[#eee8dc]">
@@ -338,7 +344,7 @@ export default function InicioPage() {
         {can("pipeline") ? (
           <Link
             href="/pipeline"
-            className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
+            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
           >
             Nuevo lead
           </Link>
@@ -346,7 +352,7 @@ export default function InicioPage() {
         {can("cotizador") ? (
           <Link
             href="/cotizador?nueva=1"
-            className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
+            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
           >
             Nueva cotización
           </Link>
@@ -354,7 +360,7 @@ export default function InicioPage() {
         {can("visita") ? (
           <Link
             href="/visita-tecnica"
-            className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
+            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
           >
             Visita técnica
           </Link>

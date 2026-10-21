@@ -89,7 +89,7 @@ export const REPORT_KIND_LABELS: Record<ReportKind, string> = {
 
 export const REPORT_KIND_HINTS: Record<ReportKind, string> = {
   "inspeccion-fv":
-    "Criterio GENERA sobre un sistema fotovoltaico ya instalado (propio o de otro EPC).",
+    "Criterio Genera Solutions sobre un sistema fotovoltaico ya instalado (propio o de otro EPC).",
   "inspeccion-electrica":
     "Tableros, tierras, protecciones y calidad de energía. No requiere paneles.",
   "pre-mantenimiento":
@@ -406,7 +406,7 @@ Planta / predio
 - Potencia: ${report.plant.kwp || "—"} kWp
 - Inversor: ${report.plant.inverter || "—"}
 - Año instalación: ${report.plant.yearInstalled || "—"}
-- ¿Instaló GENERA?: ${report.plant.ours ? "sí" : "no / tercero"}
+- ¿Instaló Genera Solutions?: ${report.plant.ours ? "sí" : "no / tercero"}
 - Notas de planta: ${report.plant.notes || "—"}
 
 Objeto del informe:

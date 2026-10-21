@@ -1,13 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import { RulingDocument } from "@/components/informes/RulingDocument";
+import { RulingEngineerChat } from "@/components/informes/RulingEngineerChat";
+import { loadSpecialistManuals } from "@/lib/specialist-manuals";
 import { compressVisitPhoto } from "@/lib/site-visit";
 import {
   MAX_RULING_PHOTOS,
   emptyRuling,
+  photoLabel,
+  reindexPhotoCaptions,
+  removeRulingPhoto,
   rulingPhotos,
   withSyncedCover,
   type PhotoRuling,
@@ -20,26 +26,39 @@ export default function DictamenPage() {
   const [flash, setFlash] = useState("");
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(false);
+  const [retieManualChars, setRetieManualChars] = useState(0);
+  const [notesOpen, setNotesOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const photos = rulingPhotos(ruling);
+
+  useEffect(() => {
+    setRetieManualChars(
+      loadSpecialistManuals().retie?.trim().length ?? 0
+    );
+  }, []);
+
+  function commit(next: PhotoRuling) {
+    setRuling(withSyncedCover(next));
+  }
 
   async function onFile(files: FileList | null) {
     if (!files?.length) return;
     setError("");
     const room = MAX_RULING_PHOTOS - photos.length;
     const extras = await Promise.all(
-      [...files].slice(0, room).map(async (file) => ({
+      [...files].slice(0, room).map(async (file, i) => ({
         id: crypto.randomUUID(),
-        caption: file.name.replace(/\.[^.]+$/, ""),
+        caption: photoLabel(photos.length + i),
         dataUrl: await compressVisitPhoto(file),
+        notaCampo: "",
       }))
     );
-    setRuling((prev) =>
-      withSyncedCover({
-        ...prev,
-        photos: [...rulingPhotos(prev), ...extras].slice(0, MAX_RULING_PHOTOS),
-      })
-    );
+    commit({
+      ...ruling,
+      photos: reindexPhotoCaptions(
+        [...rulingPhotos(ruling), ...extras].slice(0, MAX_RULING_PHOTOS)
+      ),
+    });
   }
 
   async function analizar() {
@@ -60,23 +79,24 @@ export default function DictamenPage() {
           siteNote: ruling.siteNote,
           inspector: ruling.inspector,
           fieldNotes: ruling.fieldNotes,
+          manuals: loadSpecialistManuals(),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al analizar");
       setOffline(Boolean(data.offline));
-      setRuling((prev) => ({
-        ...prev,
+      commit({
+        ...ruling,
         resumen: data.resumen || "",
         lecturaPorFoto: data.lecturaPorFoto || [],
         hallazgos: data.hallazgos || [],
         conformidades: data.conformidades || [],
         limites: data.limites || "",
-      }));
+      });
       setFlash(
         data.offline
           ? "Borrador local. Configure OPENAI_API_KEY para leer las fotos en vivo."
-          : "Dictamen listo. Revise lecturas, citas y correcciones antes de compartir."
+          : "Dictamen listo. Edite cualquier punto o déjelo como lo dictó la IA. Use el chat para afinar."
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
@@ -127,15 +147,23 @@ export default function DictamenPage() {
       title="Dictamen fotográfico"
       subtitle="RETIE · NTC 2050 · hasta 12 fotos"
     >
-      <p className="mb-4 max-w-3xl text-sm leading-6 text-[#4d5c55] print:hidden">
-        Interventoría visual aparte de los cuatro informes. Hasta 12 fotos y un
-        espacio de notas para que el inspector le diga a la mesa qué aplicar
-        (norma, no conformidad, corrección). El ingeniero revisa; no reemplaza
-        ONAC.
+      <p className="os-page-intro mb-4 max-w-3xl text-sm leading-6 text-[#4d5c55] print:hidden">
+        Interventoría visual de Genera Solutions. Cada foto se llama foto1,
+        foto2… La anotación va junto a esa imagen. Después de analizar puede
+        editar cada hallazgo, quitar fotos o dejar el texto de la IA.
       </p>
-      <p className="mb-5 print:hidden">
-        <Link href="/informes" className="text-sm font-semibold text-[#1f6b45] underline">
-          Volver a informes
+      <p className="mb-5 print:hidden text-sm text-[#4d5c55]">
+        Manual RETIE:{" "}
+        {retieManualChars > 0
+          ? `${retieManualChars.toLocaleString("es-CO")} caracteres`
+          : "sin pegar"}
+        {" · "}
+        <Link href="/inteligencia" className="font-semibold text-[#1f6b45] underline">
+          Inteligencia
+        </Link>
+        {" · "}
+        <Link href="/informes" className="font-semibold text-[#1f6b45] underline">
+          Informes
         </Link>
       </p>
 
@@ -182,20 +210,23 @@ export default function DictamenPage() {
       </div>
 
       <div className="print:hidden grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
           <h2 className="font-semibold">Evidencia</h2>
-          <p className="mt-1 text-xs text-[#6d7c74]">
-            {photos.length} de {MAX_RULING_PHOTOS} fotos. Puede seguir anexando.
+          <p className="os-page-intro mt-1 text-xs text-[#6d7c74]">
+            {photos.length} de {MAX_RULING_PHOTOS} fotos. Quedan foto1, foto2…
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="text-sm">
-              <span className="mb-1 block font-medium">Inspector</span>
+            <label className="text-sm sm:col-span-2">
+              <span className="mb-1 block font-medium">
+                Ingeniero que realiza la interventoría
+              </span>
               <input
                 className={field}
                 value={ruling.inspector}
                 onChange={(e) =>
                   setRuling((p) => ({ ...p, inspector: e.target.value }))
                 }
+                placeholder="Nombre. En el dictamen sale como Ingeniero…"
               />
             </label>
             <label className="text-sm sm:col-span-2">
@@ -240,33 +271,30 @@ export default function DictamenPage() {
                     alt=""
                     className="h-28 w-full rounded-xl object-cover"
                   />
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#8a6b2a]">
+                    foto{i + 1}
+                  </p>
                   <button
                     type="button"
                     className="absolute right-1 top-1 rounded-full bg-white/90 px-2 text-xs"
-                    onClick={() =>
-                      setRuling((prev) =>
-                        withSyncedCover({
-                          ...prev,
-                          photos: rulingPhotos(prev).filter((x) => x.id !== p.id),
-                        })
-                      )
-                    }
+                    onClick={() => commit(removeRulingPhoto(ruling, p.id))}
                   >
                     ×
                   </button>
-                  <input
+                  <textarea
                     className="mt-1 w-full rounded-lg border border-[#d8d2c4] px-2 py-1 text-[11px]"
-                    value={p.caption}
-                    placeholder={`Foto ${i + 1}`}
+                    rows={2}
+                    value={p.notaCampo || ""}
+                    placeholder={`Nota de foto${i + 1}`}
                     onChange={(e) =>
-                      setRuling((prev) =>
-                        withSyncedCover({
-                          ...prev,
-                          photos: rulingPhotos(prev).map((x) =>
-                            x.id === p.id ? { ...x, caption: e.target.value } : x
-                          ),
-                        })
-                      )
+                      commit({
+                        ...ruling,
+                        photos: photos.map((x) =>
+                          x.id === p.id
+                            ? { ...x, notaCampo: e.target.value }
+                            : x
+                        ),
+                      })
                     }
                   />
                 </div>
@@ -279,34 +307,37 @@ export default function DictamenPage() {
             </p>
           )}
         </section>
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-          <h2 className="font-semibold">Complemento para ingeniería</h2>
-          <p className="mt-1 text-xs leading-5 text-[#6d7c74]">
-            Escriba lo que la foto no dice: olores, temperatura, qué midió, qué
-            norma quiere aplicar, corrección que ya acordó con el cliente. La
-            mesa lo toma como hecho de campo.
-          </p>
-          <textarea
-            className={`${field} mt-3`}
-            rows={10}
-            value={ruling.fieldNotes}
-            onChange={(e) =>
-              setRuling((p) => ({ ...p, fieldNotes: e.target.value }))
-            }
-            placeholder="Ej.: El tablero no tiene DPS; el dueño reporta disparos del termomagnético al mediodía; se solicita citar RETIE identificaciones y NTC 2050 Art. 250 para la tierra descubierta en foto 3…"
-          />
-          <p className="mt-3 text-xs leading-5 text-[#4d5c55]">
-            RETIE, NTC 2050, NSR-10 si hay estructura, RETILAP si hay alumbrado,
-            Res. 5018 / SST y CREG si hay frontera.
-          </p>
-        </section>
+        <div className="space-y-4">
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title="Complemento para ingeniería"
+              open={notesOpen}
+              onToggle={() => setNotesOpen((v) => !v)}
+            >
+            <p className="os-page-intro text-xs leading-5 text-[#6d7c74]">
+              Solo lo que no cabe en una foto. Lo de cada imagen va en la nota
+              de esa foto.
+            </p>
+            <textarea
+              className={`${field} mt-3`}
+              rows={4}
+              value={ruling.fieldNotes}
+              onChange={(e) =>
+                setRuling((p) => ({ ...p, fieldNotes: e.target.value }))
+              }
+              placeholder="Ej.: El dueño reporta disparos del termomagnético al mediodía…"
+            />
+            </WorkFold>
+          </section>
+          <RulingEngineerChat ruling={ruling} onRuling={commit} />
+        </div>
       </div>
 
-      <div className="print:hidden mt-8 rounded-2xl border border-[#ddd6c8] bg-white">
+      <div className="os-panel print:hidden mt-8 rounded-2xl border border-[#ddd6c8] bg-white">
         <p className="border-b border-[#eee8dc] px-5 py-3 text-xs font-semibold tracking-wide text-[#8a6b2a] uppercase">
-          Vista previa
+          Dictamen editable · lo que no toque queda como lo dictó la IA
         </p>
-        <RulingDocument ruling={ruling} />
+        <RulingDocument ruling={ruling} editable onChange={commit} />
       </div>
       <div className="hidden print:block">
         <RulingDocument ruling={ruling} />

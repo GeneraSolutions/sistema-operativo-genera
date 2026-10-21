@@ -182,7 +182,7 @@ export default function VisitaTecnicaPage() {
       subtitle="Levantamiento de campo · enlace al cotizador"
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <div>
+        <div className="os-page-hero">
           <h2 className="text-2xl font-semibold text-[#12241c]">
             Levantamiento fotovoltaico
           </h2>
@@ -218,7 +218,7 @@ export default function VisitaTecnicaPage() {
               {linked ? "ON" : "OFF"}
             </span>
             <span className="block text-sm font-semibold">
-              Vincular datos de Visita Técnica con la Cotización
+              Vincular al cotizador
             </span>
           </span>
         </button>
@@ -231,7 +231,7 @@ export default function VisitaTecnicaPage() {
       ) : null}
 
       <div className="grid gap-4">
-        <VisitCard title="Datos generales">
+        <VisitCard title="Datos generales" defaultOpen>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Cliente / proyecto">
               <input
@@ -664,17 +664,36 @@ export default function VisitaTecnicaPage() {
 
 function VisitCard({
   title,
+  defaultOpen = false,
   children,
 }: {
   title: string;
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="rounded-2xl border border-[#ddd6c8] bg-white p-4 shadow-sm">
-      <h3 className="mb-3 text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
+    <section className="os-fold os-panel rounded-2xl border border-[#ddd6c8] bg-white p-4 shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 text-left print:hidden"
+      >
+        <h3 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
+          {title}
+        </h3>
+        <span
+          aria-hidden
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fbfaf6] text-lg font-semibold text-[#1f6b45]"
+        >
+          {open ? "−" : "+"}
+        </span>
+      </button>
+      <h3 className="mb-3 hidden text-sm font-semibold tracking-wide text-[#1f6b45] uppercase print:block">
         {title}
       </h3>
-      {children}
+      <div className={open ? "mt-3" : "mt-3 hidden print:block"}>{children}</div>
     </section>
   );
 }

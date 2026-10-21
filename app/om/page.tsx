@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import {
   OM_CONTRACT_LABELS,
   OM_STATUS_LABELS,
@@ -54,6 +55,11 @@ export default function OmPage() {
   const [draft, setDraft] = useState<PlantProfile>(() => emptyPlant());
   const [filter, setFilter] = useState<"todas" | OmStatus>("todas");
   const [flash, setFlash] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+
+  useEffect(() => {
+    if (plants.some((p) => p.id === draft.id)) setFormOpen(true);
+  }, [draft.id, plants]);
 
   useEffect(() => {
     const local = loadPlants();
@@ -119,7 +125,7 @@ export default function OmPage() {
 
   return (
     <AppShell title="O&M" subtitle="Plantas · calendario · contratos">
-      <p className="mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
+      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
         Cartera de plantas en operación. Un vencimiento abre el diagnóstico
         pre-mantenimiento; al cerrar el servicio, el informe post y la próxima
         fecha. El dictamen fotográfico queda a un clic.
@@ -143,7 +149,7 @@ export default function OmPage() {
             key={id}
             type="button"
             onClick={() => setFilter((f) => (f === id ? "todas" : id))}
-            className={`rounded-2xl border px-4 py-3 text-left ${
+            className={`os-stat rounded-2xl border px-4 py-3 text-left ${
               filter === id ? "border-[#1f6b45]" : "border-[#ddd6c8] bg-white"
             } ${STATUS_TONE[id]}`}
           >
@@ -156,7 +162,7 @@ export default function OmPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white">
+        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
           <div className="flex items-center justify-between gap-3 border-b border-[#eee8dc] px-4 py-3">
             <h2 className="font-semibold">Cartera</h2>
             <button
@@ -168,9 +174,11 @@ export default function OmPage() {
             </button>
           </div>
           {visible.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-[#6d7c74]">
-              Aún no hay plantas en este filtro. Cargue una a la derecha o
-              reutilice las de Informes.
+            <p className="px-4 py-5 text-sm text-[#6d7c74]">
+              No hay plantas en este filtro.
+              <span className="os-page-intro mt-1 block text-xs">
+                Cargue una a la derecha o reutilice las de Informes.
+              </span>
             </p>
           ) : (
             <ul className="divide-y divide-[#eee8dc]">
@@ -263,19 +271,25 @@ export default function OmPage() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-semibold">
-              {plants.some((p) => p.id === draft.id) ? "Editar planta" : "Nueva planta"}
-            </h2>
-            <button
-              type="button"
-              className="text-xs font-semibold text-[#1f6b45] underline"
-              onClick={() => setDraft(emptyPlant())}
-            >
-              Limpiar
-            </button>
-          </div>
+        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+          <WorkFold
+            title={
+              plants.some((p) => p.id === draft.id)
+                ? "Editar planta"
+                : "Nueva planta"
+            }
+            open={formOpen}
+            onToggle={() => setFormOpen((v) => !v)}
+            actions={
+              <button
+                type="button"
+                className="text-xs font-semibold text-[#1f6b45] underline"
+                onClick={() => setDraft(emptyPlant())}
+              >
+                Limpiar
+              </button>
+            }
+          >
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="text-sm sm:col-span-2">
               <span className="mb-1 block font-medium">Cliente</span>
@@ -454,6 +468,7 @@ export default function OmPage() {
               Calcular próxima fecha
             </button>
           </div>
+          </WorkFold>
         </section>
       </div>
     </AppShell>

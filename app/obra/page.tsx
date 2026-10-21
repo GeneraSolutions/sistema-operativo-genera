@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import {
   OBRA_STATUS_LABELS,
   OPEN_OBRA_KEY,
@@ -53,6 +54,11 @@ export default function ObraPage() {
   const [flash, setFlash] = useState("");
   const [quotes, setQuotes] = useState<ReturnType<typeof loadSavedQuotes>>([]);
   const [visits, setVisits] = useState<ReturnType<typeof loadSavedVisits>>([]);
+  const [formOpen, setFormOpen] = useState(false);
+
+  useEffect(() => {
+    if (jobs.some((j) => j.id === draft.id)) setFormOpen(true);
+  }, [draft.id, jobs]);
 
   useEffect(() => {
     setQuotes(loadSavedQuotes());
@@ -136,7 +142,7 @@ export default function ObraPage() {
 
   return (
     <AppShell title="Obra" subtitle="Avance · cuadrilla · RETIE / UPME">
-      <p className="mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
+      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
         Una ficha por proyecto ganado: de cotización a energización. Trámites
         UPME, RETIE y operador de red, compras frente a lo cotizado y enlace a
         visita, cotizador y O&M.
@@ -153,7 +159,7 @@ export default function ObraPage() {
             key={id}
             type="button"
             onClick={() => setFilter((f) => (f === id ? "todas" : id))}
-            className={`rounded-2xl border px-4 py-3 text-left ${
+            className={`os-stat rounded-2xl border px-4 py-3 text-left ${
               filter === id ? "border-[#1f6b45]" : "border-[#ddd6c8]"
             } ${TONE[id]}`}
           >
@@ -166,7 +172,7 @@ export default function ObraPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white">
+        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
           <div className="flex items-center justify-between gap-3 border-b border-[#eee8dc] px-4 py-3">
             <h2 className="font-semibold">Tablero de obra</h2>
             <button
@@ -178,9 +184,11 @@ export default function ObraPage() {
             </button>
           </div>
           {visible.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-[#6d7c74]">
-              No hay obras en este filtro. Cree una a la derecha o tómela de
-              una cotización guardada.
+            <p className="px-4 py-5 text-sm text-[#6d7c74]">
+              No hay obras en este filtro.
+              <span className="os-page-intro mt-1 block text-xs">
+                Cree una a la derecha o tómela de una cotización guardada.
+              </span>
             </p>
           ) : (
             <ul className="divide-y divide-[#eee8dc]">
@@ -281,19 +289,23 @@ export default function ObraPage() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-semibold">
-              {jobs.some((j) => j.id === draft.id) ? "Editar obra" : "Nueva obra"}
-            </h2>
-            <button
-              type="button"
-              className="text-xs font-semibold text-[#1f6b45] underline"
-              onClick={() => setDraft(emptyObra())}
-            >
-              Limpiar
-            </button>
-          </div>
+        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+          <WorkFold
+            title={
+              jobs.some((j) => j.id === draft.id) ? "Editar obra" : "Nueva obra"
+            }
+            open={formOpen}
+            onToggle={() => setFormOpen((v) => !v)}
+            actions={
+              <button
+                type="button"
+                className="text-xs font-semibold text-[#1f6b45] underline"
+                onClick={() => setDraft(emptyObra())}
+              >
+                Limpiar
+              </button>
+            }
+          >
 
           {quotes.length ? (
             <label className="mt-3 block text-sm">
@@ -678,6 +690,7 @@ export default function ObraPage() {
               Pasar a O&M
             </button>
           </div>
+          </WorkFold>
         </section>
       </div>
     </AppShell>

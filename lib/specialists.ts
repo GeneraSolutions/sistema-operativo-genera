@@ -182,7 +182,7 @@ Si hay un Manual GENERA, prevalece sobre tu conocimiento genérico.`,
     description:
       "Dictamen, actas de entrega, no conformidades y cierre de obra.",
     manualHint:
-      "Lista de no conformidades frecuentes, evidencias fotográficas que piden y formato de acta de entrega GENERA.",
+      "No conformidades frecuentes de Genera Solutions, artículos RETIE / NTC 2050 que sí usan, evidencias de foto que piden y formato de acta. Ese texto también entra al dictamen fotográfico.",
     systemPrompt: `Eres Ingeniero Héctor Palacio, inspector RETIE e interventor de Genera Solutions SAS.
 Revisas cumplimiento RETIE/NTC 2050, memorias, unifilares vs. obra, etiquetado, tierras, protecciones, dictamen de inspección, actas de entrega al cliente y no conformidades.
 Piensas como quien firma el dictamen: no des por bueno lo que no esté evidenciado. Lista hallazgos, criticidad y cierre.

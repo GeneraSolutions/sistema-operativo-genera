@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import {
   MOUNT_LABELS,
   slugCategory,
@@ -76,6 +77,12 @@ export default function InventarioPage() {
     []
   );
   const [newGroupName, setNewGroupName] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [trmOpen, setTrmOpen] = useState(false);
+
+  useEffect(() => {
+    if (editingId) setFormOpen(true);
+  }, [editingId]);
 
   const CATEGORIES = allCategoryIds(customCats);
 
@@ -289,13 +296,14 @@ export default function InventarioPage() {
   return (
     <AppShell title="Catálogo y precios" subtitle="Equipos · TRM · Defaults del cotizador">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
+        <div className="os-page-hero">
           <h2 className="text-2xl font-semibold">Inventario de equipos</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-[#4d5c55]">
             Puede cambiar el precio COP de cada equipo en la lista (se guarda al
             salir del campo o al pulsar Enter). El cotizador usa esos valores de
             inmediato. La TRM solo actualiza el equivalente en USD; no pisa sus COP.
           </p>
+        </div>
           <button
             type="button"
             className="mt-3 text-sm font-medium text-[#1f6b45] underline"
@@ -306,7 +314,6 @@ export default function InventarioPage() {
           >
             Restaurar lista oficial de precios Genera
           </button>
-        </div>
         {savedFlash ? (
           <span className="rounded-full bg-[#1f6b45]/15 px-3 py-1 text-xs font-semibold text-[#1f6b45]">
             {savedFlash}
@@ -314,17 +321,18 @@ export default function InventarioPage() {
         ) : null}
       </div>
 
-      <section className="mb-8 grid gap-4 rounded-2xl border border-[#ddd6c8] bg-white p-5 lg:grid-cols-[1fr_auto]">
+      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title={`TRM · ${copFmt.format(trm.trm)} / USD`}
+          open={trmOpen}
+          onToggle={() => setTrmOpen((v) => !v)}
+        >
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
         <div>
-          <p className="text-xs tracking-[0.2em] text-[#8a6b2a] uppercase">TRM</p>
-          <h3 className="mt-1 text-lg font-semibold">Tasa Representativa del Mercado</h3>
-          <p className="mt-1 text-sm text-[#4d5c55]">
-            Actual: <strong>{copFmt.format(trm.trm)}</strong> por USD
-            {trm.source ? ` · ${trm.source}` : ""}
-          </p>
-          <p className="mt-1 text-xs text-[#6d7c74]">
+          <p className="os-page-intro text-xs text-[#6d7c74]">
             Al aplicar TRM se recalcula el USD a partir del COP (el peso colombiano
             es la fuente de verdad).
+            {trm.source ? ` · ${trm.source}` : ""}
           </p>
         </div>
         <div className="flex items-end gap-2">
@@ -347,14 +355,18 @@ export default function InventarioPage() {
             Aplicar TRM
           </button>
         </div>
+        </div>
+        </WorkFold>
       </section>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)]">
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5 shadow-[0_12px_40px_rgba(18,36,28,0.06)]">
-          <h3 className="text-lg font-semibold">
-            {editingId ? "Editar equipo" : "Nuevo equipo"}
-          </h3>
-          <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-[#f7f4ee] p-3">
+        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5 shadow-[0_12px_40px_rgba(18,36,28,0.06)]">
+          <WorkFold
+            title={editingId ? "Editar equipo" : "Nuevo equipo"}
+            open={formOpen}
+            onToggle={() => setFormOpen((v) => !v)}
+          >
+          <div className="flex flex-wrap items-end gap-2 rounded-xl bg-[#f7f4ee] p-3">
             <label className="min-w-[180px] flex-1 text-sm">
               <span className="mb-1 block font-medium">Nuevo grupo</span>
               <input
@@ -647,6 +659,7 @@ export default function InventarioPage() {
               ) : null}
             </div>
           </form>
+          </WorkFold>
         </section>
 
         <section className="space-y-4">
@@ -678,7 +691,7 @@ export default function InventarioPage() {
               return (
                 <section
                   key={group.category}
-                  className="overflow-hidden rounded-2xl border border-[#ddd6c8] bg-white"
+                  className="os-panel overflow-hidden rounded-2xl border border-[#ddd6c8] bg-white"
                 >
                   <button
                     type="button"

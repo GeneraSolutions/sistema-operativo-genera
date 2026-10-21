@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import {
   clearActiveQuote,
   deleteSavedQuote,
@@ -48,6 +49,11 @@ export default function ArchivoPage() {
   const [quotes, setQuotes] = useState<SavedQuote[]>([]);
   const [visits, setVisits] = useState<SavedVisit[]>([]);
   const [reports, setReports] = useState<SavedReport[]>([]);
+  const [openPack, setOpenPack] = useState({
+    quotes: true,
+    visits: false,
+    reports: false,
+  });
 
   function refresh() {
     setQuotes(loadSavedQuotes());
@@ -130,34 +136,36 @@ export default function ArchivoPage() {
       title="Archivo"
       subtitle="Cotizaciones, visitas e informes"
     >
-      <p className="mb-6 max-w-3xl text-sm leading-6 text-[#4d5c55]">
+      <p className="os-page-intro mb-6 max-w-3xl text-sm leading-6 text-[#4d5c55]">
         Use <strong>Guardar</strong> en cotizador, visitas e informes. Quedan
         en el servidor: cualquier persona del equipo las ve en Archivo, desde
         el celular o el computador.
       </p>
 
-      <section className="mb-8">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[#0f2a1f]">
-            Cotizaciones
-          </h2>
-          <a
-            href="/cotizador?nueva=1"
-            onClick={() => {
-              sessionStorage.removeItem(OPEN_QUOTE_KEY);
-              clearActiveQuote();
-            }}
-            className="text-sm font-semibold text-[#1f6b45] underline"
-          >
-            Nueva cotización
-          </a>
-        </div>
+      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title={quotes.length ? `Cotizaciones · ${quotes.length}` : "Cotizaciones"}
+          open={openPack.quotes}
+          onToggle={() => setOpenPack((s) => ({ ...s, quotes: !s.quotes }))}
+          actions={
+            <a
+              href="/cotizador?nueva=1"
+              onClick={() => {
+                sessionStorage.removeItem(OPEN_QUOTE_KEY);
+                clearActiveQuote();
+              }}
+              className="text-sm font-semibold text-[#1f6b45] underline"
+            >
+              Nueva cotización
+            </a>
+          }
+        >
         {quotes.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-[#ddd6c8] bg-white px-4 py-8 text-sm text-[#6d7c74]">
             Aún no hay cotizaciones guardadas.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
+          <div className="os-panel overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#f7f4ee] text-xs uppercase tracking-wide text-[#6d7c74]">
                 <tr>
@@ -211,27 +219,30 @@ export default function ArchivoPage() {
             </table>
           </div>
         )}
+        </WorkFold>
       </section>
 
-      <section className="mb-8">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[#0f2a1f]">
-            Visitas técnicas
-          </h2>
-          <a
-            href="/visita-tecnica"
-            className="text-sm font-semibold text-[#1f6b45] underline"
-          >
-            Nueva visita
-          </a>
-        </div>
+      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title={visits.length ? `Visitas técnicas · ${visits.length}` : "Visitas técnicas"}
+          open={openPack.visits}
+          onToggle={() => setOpenPack((s) => ({ ...s, visits: !s.visits }))}
+          actions={
+            <a
+              href="/visita-tecnica"
+              className="text-sm font-semibold text-[#1f6b45] underline"
+            >
+              Nueva visita
+            </a>
+          }
+        >
         {visits.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-[#ddd6c8] bg-white px-4 py-8 text-sm text-[#6d7c74]">
             Aún no hay visitas guardadas. En Visitas pulse Guardar visita
             técnica.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
+          <div className="os-panel overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#f7f4ee] text-xs uppercase tracking-wide text-[#6d7c74]">
                 <tr>
@@ -285,26 +296,28 @@ export default function ArchivoPage() {
             </table>
           </div>
         )}
+        </WorkFold>
       </section>
 
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[#0f2a1f]">
-            Informes técnicos
-          </h2>
-          <a
-            href="/informes"
-            className="text-sm font-semibold text-[#1f6b45] underline"
-          >
-            Nuevo informe
-          </a>
-        </div>
+      <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title={
+            reports.length ? `Informes técnicos · ${reports.length}` : "Informes técnicos"
+          }
+          open={openPack.reports}
+          onToggle={() => setOpenPack((s) => ({ ...s, reports: !s.reports }))}
+          actions={
+            <a href="/informes" className="text-sm font-semibold text-[#1f6b45] underline">
+              Nuevo informe
+            </a>
+          }
+        >
         {reports.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-[#ddd6c8] bg-white px-4 py-8 text-sm text-[#6d7c74]">
             Aún no hay informes. En Informes pulse Guardar en Archivo.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
+          <div className="os-panel overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#f7f4ee] text-xs uppercase tracking-wide text-[#6d7c74]">
                 <tr>
@@ -366,6 +379,7 @@ export default function ArchivoPage() {
             </table>
           </div>
         )}
+        </WorkFold>
       </section>
     </AppShell>
   );

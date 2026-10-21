@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import { ReportDocument } from "@/components/informes/ReportDocument";
 import { loadSpecialistManuals } from "@/lib/specialist-manuals";
 import { compressVisitPhoto } from "@/lib/site-visit";
@@ -40,6 +41,15 @@ export default function InformesPage() {
   const [report, setReport] = useState<TechnicalReport>(() =>
     emptyReport("inspeccion-fv")
   );
+  const [folds, setFolds] = useState({
+    plant: true,
+    campo: true,
+    checklist: false,
+    fotos: false,
+    capitulos: false,
+    recientes: false,
+    preview: false,
+  });
   const [plants, setPlants] = useState<PlantProfile[]>([]);
   const [saved, setSaved] = useState(() =>
     typeof window === "undefined" ? [] : loadSavedReports()
@@ -152,9 +162,9 @@ export default function InformesPage() {
   async function addPhotos(files: FileList | null) {
     if (!files?.length) return;
     const extras = await Promise.all(
-      [...files].slice(0, 12).map(async (file) => ({
+      [...files].slice(0, 12).map(async (file, i) => ({
         id: crypto.randomUUID(),
-        caption: file.name.replace(/\.[^.]+$/, ""),
+        caption: `foto${report.photos.length + i + 1}`,
         dataUrl: await compressVisitPhoto(file),
       }))
     );
@@ -238,20 +248,20 @@ export default function InformesPage() {
       title="Informes técnicos"
       subtitle="Inspección · O&M · mesa redonda"
     >
-      <p className="mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55] print:hidden">
+      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55] print:hidden">
         Cuatro tipos de informe con checklist de campo, fotos y redacción de la
         mesa. El ingeniero revisa cada capítulo. PDF o enlace limpio para el
         cliente. Quedan en Archivo.
       </p>
       <a
         href="/informes/dictamen"
-        className="print:hidden mb-5 flex items-start justify-between gap-3 rounded-2xl border border-[#1f6b45]/30 bg-[#e8f6ee] px-4 py-3"
+        className="os-panel print:hidden mb-5 flex items-start justify-between gap-3 rounded-2xl border border-[#1f6b45]/30 bg-[#e8f6ee] px-4 py-3"
       >
         <span>
           <span className="block text-sm font-semibold text-[#0f2a1f]">
             Dictamen fotográfico RETIE / NTC 2050
           </span>
-          <span className="mt-0.5 block text-[12px] leading-5 text-[#4d5c55]">
+          <span className="os-page-intro mt-0.5 block text-[12px] leading-5 text-[#4d5c55]">
             Herramienta aparte: una foto, no conformidad propuesta con articulado.
             No sustituye al organismo de inspección.
           </span>
@@ -343,14 +353,14 @@ export default function InformesPage() {
               key={kind}
               type="button"
               onClick={() => setReport((prev) => retargetKind(prev, kind))}
-              className={`rounded-2xl border px-4 py-3 text-left ${
+              className={`os-kind rounded-2xl border px-4 py-3 text-left ${
                 on
                   ? "border-[#1f6b45] bg-[#e8f6ee]"
                   : "border-[#ddd6c8] bg-white"
               }`}
             >
               <p className="text-sm font-semibold">{REPORT_KIND_LABELS[kind]}</p>
-              <p className="mt-1 text-[11px] leading-4 text-[#6d7c74]">
+              <p className="os-page-intro mt-1 text-[11px] leading-4 text-[#6d7c74]">
                 {REPORT_KIND_HINTS[kind]}
               </p>
             </button>
@@ -360,8 +370,12 @@ export default function InformesPage() {
 
       <div className="print:hidden grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="space-y-4">
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h2 className="font-semibold">Planta / cliente</h2>
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title="Planta / cliente"
+              open={folds.plant}
+              onToggle={() => setFolds((s) => ({ ...s, plant: !s.plant }))}
+            >
             {plants.length ? (
               <label className="mt-3 block text-sm">
                 <span className="mb-1 block font-medium">Reutilizar planta</span>
@@ -447,7 +461,7 @@ export default function InformesPage() {
                   checked={report.plant.ours}
                   onChange={(e) => patchPlant({ ours: e.target.checked })}
                 />
-                Planta instalada por GENERA
+                Planta instalada por Genera Solutions
               </label>
             </div>
             <label className="mt-3 block text-sm">
@@ -459,11 +473,16 @@ export default function InformesPage() {
                 onChange={(e) => patchPlant({ notes: e.target.value })}
               />
             </label>
+            </WorkFold>
           </section>
 
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h2 className="font-semibold">Campo</h2>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title="Campo"
+              open={folds.campo}
+              onToggle={() => setFolds((s) => ({ ...s, campo: !s.campo }))}
+            >
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Inspector</span>
                 <input
@@ -516,11 +535,18 @@ export default function InformesPage() {
                 placeholder="Norma que quiere aplicar, no conformidades que ya vio, corrección pedida al cliente, mediciones que la foto no muestra…"
               />
             </label>
+            </WorkFold>
           </section>
 
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h2 className="font-semibold">Checklist</h2>
-            <ul className="mt-3 space-y-3">
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title="Checklist"
+              open={folds.checklist}
+              onToggle={() =>
+                setFolds((s) => ({ ...s, checklist: !s.checklist }))
+              }
+            >
+            <ul className="space-y-3">
               {report.checklist.map((item) => (
                 <li
                   key={item.id}
@@ -564,13 +590,18 @@ export default function InformesPage() {
                 </li>
               ))}
             </ul>
+            </WorkFold>
           </section>
         </div>
 
         <div className="space-y-4">
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h2 className="font-semibold">Fotos</h2>
-            <p className="mt-1 text-xs text-[#6d7c74]">
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title="Fotos"
+              open={folds.fotos}
+              onToggle={() => setFolds((s) => ({ ...s, fotos: !s.fotos }))}
+            >
+            <p className="os-page-intro text-xs text-[#6d7c74]">
               Hasta 12 evidencias. Ponga pie de foto; la mesa no ve la imagen,
               sí el texto. El dictamen fotográfico sí lee las fotos.
             </p>
@@ -594,7 +625,7 @@ export default function InformesPage() {
               Anexar fotos
             </button>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              {report.photos.map((p) => (
+              {report.photos.map((p, i) => (
                 <div key={p.id} className="relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -607,31 +638,32 @@ export default function InformesPage() {
                     className="absolute right-1 top-1 rounded-full bg-white/90 px-2 text-xs"
                     onClick={() =>
                       patch({
-                        photos: report.photos.filter((x) => x.id !== p.id),
+                        photos: report.photos
+                          .filter((x) => x.id !== p.id)
+                          .map((x, idx) => ({ ...x, caption: `foto${idx + 1}` })),
                       })
                     }
                   >
                     ×
                   </button>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-[#d8d2c4] px-2 py-1 text-[11px]"
-                    value={p.caption}
-                    onChange={(e) =>
-                      patch({
-                        photos: report.photos.map((x) =>
-                          x.id === p.id ? { ...x, caption: e.target.value } : x
-                        ),
-                      })
-                    }
-                  />
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#8a6b2a]">
+                    foto{i + 1}
+                  </p>
                 </div>
               ))}
             </div>
+            </WorkFold>
           </section>
 
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h2 className="font-semibold">Capítulos de la mesa</h2>
-            <p className="mt-1 text-xs text-[#6d7c74]">
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title="Capítulos de la mesa"
+              open={folds.capitulos}
+              onToggle={() =>
+                setFolds((s) => ({ ...s, capitulos: !s.capitulos }))
+              }
+            >
+            <p className="os-page-intro text-xs text-[#6d7c74]">
               Redacte con la mesa y luego edite o apruebe cada especialista.
             </p>
             <div className="mt-3 space-y-4">
@@ -695,10 +727,17 @@ export default function InformesPage() {
                 onChange={(e) => patch({ nextSteps: e.target.value })}
               />
             </label>
+            </WorkFold>
           </section>
 
-          <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h2 className="font-semibold">Recientes en este equipo</h2>
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title="Recientes en este equipo"
+              open={folds.recientes}
+              onToggle={() =>
+                setFolds((s) => ({ ...s, recientes: !s.recientes }))
+              }
+            >
             {saved.length === 0 ? (
               <p className="mt-2 text-sm text-[#6d7c74]">
                 Aún no hay informes guardados.
@@ -735,6 +774,7 @@ export default function InformesPage() {
                 ))}
               </ul>
             )}
+            </WorkFold>
           </section>
         </div>
       </div>
@@ -742,11 +782,14 @@ export default function InformesPage() {
       <div className="hidden print:block">
         <ReportDocument report={report} />
       </div>
-      <div className="print:hidden mt-8 rounded-2xl border border-[#ddd6c8] bg-white">
-        <p className="border-b border-[#eee8dc] px-5 py-3 text-xs font-semibold tracking-wide text-[#8a6b2a] uppercase">
-          Vista previa del PDF
-        </p>
-        <ReportDocument report={report} />
+      <div className="os-panel print:hidden mt-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title="Vista previa del PDF"
+          open={folds.preview}
+          onToggle={() => setFolds((s) => ({ ...s, preview: !s.preview }))}
+        >
+          <ReportDocument report={report} />
+        </WorkFold>
       </div>
     </AppShell>
   );

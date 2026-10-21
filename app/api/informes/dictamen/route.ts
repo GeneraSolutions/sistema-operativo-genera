@@ -5,6 +5,7 @@ import { appendIntelligenceLog } from "@/lib/intelligence-log";
 import {
   MAX_RULING_PHOTOS,
   PHOTO_RULING_SYSTEM,
+  withRetieManual,
   type PhotoFinding,
   type PhotoReading,
   type PhotoRuling,
@@ -21,6 +22,7 @@ interface Body {
   siteNote?: string;
   inspector?: string;
   fieldNotes?: string;
+  manuals?: Record<string, string>;
 }
 
 export async function POST(req: NextRequest) {
@@ -54,10 +56,10 @@ export async function POST(req: NextRequest) {
     }
 
     const catalog = photos
-      .map(
-        (p, i) =>
-          `Foto ${i + 1}${p.caption ? `: ${p.caption}` : ""}`
-      )
+      .map((p, i) => {
+        const note = p.notaCampo?.trim();
+        return `foto${i + 1}${note ? ` — nota de esta imagen: ${note}` : ""}`;
+      })
       .join("\n");
 
     const hint = [
@@ -65,7 +67,7 @@ export async function POST(req: NextRequest) {
       body.siteNote && `Sitio / contexto: ${body.siteNote}`,
       catalog && `Inventario fotográfico:\n${catalog}`,
       body.fieldNotes?.trim() &&
-        `NOTAS DE CAMPO DEL INSPECTOR (hechos a aplicar en norma, no conformidades y correcciones):\n${body.fieldNotes.trim()}`,
+        `Complemento global (no es un capítulo del informe; aplíquelo en la foto que corresponda):\n${body.fieldNotes.trim()}`,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
     const imageParts = photos.flatMap((p, i) => [
       {
         type: "text" as const,
-        text: `— Inicio foto ${i + 1}${p.caption ? ` (${p.caption})` : ""} —`,
+        text: `— Inicio foto${i + 1}${p.notaCampo?.trim() ? `. Nota de esta imagen: ${p.notaCampo.trim()}` : ""} —`,
       },
       {
         type: "image_url" as const,
@@ -102,7 +104,10 @@ export async function POST(req: NextRequest) {
       temperature: 0.15,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: PHOTO_RULING_SYSTEM },
+        {
+          role: "system",
+          content: withRetieManual(PHOTO_RULING_SYSTEM, body.manuals),
+        },
         {
           role: "user",
           content: [
@@ -150,7 +155,10 @@ function parseDraft(raw: string): Pick<
       resumen: String(parsed.resumen || "").trim(),
       lecturaPorFoto: lectura.filter((r) => r.descripcion),
       hallazgos: Array.isArray(parsed.hallazgos)
-        ? (parsed.hallazgos as PhotoFinding[])
+        ? (parsed.hallazgos as PhotoFinding[]).map((h) => ({
+            ...h,
+            id: h.id || crypto.randomUUID(),
+          }))
         : [],
       conformidades: Array.isArray(parsed.conformidades)
         ? parsed.conformidades.map(String)

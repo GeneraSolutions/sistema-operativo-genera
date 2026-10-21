@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import {
   SPECIALISTS,
   specialistsByGroup,
@@ -50,6 +51,12 @@ export default function InteligenciaPage() {
   const [viewerId, setViewerId] = useState("");
   const [viewerRole, setViewerRole] = useState<Role | "">("");
   const [openConsulta, setOpenConsulta] = useState<string | null>(null);
+  const [asideOpen, setAsideOpen] = useState({
+    prompt: false,
+    manual: false,
+    consultas: false,
+    exportar: false,
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
@@ -154,7 +161,7 @@ export default function InteligenciaPage() {
       title="Centro de Inteligencia"
       subtitle="14 especialistas · Manual GENERA · Colombia"
     >
-      <div className="mb-6">
+      <div className="os-page-hero mb-6">
         <h2 className="text-2xl font-semibold">Especialistas virtuales</h2>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-[#4d5c55]">
           Catorce perfiles para no dejar pasar diseño, obra, SST, RETIE, O&M,
@@ -190,13 +197,13 @@ export default function InteligenciaPage() {
       </div>
 
       {mode === "specialist" ? (
-        <div className="mb-6 space-y-5 print:hidden">
+        <div className="mb-6 space-y-4 print:hidden">
           {specialistsByGroup().map((block) => (
             <div key={block.group}>
               <p className="mb-2 text-[11px] font-semibold tracking-[0.2em] text-[#8a6b2a] uppercase">
                 {block.label}
               </p>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="flex flex-wrap gap-1.5">
                 {block.items.map((s) => {
                   const selected = specialistId === s.id;
                   const hasManual = Boolean(manuals[s.id]?.trim());
@@ -205,72 +212,39 @@ export default function InteligenciaPage() {
                       key={s.id}
                       type="button"
                       onClick={() => setSpecialistId(s.id)}
-                      className={`rounded-2xl border p-4 text-left transition ${
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                         selected
-                          ? "border-transparent bg-[#0f2a1f] text-white shadow-lg"
-                          : "border-[#ddd6c8] bg-white hover:border-[#1f6b45]/40"
+                          ? "bg-[#0f2a1f] text-white"
+                          : "bg-white text-[#12241c] ring-1 ring-[#d8d2c4] hover:ring-[#1f6b45]"
                       }`}
                     >
-                      <span className="flex items-center justify-between gap-2">
-                        <span
-                          className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase"
-                          style={{
-                            backgroundColor: selected
-                              ? "rgba(212,180,106,0.2)"
-                              : `${s.accent}18`,
-                            color: selected ? "#d4b46a" : s.accent,
-                          }}
-                        >
-                          {s.shortTitle}
-                        </span>
-                        {hasManual ? (
-                          <span
-                            className={`text-[10px] font-semibold ${
-                              selected ? "text-[#d4b46a]" : "text-[#1f6b45]"
-                            }`}
-                          >
-                            Manual
-                          </span>
-                        ) : null}
-                      </span>
-                      <p className="mt-2 text-base font-semibold">{s.name}</p>
-                      <p
-                        className={`text-sm ${selected ? "text-[#c9d7cf]" : "text-[#4d5c55]"}`}
-                      >
-                        {s.title}
-                      </p>
-                      <p
-                        className={`mt-2 text-xs leading-5 ${
-                          selected ? "text-[#a8c4b6]" : "text-[#6d7c74]"
-                        }`}
-                      >
-                        {s.description}
-                      </p>
+                      {s.shortTitle}
+                      {hasManual ? " ·" : ""}
                     </button>
                   );
                 })}
               </div>
             </div>
           ))}
+          <p className="text-sm text-[#4d5c55]">
+            <span className="font-semibold text-[#12241c]">{active.name}</span>
+            {" · "}
+            {active.title}
+          </p>
         </div>
       ) : (
-        <div className="mb-6 rounded-2xl border border-[#1a3d2e] bg-gradient-to-br from-[#0f2a1f] to-[#163d2c] p-5 text-white print:hidden">
-          <p className="text-[11px] font-semibold tracking-[0.24em] text-[#d4b46a] uppercase">
-            Mesa Redonda activa
+        <div className="mb-6 rounded-2xl border border-[#1a3d2e] bg-[#0f2a1f] px-4 py-3 text-white print:hidden">
+          <p className="text-[11px] font-semibold tracking-[0.2em] text-[#d4b46a] uppercase">
+            Mesa Redonda · 14 especialistas
           </p>
-          <h3 className="mt-1 text-xl font-semibold">
-            Consulta cruzada de los 14 especialistas
-          </h3>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#c9d7cf]">
-            Diseño, potencia, SCADA, O&M, SST, RETIE, tributario, contratos,
-            comercial, compras y ambiental. Si hay manuales pegados, la mesa los
-            usa como doctrina GENERA.
+          <p className="os-page-intro mt-1 max-w-2xl text-xs leading-5 text-[#c9d7cf]">
+            Si hay manuales pegados, la mesa los usa como doctrina GENERA.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             {SPECIALISTS.map((s) => (
               <span
                 key={s.id}
-                className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-[#e8f0ec]"
+                className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[#e8f0ec]"
               >
                 {s.shortTitle}
               </span>
@@ -280,7 +254,7 @@ export default function InteligenciaPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <section className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-[#ddd6c8] bg-white shadow-[0_12px_40px_rgba(18,36,28,0.06)]">
+        <section className="os-panel flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-[#ddd6c8] bg-white shadow-[0_12px_40px_rgba(18,36,28,0.06)]">
           <div className="flex items-center justify-between border-b border-[#eee8dc] px-5 py-3">
             <div>
               <p className="text-xs tracking-[0.18em] text-[#8a6b2a] uppercase">
@@ -305,20 +279,24 @@ export default function InteligenciaPage() {
             className="flex-1 space-y-4 overflow-y-auto px-5 py-4"
           >
             {messages.length === 0 ? (
-              <div className="rounded-xl bg-[#f7f4ee] p-5 text-sm leading-6 text-[#4d5c55]">
-                <p className="font-medium text-[#12241c]">Ejemplos de consulta</p>
-                <ul className="mt-2 list-disc space-y-1 pl-5">
-                  <li>
-                    Dimensionar un sistema 120 kWp en cubierta metálica en Medellín
-                    con BESS 40 kWh.
-                  </li>
-                  <li>
-                    Checklist CREG 174 para AGPE 80 kWp ante Enel Colombia.
-                  </li>
-                  <li>
-                    Cláusulas críticas en un contrato EPC + PPA a 15 años.
-                  </li>
-                </ul>
+              <div className="space-y-2 text-sm text-[#4d5c55]">
+                <p className="text-[11px] font-semibold tracking-wide text-[#8a6b2a] uppercase">
+                  Ejemplos
+                </p>
+                {[
+                  "Dimensionar 120 kWp en cubierta metálica en Medellín con BESS 40 kWh.",
+                  "Checklist CREG 174 para AGPE 80 kWp ante Enel Colombia.",
+                  "Cláusulas críticas en un contrato EPC + PPA a 15 años.",
+                ].map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    onClick={() => setInput(example)}
+                    className="block w-full rounded-xl bg-[#f7f4ee] px-3 py-2 text-left text-xs leading-5 hover:bg-[#eee8dc]"
+                  >
+                    {example}
+                  </button>
+                ))}
               </div>
             ) : null}
 
@@ -386,27 +364,34 @@ export default function InteligenciaPage() {
         </section>
 
         <aside className="space-y-4 print:hidden">
-          <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <p className="text-xs tracking-[0.18em] text-[#8a6b2a] uppercase">
-              Prompt de sistema
-            </p>
-            <h3 className="mt-1 font-semibold">
-              {mode === "mesa" ? "Moderador Mesa Redonda" : active.name}
-            </h3>
-            <p className="mt-2 max-h-32 overflow-y-auto text-xs leading-5 text-[#4d5c55]">
+          <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title={
+                mode === "mesa" ? "Prompt · Mesa Redonda" : `Prompt · ${active.shortTitle}`
+              }
+              open={asideOpen.prompt}
+              onToggle={() =>
+                setAsideOpen((s) => ({ ...s, prompt: !s.prompt }))
+              }
+            >
+            <p className="max-h-32 overflow-y-auto text-xs leading-5 text-[#4d5c55]">
               {mode === "mesa"
                 ? "Síntesis de los 14 flancos. Los manuales pegados mandan sobre el modelo genérico."
                 : active.systemPrompt.slice(0, 420) + "…"}
             </p>
+            </WorkFold>
           </div>
 
           {mode === "specialist" ? (
-            <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-              <p className="text-xs tracking-[0.18em] text-[#8a6b2a] uppercase">
-                Manual GENERA
-              </p>
-              <h3 className="mt-1 font-semibold">Doctrina de {active.shortTitle}</h3>
-              <p className="mt-1 text-xs leading-5 text-[#4d5c55]">
+            <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title={`Manual GENERA · ${active.shortTitle}`}
+              open={asideOpen.manual}
+              onToggle={() =>
+                setAsideOpen((s) => ({ ...s, manual: !s.manual }))
+              }
+            >
+              <p className="os-page-intro text-xs leading-5 text-[#4d5c55]">
                 {active.manualHint} Se guarda en este navegador y se inyecta en
                 cada consulta de este perfil.
               </p>
@@ -440,26 +425,30 @@ export default function InteligenciaPage() {
                   {manualSaved ? "Manual guardado" : "Guardar manual"}
                 </button>
               </div>
+            </WorkFold>
             </div>
           ) : (
-            <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5 text-xs leading-5 text-[#4d5c55]">
-              <p className="font-semibold text-[#12241c]">Manuales en la mesa</p>
-              <p className="mt-1">
-                {
-                  SPECIALISTS.filter((s) => manuals[s.id]?.trim()).length
-                }{" "}
-                de {SPECIALISTS.length} perfiles tienen doctrina pegada. Cargue
-                manuales en modo especialista; la mesa los lee todos.
+            <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5 text-xs leading-5 text-[#4d5c55]">
+              <p className="font-semibold text-[#12241c]">
+                Manuales en la mesa ·{" "}
+                {SPECIALISTS.filter((s) => manuals[s.id]?.trim()).length} /{" "}
+                {SPECIALISTS.length}
+              </p>
+              <p className="os-page-intro mt-1">
+                Cargue manuales en modo especialista; la mesa los lee todos.
               </p>
             </div>
           )}
 
-          <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <p className="text-xs tracking-[0.18em] text-[#8a6b2a] uppercase">
-              Equipo
-            </p>
-            <h3 className="mt-1 font-semibold">Consultas del personal</h3>
-            <p className="mt-1 text-xs leading-5 text-[#4d5c55]">
+          <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title="Consultas del personal"
+              open={asideOpen.consultas}
+              onToggle={() =>
+                setAsideOpen((s) => ({ ...s, consultas: !s.consultas }))
+              }
+            >
+            <p className="os-page-intro text-xs leading-5 text-[#4d5c55]">
               {viewerRole === "ceo"
                 ? "Como CEO ve todas las consultas, incluidas las suyas (privadas para el resto)."
                 : "Ve las consultas del equipo. Las del CEO no aparecen aquí."}
@@ -502,13 +491,19 @@ export default function InteligenciaPage() {
                 })
               )}
             </div>
+            </WorkFold>
           </div>
 
-          <div className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <h3 className="font-semibold">Exportar / Cotizador</h3>
-            <p className="mt-1 text-sm text-[#4d5c55]">
-              Genere el informe técnico en PDF o envíe parámetros al cotizador
-              paramétrico.
+          <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <WorkFold
+              title={`Exportar / Cotizador · ${suggestedKwp} kWp`}
+              open={asideOpen.exportar}
+              onToggle={() =>
+                setAsideOpen((s) => ({ ...s, exportar: !s.exportar }))
+              }
+            >
+            <p className="os-page-intro text-xs text-[#4d5c55]">
+              PDF de la sesión o envío de kWp al cotizador.
             </p>
             <label className="mt-3 block text-sm">
               <span className="mb-1 block font-medium">kWp sugerido</span>
@@ -534,9 +529,10 @@ export default function InteligenciaPage() {
                 Enviar parámetros al Cotizador
               </Link>
             </div>
+            </WorkFold>
           </div>
 
-          <div className="rounded-2xl bg-[#f7f4ee] p-4 text-xs leading-5 text-[#4d5c55]">
+          <div className="os-page-intro rounded-2xl bg-[#f7f4ee] p-4 text-xs leading-5 text-[#4d5c55]">
             <p className="font-semibold text-[#12241c]">API OpenAI</p>
             <p className="mt-1">
               Endpoint <code className="text-[#1f6b45]">/api/inteligencia</code>.

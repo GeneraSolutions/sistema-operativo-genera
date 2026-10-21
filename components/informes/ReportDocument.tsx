@@ -54,7 +54,9 @@ export function ReportDocument({ report }: { report: TechnicalReport }) {
         </p>
         <p className="sm:col-span-2">
           <strong>Origen de la planta:</strong>{" "}
-          {report.plant.ours ? "Instalación GENERA" : "Tercero / no GENERA"}
+          {report.plant.ours
+            ? "Instalación Genera Solutions"
+            : "Tercero / no Genera Solutions"}
         </p>
       </section>
 
@@ -158,7 +160,7 @@ export function ReportDocument({ report }: { report: TechnicalReport }) {
             Registro fotográfico
           </h2>
           <div className="mt-3 grid grid-cols-2 gap-3">
-            {report.photos.map((p) => (
+            {report.photos.map((p, i) => (
               <figure key={p.id}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -167,7 +169,7 @@ export function ReportDocument({ report }: { report: TechnicalReport }) {
                   className="h-40 w-full rounded-xl object-cover"
                 />
                 <figcaption className="mt-1 text-xs text-[#6d7c74]">
-                  {p.caption || "Sin pie de foto"}
+                  foto{i + 1}
                 </figcaption>
               </figure>
             ))}
@@ -178,8 +180,8 @@ export function ReportDocument({ report }: { report: TechnicalReport }) {
       <footer className="mt-10 border-t border-[#eee8dc] pt-4 text-xs leading-5 text-[#6d7c74]">
         Documento interno y/o para el cliente según el estado de publicación.
         El criterio de la mesa redonda es apoyo; la firma técnica es del
-        inspector e ingeniería GENERA. No reemplaza dictamen RETIE de un
-        organismo de inspección.
+        inspector e ingeniería de Genera Solutions. No reemplaza dictamen RETIE
+        de un organismo de inspección.
       </footer>
     </article>
   );

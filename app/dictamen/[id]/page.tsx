@@ -28,7 +28,7 @@ export default async function SharedRulingPage({
 
   return (
     <div className="min-h-screen bg-[#f4efe4] text-[#12241c]">
-      <PrintBar title="Dictamen fotográfico GENERA" />
+      <PrintBar title="Dictamen fotográfico Genera Solutions" />
       <main className="py-6">
         <RulingDocument ruling={ruling} />
       </main>

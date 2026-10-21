@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import { BrandLogo } from "@/components/BrandLogo";
 import { EnergyBillPanel } from "@/components/EnergyBillPanel";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
@@ -259,9 +260,13 @@ function CotizadorInner() {
     pago: false,
     costeo: false,
     propuesta: false,
-    garantias: true,
-    bonos: true,
+    garantias: false,
+    bonos: false,
     recibo: false,
+  });
+  const [paramExtra, setParamExtra] = useState({
+    ideam: false,
+    imagen: false,
   });
   const [kits, setKits] = useState<EquipmentKit[]>([]);
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
@@ -1169,7 +1174,7 @@ function CotizadorInner() {
       subtitle="3 kWp → 5.000 kWp · Propuesta comercial en segundos"
     >
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="os-page-hero">
           <h2 className="text-2xl font-semibold">Motor de cotización ultra-rápido</h2>
           <p className="mt-1 text-sm text-[#4d5c55]">
             Dimensiona CAPEX desde inventario, aplica Ley 1715 y personaliza la
@@ -1200,7 +1205,7 @@ function CotizadorInner() {
             title={kit.hint}
           >
             <span className="font-semibold">{kit.name}</span>
-            <span className="mt-0.5 block text-[10px] text-[#b8e0cc]">{kit.hint}</span>
+            <span className="os-kit-hint mt-0.5 block text-[10px] text-[#b8e0cc]">{kit.hint}</span>
           </button>
         ))}
         <button
@@ -1327,8 +1332,7 @@ function CotizadorInner() {
                   </span>
                   <span>
                     <span className="block text-[10px] font-bold tracking-wider uppercase text-[#1f6b45]">
-                      {visitLinked ? "ON" : "OFF"} · Vincular datos de Visita Técnica
-                      con la Cotización
+                      {visitLinked ? "ON" : "OFF"} · Vincular al cotizador
                     </span>
                     <span className="mt-0.5 block text-xs text-[#4d5c55]">
                       {visitLinked && siteVisit
@@ -1337,7 +1341,7 @@ function CotizadorInner() {
                               ? ` · ${siteVisit.lat}, ${siteVisit.lon}`
                               : ""
                           }.`
-                        : "OFF usa metros genéricos por kWp. Complete la visita técnica para traer metrado real."}
+                        : "Sin visita: metros genéricos por kWp."}
                     </span>
                   </span>
                 </button>
@@ -1394,7 +1398,7 @@ function CotizadorInner() {
                     value={peakSunHours}
                     onChange={(e) => setPeakSunHours(Number(e.target.value) || 4.5)}
                   />
-                  <span className="mt-1 block text-xs text-[#6b6458]">
+                  <span className="os-page-intro mt-1 block text-xs text-[#6b6458]">
                     Se carga del Ideam y puedes afinarlo; la curva mensual conserva la
                     forma del atlas.
                   </span>
@@ -1411,8 +1415,14 @@ function CotizadorInner() {
               </div>
 
               <div className="rounded-2xl border border-[#e4dfd4] bg-[#f7f4ee] p-3">
-                <p className="text-sm font-medium">Radiación IDEAM</p>
-                <p className="mt-0.5 text-xs text-[#6b6458]">
+                <WorkFold
+                  title="Radiación IDEAM"
+                  open={paramExtra.ideam}
+                  onToggle={() =>
+                    setParamExtra((s) => ({ ...s, ideam: !s.ideam }))
+                  }
+                >
+                <p className="os-page-intro text-xs text-[#6b6458]">
                   Atlas de radiación solar de Colombia · GHI Wh/m²·día. Coordenadas del
                   predio para interpolar las estaciones más cercanas.
                 </p>
@@ -1467,6 +1477,7 @@ function CotizadorInner() {
                     {numFmt.format(irradiance.hsp)} kWh/m²·día
                   </p>
                 ) : null}
+                </WorkFold>
               </div>
 
               <label className="block text-sm">
@@ -1519,7 +1530,7 @@ function CotizadorInner() {
                     value={issuedAt}
                     onChange={(e) => setIssuedAt(e.target.value || localISODate())}
                   />
-                  <span className="mt-1 block text-xs text-[#6b6458]">
+                  <span className="os-page-intro mt-1 block text-xs text-[#6b6458]">
                     Por defecto hoy. Puedes elegir una fecha anterior.
                   </span>
                 </label>
@@ -1548,15 +1559,21 @@ function CotizadorInner() {
                       );
                     }}
                   />
-                  <span className="mt-1 block text-xs text-[#6b6458]">
+                  <span className="os-page-intro mt-1 block text-xs text-[#6b6458]">
                     De 1 a 45 días calendario.
                   </span>
                 </label>
               </div>
 
               <div className="rounded-2xl border border-[#e4dfd4] bg-[#f7f4ee] p-3">
-                <p className="text-sm font-medium">Foto del lugar</p>
-                <p className="mt-0.5 text-xs text-[#6b6458]">
+                <WorkFold
+                  title="Foto del lugar y logo"
+                  open={paramExtra.imagen}
+                  onToggle={() =>
+                    setParamExtra((s) => ({ ...s, imagen: !s.imagen }))
+                  }
+                >
+                <p className="os-page-intro text-xs text-[#6b6458]">
                   Casa, finca, empresa o cubierta. Se muestra en la cotización.
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1596,10 +1613,7 @@ function CotizadorInner() {
                     className="mt-3 max-h-40 w-full rounded-xl object-cover"
                   />
                 ) : null}
-              </div>
-
-              <div className="rounded-2xl border border-[#e4dfd4] bg-[#f7f4ee] p-3">
-                <label className="block text-sm">
+                <label className="mt-3 block text-sm">
                   <span className="mb-1 block font-medium">
                     Tamaño del logo en la cotización ({logoHeight} px)
                   </span>
@@ -1618,6 +1632,7 @@ function CotizadorInner() {
                 <p className="mt-2 text-center text-[11px] tracking-widest text-[#6b6458] uppercase">
                   Cotización EPC · Genera
                 </p>
+                </WorkFold>
               </div>
 
               <fieldset>
@@ -3220,7 +3235,7 @@ function CotizadorInner() {
             <p className="mt-5 text-xs font-semibold tracking-wide text-[#8a6b2a] uppercase">
               Entregables visibles para el cliente
             </p>
-            <p className="mt-1 text-xs text-[#6d7c74]">
+            <p className="os-page-intro mt-1 text-xs text-[#6d7c74]">
               Cada interruptor muestra u oculta ese documento en la cotización.
               Las fichas técnicas no se entregan con la oferta: úselas cuando
               el cliente pague anticipo o se cierre la obra, y pulse Liberar
@@ -3241,8 +3256,8 @@ function CotizadorInner() {
         </div>
 
         {/* RIGHT: misma propuesta estilo Vercel, en vivo */}
-        <div className="space-y-4">
-          <p className="print:hidden text-sm text-[#4d5c55]">
+        <div className="os-quote-preview space-y-4">
+          <p className="os-page-intro print:hidden text-sm text-[#4d5c55]">
             Esta es la misma cotización que enviabas antes (estilo oscuro EPC). Lo que
             cambias a la izquierda se refleja aquí. El enlace comercial abre esta
             página completa para el cliente.
@@ -3266,7 +3281,7 @@ function CotizadorInner() {
             <button
               type="button"
               onClick={handlePdfPro}
-              className="flex-1 rounded-xl bg-[#d4b46a] px-4 py-3.5 text-sm font-semibold tracking-wide text-[#12241c] uppercase hover:bg-[#c7a45a]"
+              className="flex-1 rounded-xl bg-[#d4b46a] px-4 py-2.5 text-sm font-semibold tracking-wide text-[#12241c] uppercase hover:bg-[#c7a45a]"
             >
               Generar PDF Pro
             </button>
@@ -3274,11 +3289,9 @@ function CotizadorInner() {
               type="button"
               disabled={publishingLink || !liveProposal}
               onClick={() => void publishCommercial({ open: true })}
-              className="flex-1 rounded-xl bg-[#0f2a1f] px-4 py-3.5 text-sm font-semibold tracking-wide text-white uppercase hover:bg-[#163d2c] disabled:opacity-50"
+              className="flex-1 rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold tracking-wide text-white uppercase hover:bg-[#163d2c] disabled:opacity-50"
             >
-              {publishingLink
-                ? "Publicando…"
-                : "Obtener Enlace Comercial Interactivo"}
+              {publishingLink ? "Publicando…" : "Enlace comercial"}
             </button>
             <button
               type="button"
@@ -3289,32 +3302,31 @@ function CotizadorInner() {
                   open: false,
                 })
               }
-              className="flex-1 rounded-xl border border-[#1f6b45] bg-white px-4 py-3.5 text-sm font-semibold tracking-wide text-[#1f6b45] uppercase disabled:opacity-50"
+              className="flex-1 rounded-xl border border-[#1f6b45] bg-white px-4 py-2.5 text-sm font-semibold tracking-wide text-[#1f6b45] uppercase disabled:opacity-50"
             >
               {datasheetsReleased(toggles)
                 ? "Ocultar fichas técnicas"
                 : "Liberar fichas técnicas"}
             </button>
           </div>
-          <p className="text-center text-xs leading-5 text-[#6d7c74] print:hidden">
+          <p className="os-page-intro text-center text-xs leading-5 text-[#6d7c74] print:hidden">
             Al enviar la cotización el cliente no ve las fichas. Cuando haya
             anticipo de obra o cierre del proyecto, pulse Liberar fichas
             técnicas: el botón aparece en el mismo enlace.
-            {commercialProposalId ? (
-              <>
-                {" "}
-                Enlace actual:{" "}
-                <a
-                  className="font-medium text-[#1f6b45] underline"
-                  href={`/propuesta/epc/${commercialProposalId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  abrir cotización
-                </a>
-              </>
-            ) : null}
           </p>
+          {commercialProposalId ? (
+            <p className="text-center text-xs leading-5 text-[#6d7c74] print:hidden">
+              Enlace actual:{" "}
+              <a
+                className="font-medium text-[#1f6b45] underline"
+                href={`/propuesta/epc/${commercialProposalId}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                abrir cotización
+              </a>
+            </p>
+          ) : null}
           {linkFlash ? (
             <p className="text-center text-sm font-medium text-[#1f6b45] print:hidden">
               {linkFlash}
@@ -3354,9 +3366,9 @@ function QuoteFold({
 }) {
   return (
     <section
-      className={`rounded-2xl border p-4 ${
+      className={`os-fold rounded-2xl border p-4 ${
         dark
-          ? "border-[#1a3d2e] bg-[#0f2a1f] text-white"
+          ? "os-fold-dark border-[#1a3d2e] bg-[#0f2a1f] text-white"
           : "border-[#ddd6c8] bg-white"
       } ${printHidden ? "print:hidden" : ""}`}
     >
@@ -3376,7 +3388,7 @@ function QuoteFold({
               {kicker}
             </p>
           ) : null}
-          <h3 className="text-lg font-semibold">{title}</h3>
+          <h3 className="text-base font-semibold">{title}</h3>
           {!open && summary ? (
             <p
               className={`mt-0.5 truncate text-xs ${

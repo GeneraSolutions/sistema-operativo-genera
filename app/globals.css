@@ -1,18 +1,213 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
-:root {
+:root,
+html[data-look="clasico"] {
   --background: #f4f1ea;
   --foreground: #12241c;
   --brand-deep: #0f2a1f;
   --brand-green: #1f6b45;
   --brand-gold: #d4b46a;
+  --shell-header-py: 1rem;
+  --shell-logo: 52px;
+  --shell-main-py: 2rem;
+}
+
+html[data-look="operativo"] {
+  --background: #e8e3d6;
+  --foreground: #12241c;
+  --brand-deep: #071910;
+  --brand-green: #1f6b45;
+  --brand-gold: #c9a45a;
+  --shell-header-py: 0.7rem;
+  --shell-logo: 40px;
+  --shell-main-py: 1.25rem;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+html[data-look="operativo"] .os-nav-hint,
+html[data-look="operativo"] .os-shell-page {
+  display: none;
+}
+
+html[data-look="operativo"] .os-page-bar {
+  display: flex;
+}
+
+html[data-look="operativo"] .os-page-bar-sub {
+  display: none;
+}
+
+html[data-look="operativo"] .os-page-hero,
+html[data-look="operativo"] .os-page-intro {
+  display: none;
+}
+
+html[data-look="operativo"] .os-shell-logo img {
+  height: 36px !important;
+  width: auto !important;
+}
+
+html[data-look="operativo"] .os-stat {
+  border-radius: 0.75rem;
+  border-left: 4px solid var(--brand-gold);
+  background: #fbfaf6;
+}
+
+html[data-look="operativo"] .os-panel,
+html[data-look="operativo"] .os-fold:not(.os-fold-dark) {
+  border-radius: 0.75rem;
+  border-color: #d3cdc0;
+  background: #fbfaf6;
+}
+
+html[data-look="operativo"] .os-fold {
+  padding: 0.8rem 0.95rem;
+}
+
+html[data-look="operativo"] .os-fold-dark {
+  border-radius: 0.75rem;
+  border-color: #1a3d2e;
+  background: #0f2a1f;
+  color: #fff;
+}
+
+html[data-look="operativo"] .os-fold h3 {
+  font-size: 1rem;
+}
+
+html[data-look="operativo"] .os-page-lead {
+  font-size: 0.9rem;
+  max-width: 42rem;
+}
+
+html[data-look="operativo"] .os-kit-hint {
+  display: none;
+}
+
+html[data-look="operativo"] table th,
+html[data-look="operativo"] table td {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+html[data-look="operativo"] .os-shell-main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html[data-look="operativo"] .os-shell-main select,
+html[data-look="operativo"] .os-shell-main textarea {
+  border-radius: 0.65rem;
+}
+
+html[data-look="operativo"] .os-kind {
+  border-radius: 0.75rem;
+  border-left: 4px solid var(--brand-gold);
+}
+
+html[data-look="operativo"] .os-login-card {
+  border-radius: 1rem;
+  border: 1px solid #d7d0c2;
+  box-shadow: 0 12px 40px rgba(7, 25, 16, 0.28);
+}
+
+html[data-look="operativo"] .os-shell-inner {
+  gap: 0.65rem;
+}
+
+html[data-look="operativo"] .os-shell-nav {
+  width: 100%;
+}
+
+@media (min-width: 860px) {
+  html[data-look="operativo"] .os-app {
+    display: grid;
+    grid-template-columns: 228px minmax(0, 1fr);
+    min-height: 100vh;
+  }
+
+  html[data-look="operativo"] .os-shell-header {
+    border-bottom: 0;
+    border-right: 1px solid #143528;
+  }
+
+  html[data-look="operativo"] .os-shell-inner {
+    max-width: none;
+    margin: 0;
+    height: 100%;
+    min-height: 100vh;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 1.15rem;
+    padding: 1.15rem 0.8rem 1.2rem;
+  }
+
+  html[data-look="operativo"] .os-shell-brand .flex {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.65rem;
+  }
+
+  html[data-look="operativo"] .os-shell-kicker {
+    letter-spacing: 0.18em;
+    font-size: 9px;
+  }
+
+  html[data-look="operativo"] .os-shell-brand-title {
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+
+  html[data-look="operativo"] .os-shell-tools {
+    flex: 1;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+
+  html[data-look="operativo"] .os-look-toggle {
+    order: 3;
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  html[data-look="operativo"] .os-look-toggle button {
+    flex: 1;
+  }
+
+  html[data-look="operativo"] .os-shell-nav {
+    order: 1;
+    flex: 1;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    width: 100%;
+    gap: 2px;
+    padding: 0.3rem;
+    align-self: stretch;
+  }
+
+  html[data-look="operativo"] .os-nav-link {
+    width: 100%;
+    padding: 0.58rem 0.7rem;
+  }
+
+  html[data-look="operativo"] .os-shell-user {
+    order: 4;
+    text-align: left;
+    padding-top: 0.75rem;
+    border-top: 1px solid #1f4636;
+  }
+
+  html[data-look="operativo"] .os-shell-main {
+    max-width: none;
+    width: 100%;
+    padding: 1.15rem 1.6rem 2rem;
+  }
 }
 
 .leaflet-container {

@@ -11,6 +11,7 @@ import {
 } from "@/lib/energy-bill";
 import { isPdfFile, renderBillPdf } from "@/lib/bill-pdf";
 import { compressVisitPhoto } from "@/lib/site-visit";
+import { WorkFold } from "@/components/WorkFold";
 
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2 text-sm";
@@ -33,6 +34,7 @@ export function EnergyBillPanel({
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
   const kwh = consumptionForQuote(value);
   const tariff = tariffForQuote(value);
   const suggested =
@@ -118,7 +120,7 @@ export function EnergyBillPanel({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs leading-5 text-[#6d7c74]">
+      <p className="os-page-intro text-xs leading-5 text-[#6d7c74]">
         Suba foto o PDF del recibo (frente, reverso e histórico). La lectura
         extrae transformador, circuito, kWh, $/kWh y si hay reactiva. Revise
         los números antes de cotizar.
@@ -229,6 +231,15 @@ export function EnergyBillPanel({
         </div>
       ) : null}
 
+      <WorkFold
+        title={
+          kwh
+            ? `Datos del recibo · ${kwh.toLocaleString("es-CO")} kWh`
+            : "Datos del recibo"
+        }
+        open={fieldsOpen}
+        onToggle={() => setFieldsOpen((v) => !v)}
+      >
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-sm">
           <span className="mb-1 block font-medium">Empresa / comercializador</span>
@@ -436,6 +447,7 @@ export function EnergyBillPanel({
           onChange={(e) => patch({ extras: e.target.value })}
         />
       </label>
+      </WorkFold>
     </div>
   );
 }

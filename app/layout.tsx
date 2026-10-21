@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { OS_LOOK_BOOT } from "@/lib/os-look";
 import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -38,8 +39,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
-      <body>{children}</body>
+    <html lang="es" data-look="operativo">
+      <body>
+        <script dangerouslySetInnerHTML={{ __html: OS_LOOK_BOOT }} />
+        {children}
+      </body>
     </html>
   );
 }

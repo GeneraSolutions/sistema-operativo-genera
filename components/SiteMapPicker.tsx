@@ -174,7 +174,7 @@ export function SiteMapPicker({ lat, lon, onPick }: Props) {
         ref={hostRef}
         className="h-64 w-full overflow-hidden rounded-xl ring-1 ring-[#d8d2c4]"
       />
-      <p className="mt-1 text-[11px] text-[#6d7c74]">
+      <p className="os-page-intro mt-1 text-[11px] text-[#6d7c74]">
         Pincha el mapa en el predio. Esa latitud y longitud van al cotizador para
         interpolar el atlas IDEAM.
       </p>

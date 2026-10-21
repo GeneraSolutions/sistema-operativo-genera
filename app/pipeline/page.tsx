@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { WorkFold } from "@/components/WorkFold";
 import {
   LEAD_SOURCE_LABELS,
   LEAD_STAGE_LABELS,
@@ -62,6 +63,11 @@ export default function PipelinePage() {
   const [flash, setFlash] = useState("");
   const [quotes, setQuotes] = useState<ReturnType<typeof loadSavedQuotes>>([]);
   const [visits, setVisits] = useState<ReturnType<typeof loadSavedVisits>>([]);
+  const [formOpen, setFormOpen] = useState(false);
+
+  useEffect(() => {
+    if (leads.some((l) => l.id === draft.id)) setFormOpen(true);
+  }, [draft.id, leads]);
 
   useEffect(() => {
     setQuotes(loadSavedQuotes());
@@ -174,7 +180,7 @@ export default function PipelinePage() {
 
   return (
     <AppShell title="Pipeline comercial" subtitle="Leads · cotización · cierre">
-      <p className="mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
+      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
         Antes de cotizar: contactos, visita y negociación. Al ganar, pasa a
         Obra; la cotización y la visita quedan ligadas a la misma ficha.
       </p>
@@ -185,13 +191,13 @@ export default function PipelinePage() {
       ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
+        <div className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
           <p className="text-2xl font-semibold text-[#0f2a1f]">{leads.length}</p>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
             Oportunidades
           </p>
         </div>
-        <div className="rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
+        <div className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
           <p className="text-2xl font-semibold text-[#0f2a1f]">
             {cop.format(openValue)}
           </p>
@@ -199,13 +205,13 @@ export default function PipelinePage() {
             Valor abierto
           </p>
         </div>
-        <div className="rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
+        <div className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
           <p className="text-2xl font-semibold text-[#0f2a1f]">{dueToday}</p>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
             Seguimiento vencido
           </p>
         </div>
-        <div className="rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
+        <div className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
           <p className="text-2xl font-semibold text-[#1f6b45]">
             {counts.ganado}
           </p>
@@ -221,7 +227,7 @@ export default function PipelinePage() {
             key={id}
             type="button"
             onClick={() => setFilter((f) => (f === id ? "todas" : id))}
-            className={`rounded-2xl border px-3 py-3 text-left ${
+            className={`os-stat rounded-2xl border px-3 py-3 text-left ${
               filter === id ? "border-[#1f6b45]" : "border-[#ddd6c8]"
             } ${TONE[id]}`}
           >
@@ -271,7 +277,7 @@ export default function PipelinePage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white">
+        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
           <div className="flex items-center justify-between gap-3 border-b border-[#eee8dc] px-4 py-3">
             <h2 className="font-semibold">Oportunidades</h2>
             <button
@@ -283,8 +289,11 @@ export default function PipelinePage() {
             </button>
           </div>
           {visible.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-[#6d7c74]">
-              No hay fichas en este filtro. Cree una a la derecha.
+            <p className="px-4 py-5 text-sm text-[#6d7c74]">
+              No hay fichas en este filtro.
+              <span className="os-page-intro mt-1 block text-xs">
+                Cree una a la derecha.
+              </span>
             </p>
           ) : (
             <ul className="divide-y divide-[#eee8dc]">
@@ -389,21 +398,25 @@ export default function PipelinePage() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-[#ddd6c8] bg-white p-5">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-semibold">
-              {leads.some((l) => l.id === draft.id)
+        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+          <WorkFold
+            title={
+              leads.some((l) => l.id === draft.id)
                 ? "Editar oportunidad"
-                : "Nueva oportunidad"}
-            </h2>
-            <button
-              type="button"
-              className="text-xs font-semibold text-[#1f6b45] underline"
-              onClick={() => setDraft(emptyLead())}
-            >
-              Limpiar
-            </button>
-          </div>
+                : "Nueva oportunidad"
+            }
+            open={formOpen}
+            onToggle={() => setFormOpen((v) => !v)}
+            actions={
+              <button
+                type="button"
+                className="text-xs font-semibold text-[#1f6b45] underline"
+                onClick={() => setDraft(emptyLead())}
+              >
+                Limpiar
+              </button>
+            }
+          >
 
           {quotes.length ? (
             <label className="mt-3 block text-sm">
@@ -679,6 +692,7 @@ export default function PipelinePage() {
               Pasar a obra
             </button>
           </div>
+          </WorkFold>
         </section>
       </div>
     </AppShell>

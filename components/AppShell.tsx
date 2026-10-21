@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { OsLookToggle } from "@/components/OsLookToggle";
 import {
   ROLE_LABELS,
   sessionAllowsModule,
@@ -73,25 +74,22 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="border-b border-[#1a3d2e] bg-[#0f2a1f]">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div className="min-w-0">
+    <div className="os-app min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <header className="os-shell-header border-b border-[#1a3d2e] bg-[var(--brand-deep)]">
+        <div className="os-shell-inner mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-[var(--shell-header-py)]">
+          <div className="os-shell-brand min-w-0">
             <div className="flex min-w-0 items-center gap-3">
-              <BrandLogo height={52} />
-              <Link
-                href="/inicio"
-                className="group min-w-0"
-              >
-                <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d4b46a] uppercase">
+              <BrandLogo height={52} className="os-shell-logo" />
+              <Link href="/inicio" className="group min-w-0">
+                <p className="os-shell-kicker text-[11px] font-semibold tracking-[0.28em] text-[#d4b46a] uppercase">
                   Genera Solutions SAS
                 </p>
-                <h1 className="mt-0.5 truncate text-xl font-semibold text-white group-hover:text-[#e8d9a8]">
+                <h1 className="os-shell-brand-title mt-0.5 truncate text-xl font-semibold text-white group-hover:text-[#e8d9a8]">
                   Sistema Operativo Solar
                 </h1>
               </Link>
             </div>
-            <p className="mt-1 text-sm text-[#c9d7cf]">
+            <p className="os-shell-page mt-1 text-sm text-[#c9d7cf]">
               {title}
               {subtitle ? (
                 <span className="text-[#8aa398]"> · {subtitle}</span>
@@ -99,15 +97,17 @@ export function AppShell({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <nav className="flex flex-wrap gap-1 rounded-xl bg-[#0a1f17] p-1 ring-1 ring-[#1f4636]">
+          <div className="os-shell-tools flex flex-wrap items-center gap-3">
+            <OsLookToggle />
+            <nav className="os-shell-nav flex flex-wrap gap-1 rounded-xl bg-[#0a1f17] p-1 ring-1 ring-[#1f4636]">
               {nav.map((item) => {
                 const active = pathname.startsWith(item.href);
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`rounded-lg px-3.5 py-2 text-sm transition ${
+                    title={item.hint}
+                    className={`os-nav-link rounded-lg px-3.5 py-2 text-sm transition ${
                       active
                         ? "bg-[#1f6b45] font-semibold text-white shadow-sm"
                         : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
@@ -115,7 +115,7 @@ export function AppShell({
                   >
                     <span className="block leading-tight">{item.label}</span>
                     <span
-                      className={`block text-[10px] tracking-wide uppercase ${
+                      className={`os-nav-hint block text-[10px] tracking-wide uppercase ${
                         active ? "text-[#b8e0cc]" : "text-[#6d8a7c]"
                       }`}
                     >
@@ -126,7 +126,7 @@ export function AppShell({
               })}
             </nav>
             {me ? (
-              <div className="text-right">
+              <div className="os-shell-user text-right">
                 <p className="text-sm font-semibold text-white">{me.name}</p>
                 <p className="text-[10px] uppercase tracking-wide text-[#d4b46a]">
                   {me.roleLabel || ROLE_LABELS[me.role] || me.role}
@@ -143,7 +143,22 @@ export function AppShell({
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
+      <main className="os-shell-main mx-auto max-w-7xl px-6 py-[var(--shell-main-py)]">
+        <div className="os-page-bar mb-4 hidden items-end justify-between gap-3 border-b border-[#e4dfd4] pb-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8a6b2a]">
+              Mesa de trabajo
+            </p>
+            <h2 className="truncate text-lg font-semibold text-[#12241c]">{title}</h2>
+            {subtitle ? (
+              <p className="os-page-bar-sub mt-0.5 truncate text-sm text-[#6d7c74]">
+                {subtitle}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        {children}
+      </main>
     </div>
   );
 }
