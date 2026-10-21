@@ -977,6 +977,47 @@ function CotizadorInner() {
     })
     .filter(Boolean) as string[];
 
+  const showEngineeringAdj =
+    engineeringSaleCOP > 0 || engineeringCostCOP > 0;
+  const addonIvaCOP = (saleCOP: number) =>
+    chargeIva ? Math.round(saleCOP * IVA_RATE) : 0;
+  const costeoTotals = {
+    cost:
+      quote.lines.reduce((sum, line) => sum + line.costTotalCOP, 0) +
+      (showEngineeringAdj ? engineeringCostCOP : 0) +
+      quote.addons
+        .filter((addon) => addon.enabled)
+        .reduce((sum, addon) => sum + addon.costCOP, 0) +
+      quote.labor.costCOP,
+    sale:
+      quote.lines.reduce((sum, line) => sum + line.saleTotalCOP, 0) +
+      (showEngineeringAdj ? engineeringSaleCOP : 0) +
+      quote.addons
+        .filter((addon) => addon.enabled)
+        .reduce((sum, addon) => sum + addon.saleCOP, 0) +
+      quote.labor.saleCOP,
+    iva:
+      quote.lines.reduce((sum, line) => sum + line.ivaTotalCOP, 0) +
+      (showEngineeringAdj ? addonIvaCOP(engineeringSaleCOP) : 0) +
+      quote.addons
+        .filter((addon) => addon.enabled)
+        .reduce((sum, addon) => sum + addonIvaCOP(addon.saleCOP), 0) +
+      quote.labor.ivaCOP,
+  };
+  const equiposTotals = quoteLines.reduce(
+    (acc, line) => {
+      const saleUnit = saleFromCost(line.costUnitCOP, line.marginPercent);
+      const costLine = line.costUnitCOP * line.qty;
+      const saleLine = saleUnit * line.qty;
+      return {
+        cost: acc.cost + costLine,
+        sale: acc.sale + saleLine,
+        gain: acc.gain + Math.max(0, saleLine - costLine),
+      };
+    },
+    { cost: 0, sale: 0, gain: 0 }
+  );
+
   const activeInventory = inventory.filter((i) => i.active);
   const addInventoryGroups = useMemo(
     () => groupInventoryByCategory(activeInventory, customCats, addItemQuery),
@@ -2062,6 +2103,34 @@ function CotizadorInner() {
                   </div>
                 );
               })}
+              {quoteLines.length ? (
+                <div className="grid gap-2 rounded-2xl border border-[#1f6b45]/30 bg-[#e8f6ee] px-3 py-3 text-sm sm:grid-cols-3">
+                  <p>
+                    <span className="block text-[11px] font-semibold tracking-wide text-[#4d5c55] uppercase">
+                      Total costo
+                    </span>
+                    <span className="font-semibold text-[#12241c]">
+                      {copFmt.format(equiposTotals.cost)}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="block text-[11px] font-semibold tracking-wide text-[#4d5c55] uppercase">
+                      Total venta
+                    </span>
+                    <span className="font-semibold text-[#12241c]">
+                      {copFmt.format(equiposTotals.sale)}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="block text-[11px] font-semibold tracking-wide text-[#4d5c55] uppercase">
+                      Total ganancia
+                    </span>
+                    <span className="font-semibold text-[#1f6b45]">
+                      {copFmt.format(equiposTotals.gain)}
+                    </span>
+                  </p>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-[#d8d2c4] p-3">
                 <label className="min-w-[160px] flex-1 text-sm">
                   <span className="mb-1 block font-medium">Buscar</span>
@@ -2641,6 +2710,22 @@ function CotizadorInner() {
                       </tr>
                     ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-[#d4b46a] text-sm font-semibold text-white">
+                    <td className="py-2 pr-2">Total</td>
+                    <td className="py-2 pr-2" />
+                    <td className="py-2 pr-2">
+                      {copFmt.format(costeoTotals.cost)}
+                    </td>
+                    <td className="py-2 pr-2" />
+                    <td className="py-2 pr-2">
+                      {copFmt.format(costeoTotals.sale)}
+                    </td>
+                    <td className="py-2">
+                      {copFmt.format(costeoTotals.iva)}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 text-sm text-[#c9d7cf]">
