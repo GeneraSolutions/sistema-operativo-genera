@@ -7,7 +7,11 @@ import {
 import { saleFromCost } from "@/lib/eng-labor-addons";
 import { buildPaymentSchedule } from "@/lib/payment-schedule";
 import { IVA_RATE } from "@/lib/pricing";
-import { cloneWarranties, type SystemWarranties } from "@/lib/warranties";
+import {
+  cloneWarranties,
+  type SystemWarranties,
+  type WarrantyItem,
+} from "@/lib/warranties";
 import type { QuoteLineInput } from "@/lib/quote-engine";
 import type { InventoryItem } from "@/types/inventory";
 import type {
@@ -45,6 +49,44 @@ export interface EquipmentQuoteTotals {
   totalCOP: number;
   costCOP: number;
   pl: ProjectPL;
+}
+
+export function defaultWarrantyYears(category: string): number {
+  if (category === "panel") return 25;
+  if (category === "inverter" || category === "microinverter") return 10;
+  if (category === "battery") return 10;
+  if (category === "structure") return 10;
+  return 5;
+}
+
+export function warrantiesFromQuoteLines(
+  lines: { key: string; itemId: string; label?: string }[],
+  inventory: { id: string; category: string; name: string; brand: string; model: string }[],
+  prev?: SystemWarranties | null
+): SystemWarranties {
+  const prevItems = prev?.items ?? [];
+  const items: WarrantyItem[] = lines.map((line) => {
+    const item = inventory.find((i) => i.id === line.itemId);
+    const found = prevItems.find((w) => w.id === line.key);
+    const label =
+      found?.label ||
+      line.label ||
+      (item ? `${item.brand} ${item.model || item.name}`.trim() : "Equipo");
+    return {
+      id: line.key,
+      label,
+      years: found?.years ?? defaultWarrantyYears(item?.category || ""),
+      detail: found?.detail ?? "fábrica",
+      enabled: found?.enabled !== false,
+    };
+  });
+  const custom = prevItems.filter((w) => w.id.startsWith("custom-"));
+  return {
+    items: [...items, ...custom],
+    notes:
+      prev?.notes ||
+      "Garantías de fábrica de los equipos de esta oferta. No incluye instalación, ingeniería ni mano de obra GENERA.",
+  };
 }
 
 export function warrantiesForEquipment(

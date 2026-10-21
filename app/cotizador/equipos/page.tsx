@@ -24,8 +24,13 @@ import {
   MAX_EQUIPMENT_LINES,
   buildEquipmentProposal,
   equipmentQuoteTotals,
-  warrantiesForEquipment,
+  warrantiesFromQuoteLines,
 } from "@/lib/equipment-quote";
+import {
+  cloneWarranties,
+  type SystemWarranties,
+  type WarrantyItem,
+} from "@/lib/warranties";
 import {
   categoryLabel,
   groupInventoryByCategory,
@@ -90,6 +95,11 @@ function CotizadorEquiposInner() {
   const [issuedAt, setIssuedAt] = useState(() => localISODate());
   const [advancePercent, setAdvancePercent] = useState(50);
   const [paymentKind, setPaymentKind] = useState<PaymentKind>("two_shot");
+  const [warranties, setWarranties] = useState<SystemWarranties>({
+    items: [],
+    notes:
+      "Garantías de fábrica de los equipos de esta oferta. No incluye instalación, ingeniería ni mano de obra GENERA.",
+  });
   const [partnerCompanyName, setPartnerCompanyName] = useState("");
   const [partnerLogoDataUrl, setPartnerLogoDataUrl] = useState("");
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
@@ -227,7 +237,7 @@ function CotizadorEquiposInner() {
       paymentKind,
       advancePercent,
       totals,
-      warranties: warrantiesForEquipment(totals.lines.map((l) => l.category)),
+      warranties,
     });
     return { ...proposal, toggles };
   }, [
@@ -251,8 +261,15 @@ function CotizadorEquiposInner() {
     paymentKind,
     advancePercent,
     totals,
+    warranties,
     toggles,
   ]);
+
+  useEffect(() => {
+    setWarranties((prev) =>
+      warrantiesFromQuoteLines(quoteLines, inventory, prev)
+    );
+  }, [quoteLines, inventory]);
 
   function applyParty(party: ClientParty) {
     setClientParty(party);
@@ -305,6 +322,7 @@ function CotizadorEquiposInner() {
     );
     setCommercialProposalId(q.commercialProposalId ?? "");
     if (q.toggles) setToggles(q.toggles);
+    if (q.warranties) setWarranties(cloneWarranties(q.warranties));
     if (q.partnerCompanyName) setPartnerCompanyName(q.partnerCompanyName);
     if (q.partnerLogoDataUrl) setPartnerLogoDataUrl(q.partnerLogoDataUrl);
     const lines =
@@ -365,6 +383,7 @@ function CotizadorEquiposInner() {
       quoteLines,
       qtyLocked: true,
       toggles,
+      warranties: cloneWarranties(warranties),
       commercialProposalId: commercialProposalId || undefined,
       channel: aliado ? "aliado" : "genera",
       savedBy: sessionUser?.username,
@@ -450,6 +469,15 @@ function CotizadorEquiposInner() {
   function setPayMode(value: "one_shot" | "two_shot") {
     setPaymentKind(value);
     setAdvancePercent(value === "one_shot" ? 100 : 50);
+  }
+
+  function patchWarranty(id: string, patch: Partial<WarrantyItem>) {
+    setWarranties((w) => ({
+      ...w,
+      items: w.items.map((item) =>
+        item.id === id ? { ...item, ...patch } : item
+      ),
+    }));
   }
 
   const payModes = (
@@ -782,6 +810,21 @@ function CotizadorEquiposInner() {
             <h2 className="font-semibold">Pago y vigencia</h2>
             <div className="mt-3">{payModes}</div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm sm:col-span-2">
+                Modalidad
+                <select
+                  className={`${field} mt-1`}
+                  value={
+                    paymentKind === "one_shot" ? "one_shot" : "two_shot"
+                  }
+                  onChange={(e) =>
+                    setPayMode(e.target.value as "one_shot" | "two_shot")
+                  }
+                >
+                  <option value="one_shot">1 solo contado</option>
+                  <option value="two_shot">2 contados</option>
+                </select>
+              </label>
               {paymentKind === "two_shot" ? (
                 <label className="block text-sm">
                   Anticipo %
@@ -824,6 +867,102 @@ function CotizadorEquiposInner() {
                 />
               </label>
             </div>
+          </section>
+
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <h2 className="font-semibold">Garantías de los equipos</h2>
+            <p className="mt-1 text-sm text-[#4d5c55]">
+              Años de fábrica que verá el cliente en la cotización. Edite cada
+              equipo o agregue una partida.
+            </p>
+            <div className="mt-3 space-y-3">
+              {warranties.items.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-[#eee8dc] p-3"
+                >
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={item.enabled}
+                      onChange={(e) =>
+                        patchWarranty(item.id, { enabled: e.target.checked })
+                      }
+                    />
+                    Incluir en la cotización
+                  </label>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-[1.4fr_0.5fr]">
+                    <label className="block text-sm">
+                      Equipo
+                      <input
+                        className={`${field} mt-1`}
+                        value={item.label}
+                        onChange={(e) =>
+                          patchWarranty(item.id, { label: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      Años
+                      <input
+                        type="number"
+                        min={0}
+                        className={`${field} mt-1`}
+                        value={item.years}
+                        onChange={(e) =>
+                          patchWarranty(item.id, {
+                            years: Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <label className="mt-2 block text-sm">
+                    Detalle
+                    <input
+                      className={`${field} mt-1`}
+                      value={item.detail}
+                      placeholder="fábrica, ciclos, ≥80%…"
+                      onChange={(e) =>
+                        patchWarranty(item.id, { detail: e.target.value })
+                      }
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="mt-3 text-sm font-semibold text-[#1f6b45] underline"
+              onClick={() =>
+                setWarranties((w) => ({
+                  ...w,
+                  items: [
+                    ...w.items,
+                    {
+                      id: `custom-${crypto.randomUUID().slice(0, 8)}`,
+                      label: "Garantía adicional",
+                      years: 1,
+                      detail: "",
+                      enabled: true,
+                    },
+                  ],
+                }))
+              }
+            >
+              Agregar garantía
+            </button>
+            <label className="mt-3 block text-sm">
+              Nota
+              <textarea
+                rows={2}
+                className={`${field} mt-1`}
+                value={warranties.notes}
+                onChange={(e) =>
+                  setWarranties((w) => ({ ...w, notes: e.target.value }))
+                }
+              />
+            </label>
           </section>
 
           {!aliado ? (
