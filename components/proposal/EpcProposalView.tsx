@@ -116,7 +116,7 @@ export function EpcProposalView({
           {p.companyName} · {isEquipos ? "Cotización de equipos" : "Cotización"}
         </div>
         <div className="flex items-center gap-2 print:hidden">
-          {clientDocs.contrato !== false ? (
+          {clientDocs.contrato ? (
             <a
               href={`/propuesta/epc/${p.id}/contrato`}
               className="rounded-lg border border-[#d4b46a]/50 bg-[#1a160c] px-3 py-1.5 text-sm text-[#d4b46a] hover:bg-[#241c10]"

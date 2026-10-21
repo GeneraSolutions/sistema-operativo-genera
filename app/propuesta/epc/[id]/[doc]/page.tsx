@@ -8,6 +8,7 @@ import { QuoteExplainer } from "@/components/deliverables/QuoteExplainer";
 import { UserManual } from "@/components/deliverables/UserManual";
 import { useProposalDoc } from "@/components/deliverables/useProposalDoc";
 import { MissingProposal } from "@/components/proposal/MissingProposal";
+import { contractReleased } from "@/lib/proposal-bonuses";
 
 const DOCS = {
   explicacion: QuoteExplainer,
@@ -34,5 +35,13 @@ export default function ProposalDocumentPage() {
     );
   }
   if (!proposal) return <MissingProposal />;
+  if (doc === "contrato" && !contractReleased(proposal.toggles)) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[#f4efe4] px-6 text-center text-sm text-[#4d5c55]">
+        El contrato de esta cotización aún no está liberado. En el cotizador,
+        pulse Liberar contrato para que el cliente lo vea.
+      </div>
+    );
+  }
   return <View proposal={proposal} />;
 }

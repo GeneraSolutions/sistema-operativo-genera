@@ -41,7 +41,11 @@ import {
   loadInventory,
 } from "@/lib/inventory";
 import { saveProposal } from "@/lib/proposal-store";
-import { datasheetsReleased, resolveClientDeliverables } from "@/lib/proposal-bonuses";
+import {
+  contractReleased,
+  datasheetsReleased,
+  resolveClientDeliverables,
+} from "@/lib/proposal-bonuses";
 import { lineFromItem, type QuoteLineInput } from "@/lib/quote-engine";
 import {
   getStoredQuoteLines,
@@ -126,7 +130,7 @@ function CotizadorEquiposInner() {
       manual: false,
       "primera-factura": false,
       certificado: false,
-      contrato: true,
+      contrato: false,
     },
   });
   const editingQuoteId = useRef<string | undefined>(undefined);
@@ -432,17 +436,22 @@ function CotizadorEquiposInner() {
 
   async function publishCommercial(opts?: {
     fichas?: boolean;
+    contrato?: boolean;
+    open?: boolean;
     doc?: "quote" | "contrato";
   }) {
     if (!liveProposal) return;
     const id = commercialProposalId || crypto.randomUUID();
     const fichas = opts?.fichas ?? datasheetsReleased(toggles);
+    const contrato =
+      opts?.contrato ??
+      (opts?.doc === "contrato" ? true : contractReleased(toggles));
     const nextToggles = {
       ...toggles,
       deliverables: {
         ...resolveClientDeliverables(toggles),
         fichas,
-        contrato: true,
+        contrato,
       },
     };
     setToggles(nextToggles);
@@ -480,11 +489,17 @@ function CotizadorEquiposInner() {
     setLinkFlash(
       opts?.doc === "contrato"
         ? "Enlace del contrato copiado. Ábralo, pulse Imprimir / PDF y envíelo al cliente."
-        : fichas
-          ? "Enlace copiado. Las fichas ya están visibles."
-          : "Enlace copiado. Las fichas quedan ocultas hasta que las libere."
+        : opts?.contrato !== undefined
+          ? contrato
+            ? "Contrato liberado. El botón aparece en el enlace de la cotización."
+            : "Contrato oculto de nuevo en el enlace del cliente."
+          : fichas
+            ? "Enlace copiado. Las fichas ya están visibles."
+            : "Enlace copiado. Las fichas quedan ocultas hasta que las libere."
     );
-    window.open(path, "_blank", "noopener,noreferrer");
+    if (opts?.open !== false) {
+      window.open(path, "_blank", "noopener,noreferrer");
+    }
     window.setTimeout(() => setLinkFlash(""), 4500);
   }
 
@@ -561,6 +576,19 @@ function CotizadorEquiposInner() {
         >
           Contrato PDF
         </button>
+        <button
+          type="button"
+          disabled={!liveProposal || publishingLink || quoteLines.length === 0}
+          onClick={() =>
+            void publishCommercial({
+              contrato: !contractReleased(toggles),
+              open: false,
+            })
+          }
+          className="rounded-full border border-[#d4b46a] px-3 py-1.5 text-xs font-semibold text-[#8a6b2a] disabled:opacity-50"
+        >
+          {contractReleased(toggles) ? "Ocultar contrato" : "Liberar contrato"}
+        </button>
         {commercialProposalId ? (
           <>
             <a
@@ -569,12 +597,14 @@ function CotizadorEquiposInner() {
             >
               Ver propuesta
             </a>
-            <a
-              href={`/propuesta/epc/${commercialProposalId}/contrato`}
-              className="rounded-full border border-[#1f6b45] px-3 py-1.5 text-xs font-semibold text-[#1f6b45]"
-            >
-              Abrir contrato
-            </a>
+            {contractReleased(toggles) ? (
+              <a
+                href={`/propuesta/epc/${commercialProposalId}/contrato`}
+                className="rounded-full border border-[#1f6b45] px-3 py-1.5 text-xs font-semibold text-[#1f6b45]"
+              >
+                Abrir contrato
+              </a>
+            ) : null}
           </>
         ) : null}
       </div>

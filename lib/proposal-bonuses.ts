@@ -182,7 +182,7 @@ export const DEFAULT_CLIENT_DELIVERABLES: ClientDeliverables = {
   manual: true,
   "primera-factura": true,
   certificado: true,
-  contrato: true,
+  contrato: false,
 };
 
 export const CLIENT_DELIVERABLE_LABELS: {
@@ -219,7 +219,8 @@ export const CLIENT_DELIVERABLE_LABELS: {
   {
     key: "contrato",
     label: "Contrato comercial",
-    description: "Documento para enviar al cliente al cerrar, con datos de esta cotización",
+    description:
+      "Se libera al cerrar. En la cotización el cliente no lo ve hasta que usted lo encienda.",
   },
 ];
 
@@ -234,12 +235,16 @@ export function resolveClientDeliverables(
     manual: d.manual ?? fallback,
     "primera-factura": d["primera-factura"] ?? fallback,
     certificado: d.certificado ?? fallback,
-    contrato: d.contrato ?? true,
+    contrato: d.contrato === true,
   };
 }
 
 export function datasheetsReleased(toggles?: ProposalToggles | null) {
   return resolveClientDeliverables(toggles).fichas;
+}
+
+export function contractReleased(toggles?: ProposalToggles | null) {
+  return resolveClientDeliverables(toggles).contrato;
 }
 
 /** Vista pública: sin URLs de fichas hasta que Genera Solutions las libere. */

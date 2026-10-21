@@ -131,7 +131,33 @@ export function isNitDocument(idType?: ClientIdType | string | null) {
   return !idType || idType === "nit";
 }
 
-/** Texto listo para cotización y contrato: "NIT 901.718.535-1" o "CC 1.032.357.844". */
+export function digitsOnly(value: string) {
+  return (value || "").replace(/\D/g, "");
+}
+
+export function normalizePersonName(value: string) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function namesLikelyMatch(a: string, b: string) {
+  const na = normalizePersonName(a);
+  const nb = normalizePersonName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const left = new Set(na.split(" ").filter((w) => w.length > 2));
+  const right = nb.split(" ").filter((w) => w.length > 2);
+  if (!right.length) return false;
+  const hits = right.filter((w) => left.has(w)).length;
+  return hits >= Math.min(2, right.length);
+}
+
 export function formatClientDocument(
   idType: ClientIdType | string | undefined,
   number: string,

@@ -1,5 +1,6 @@
 "use client";
 
+import { ContractCedulaCheck } from "@/components/deliverables/ContractCedulaCheck";
 import { DeliverableShell, DocH2 } from "@/components/deliverables/DeliverableShell";
 import { GENERA_LEGAL } from "@/lib/company-legal";
 import { formatClientDocument } from "@/lib/client-party";
@@ -73,6 +74,8 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           Cliente».
         </p>
       </section>
+
+      <ContractCedulaCheck proposal={p} />
 
       <section>
         <DocH2>Artículo 1. Objeto</DocH2>

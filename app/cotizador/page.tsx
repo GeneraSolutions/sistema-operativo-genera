@@ -109,6 +109,7 @@ import {
 } from "@/lib/colombia-tax";
 import {
   CLIENT_DELIVERABLE_LABELS,
+  contractReleased,
   datasheetsReleased,
   defaultBonusIds,
   DEFAULT_CLIENT_DELIVERABLES,
@@ -873,6 +874,7 @@ function CotizadorInner() {
 
   async function publishCommercial(opts?: {
     fichas?: boolean;
+    contrato?: boolean;
     open?: boolean;
     doc?: "quote" | "contrato";
   }) {
@@ -881,12 +883,15 @@ function CotizadorInner() {
     const fichas =
       opts?.fichas ??
       (Boolean(commercialProposalId) && datasheetsReleased(toggles));
+    const contrato =
+      opts?.contrato ??
+      (opts?.doc === "contrato" ? true : contractReleased(toggles));
     const nextToggles = {
       ...toggles,
       deliverables: {
         ...resolveClientDeliverables(toggles),
         fichas,
-        contrato: true,
+        contrato,
       },
     };
     setToggles(nextToggles);
@@ -933,6 +938,12 @@ function CotizadorInner() {
             : "Enlace copiado. Las fichas técnicas quedan ocultas hasta que las libere."
       );
       window.open(url, "_blank", "noopener,noreferrer");
+    } else if (opts?.contrato !== undefined) {
+      setLinkFlash(
+        contrato
+          ? "Contrato liberado. El botón aparece en el enlace de la cotización."
+          : "Contrato oculto de nuevo en el enlace del cliente."
+      );
     } else {
       setLinkFlash(
         fichas
@@ -3829,11 +3840,26 @@ function CotizadorInner() {
                 ? "Ocultar fichas técnicas"
                 : "Liberar fichas técnicas"}
             </button>
+            <button
+              type="button"
+              disabled={publishingLink || !liveProposal}
+              onClick={() =>
+                void publishCommercial({
+                  contrato: !contractReleased(toggles),
+                  open: false,
+                })
+              }
+              className="flex-1 rounded-xl border border-[#d4b46a] bg-white px-4 py-2.5 text-sm font-semibold tracking-wide text-[#8a6b2a] uppercase disabled:opacity-50"
+            >
+              {contractReleased(toggles)
+                ? "Ocultar contrato"
+                : "Liberar contrato"}
+            </button>
           </div>
           <p className="os-page-intro text-center text-xs leading-5 text-[#6d7c74] print:hidden">
-            Al enviar la cotización el cliente no ve las fichas. Cuando haya
-            anticipo de obra o cierre del proyecto, pulse Liberar fichas
-            técnicas: el botón aparece en el mismo enlace.
+            Al enviar la cotización el cliente no ve fichas ni contrato. Cuando
+            haya anticipo o cierre, pulse Liberar fichas o Liberar contrato: el
+            botón aparece en el mismo enlace.
           </p>
           {commercialProposalId ? (
             <p className="text-center text-xs leading-5 text-[#6d7c74] print:hidden">
@@ -3846,15 +3872,19 @@ function CotizadorInner() {
               >
                 abrir cotización
               </a>
-              {" · "}
-              <a
-                className="font-medium text-[#1f6b45] underline"
-                href={`/propuesta/epc/${commercialProposalId}/contrato`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                abrir contrato
-              </a>
+              {contractReleased(toggles) ? (
+                <>
+                  {" · "}
+                  <a
+                    className="font-medium text-[#1f6b45] underline"
+                    href={`/propuesta/epc/${commercialProposalId}/contrato`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    abrir contrato
+                  </a>
+                </>
+              ) : null}
             </p>
           ) : null}
           {linkFlash ? (
