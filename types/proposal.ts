@@ -1,3 +1,4 @@
+import type { ClientIdType } from "@/lib/client-party";
 import type { SystemWarranties } from "@/lib/warranties";
 
 export interface MonthlyEnergyPoint {
@@ -123,6 +124,7 @@ export interface EpcProposal {
   clientAddress?: string;
   clientNit?: string;
   clientDv?: string;
+  clientIdType?: ClientIdType;
   withholdingsNote?: string;
   executionDays: number;
   systemKwp: number;

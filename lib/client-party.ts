@@ -122,6 +122,35 @@ export function formatNit(nit: string, dv?: string): string {
   return dv ? `${grouped}-${dv}` : grouped;
 }
 
+export const CLIENT_ID_TYPE_OPTIONS: { id: ClientIdType; label: string }[] = [
+  { id: "nit", label: "NIT" },
+  { id: "cc", label: "Cédula (CC)" },
+];
+
+export function isNitDocument(idType?: ClientIdType | string | null) {
+  return !idType || idType === "nit";
+}
+
+/** Texto listo para cotización y contrato: "NIT 901.718.535-1" o "CC 1.032.357.844". */
+export function formatClientDocument(
+  idType: ClientIdType | string | undefined,
+  number: string,
+  dv?: string
+): string {
+  const n = (number || "").replace(/\D/g, "");
+  if (!n) return "";
+  if (idType === "cc") {
+    const grouped = n.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return `CC ${grouped}`;
+  }
+  if (idType === "ce") {
+    const grouped = n.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return `CE ${grouped}`;
+  }
+  const nit = formatNit(number, dv);
+  return nit ? `NIT ${nit}` : "";
+}
+
 export function displayClientName(party: ClientParty): string {
   return party.legalName || party.tradeName || "";
 }

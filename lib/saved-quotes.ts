@@ -1,5 +1,6 @@
 import {
   compactClientParty,
+  type ClientIdType,
   type ClientParty,
 } from "@/lib/client-party";
 import type { EnergyBill } from "@/lib/energy-bill";
@@ -26,6 +27,7 @@ export interface SavedQuote {
   clientAddress?: string;
   clientNit?: string;
   clientDv?: string;
+  clientIdType?: ClientIdType;
   clientParty?: ClientParty;
   systemKwp: number;
   peakSunHours: number;

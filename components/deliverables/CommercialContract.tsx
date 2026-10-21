@@ -2,7 +2,7 @@
 
 import { DeliverableShell, DocH2 } from "@/components/deliverables/DeliverableShell";
 import { GENERA_LEGAL } from "@/lib/company-legal";
-import { formatNit } from "@/lib/client-party";
+import { formatClientDocument } from "@/lib/client-party";
 import {
   cloneWarranties,
   visibleWarrantyItems,
@@ -27,7 +27,11 @@ function todayLabel() {
 
 export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
   const equipos = p.kind === "equipos";
-  const nit = formatNit(p.clientNit || "", p.clientDv);
+  const idDoc = formatClientDocument(
+    p.clientIdType,
+    p.clientNit || "",
+    p.clientDv
+  );
   const warranties = visibleWarrantyItems(
     cloneWarranties(p.warranties),
     p.includeBattery
@@ -35,8 +39,8 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
   const title = equipos
     ? "Contrato de suministro de equipos"
     : "Contrato de suministro, instalación y puesta en marcha de sistema fotovoltaico";
-  const idLabel = p.clientNit
-    ? `identificado con NIT ${nit}`
+  const idLabel = idDoc
+    ? `identificado con ${idDoc}`
     : "identificado según la cotización anexa";
 
   return (
@@ -532,7 +536,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
         <SignBlock
           role="EL CLIENTE"
           name={p.clientName}
-          extra={nit ? `NIT ${nit}` : p.clientCity}
+          extra={idDoc || p.clientCity}
         />
         <SignBlock
           role="EL PROVEEDOR"

@@ -12,6 +12,7 @@ import {
   type SystemWarranties,
   type WarrantyItem,
 } from "@/lib/warranties";
+import type { ClientIdType } from "@/lib/client-party";
 import type { QuoteLineInput } from "@/lib/quote-engine";
 import type { InventoryItem } from "@/types/inventory";
 import type {
@@ -200,6 +201,7 @@ export function buildEquipmentProposal(input: {
   clientAddress?: string;
   clientNit?: string;
   clientDv?: string;
+  clientIdType?: ClientIdType;
   withholdingsNote?: string;
   partnerLogoDataUrl?: string;
   companyName?: string;
@@ -296,6 +298,7 @@ export function buildEquipmentProposal(input: {
     clientAddress: input.clientAddress?.trim() || "",
     clientNit: input.clientNit?.trim() || "",
     clientDv: input.clientDv?.trim() || "",
+    clientIdType: input.clientIdType || "nit",
     withholdingsNote: input.withholdingsNote,
     executionDays: input.executionDays ?? 5,
     systemKwp: 0,

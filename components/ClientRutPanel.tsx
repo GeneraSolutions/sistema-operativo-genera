@@ -3,11 +3,12 @@
 import { useRef, useState } from "react";
 import { WorkFold } from "@/components/WorkFold";
 import { isPdfFile, renderBillPdf } from "@/lib/bill-pdf";
+import { ClientIdFields } from "@/components/ClientIdFields";
 import {
   MAX_RUT_PHOTOS,
   clientWithholdsFromParty,
   emptyClientParty,
-  formatNit,
+  formatClientDocument,
   withholdingNote,
   type ClientParty,
 } from "@/lib/client-party";
@@ -110,14 +111,14 @@ export function ClientRutPanel({
     }
   }
 
-  const nitLabel = formatNit(value.nit, value.dv);
+  const idLabel = formatClientDocument(value.idType, value.nit, value.dv);
   const withholds = clientWithholdsFromParty(value);
 
   return (
     <WorkFold title="RUT del cliente" open={open} onToggle={() => setOpen((v) => !v)}>
       <p className="os-page-intro text-sm text-[#4d5c55]">
-        Foto o PDF del RUT. Completa nombre, NIT, correo, teléfono, dirección y
-        si el cliente es agente retenedor.
+        Foto o PDF del RUT. Completa nombre, NIT o cédula, correo, teléfono,
+        dirección y si el cliente es agente retenedor.
       </p>
       <input
         ref={fileRef}
@@ -198,23 +199,22 @@ export function ClientRutPanel({
             onChange={(e) => patch({ legalName: e.target.value })}
           />
         </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium">NIT</span>
-          <input
-            className={field}
-            value={value.nit}
-            onChange={(e) => patch({ nit: e.target.value })}
+        <div className="sm:col-span-2">
+          <ClientIdFields
+            idType={value.idType || "nit"}
+            number={value.nit}
+            dv={value.dv}
+            onType={(idType) =>
+              patch({
+                idType,
+                dv: idType === "cc" ? "" : value.dv,
+                personType: idType === "cc" ? "natural" : value.personType,
+              })
+            }
+            onNumber={(nit) => patch({ nit })}
+            onDv={(dv) => patch({ dv })}
           />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium">DV</span>
-          <input
-            className={field}
-            value={value.dv}
-            maxLength={1}
-            onChange={(e) => patch({ dv: e.target.value })}
-          />
-        </label>
+        </div>
         <label className="block text-sm">
           <span className="mb-1 block font-medium">Correo</span>
           <input
@@ -293,9 +293,9 @@ export function ClientRutPanel({
         </label>
       </div>
 
-      {nitLabel || value.legalName ? (
+      {idLabel || value.legalName ? (
         <p className="mt-3 rounded-xl bg-[#f4f1ea] px-3 py-2 text-xs leading-5 text-[#4d5c55]">
-          {nitLabel ? `NIT ${nitLabel}. ` : ""}
+          {idLabel ? `${idLabel}. ` : ""}
           {withholds || value.granContribuyente
             ? withholdingNote(value)
             : "No figura como agente retenedor."}

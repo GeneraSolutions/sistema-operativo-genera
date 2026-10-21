@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import { AppShell } from "@/components/AppShell";
 import { WorkFold } from "@/components/WorkFold";
 import { BrandLogo } from "@/components/BrandLogo";
+import { ClientIdFields } from "@/components/ClientIdFields";
 import { ClientRutPanel } from "@/components/ClientRutPanel";
 import { EnergyBillPanel } from "@/components/EnergyBillPanel";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
@@ -31,6 +32,7 @@ import {
   displayClientName,
   emptyClientParty,
   withholdingNote,
+  type ClientIdType,
   type ClientParty,
 } from "@/lib/client-party";
 import {
@@ -263,6 +265,7 @@ function CotizadorInner() {
   const [clientAddress, setClientAddress] = useState("");
   const [clientNit, setClientNit] = useState("");
   const [clientDv, setClientDv] = useState("");
+  const [clientIdType, setClientIdType] = useState<ClientIdType>("nit");
   const [clientParty, setClientParty] = useState<ClientParty>(emptyClientParty);
   const [monthlyConsumption, setMonthlyConsumption] = useState(800);
   const [executionDays, setExecutionDays] = useState(7);
@@ -702,6 +705,7 @@ function CotizadorInner() {
       clientAddress,
       clientNit,
       clientDv,
+      clientIdType,
       withholdingsNote: clientParty.nit
         ? withholdingNote({
             ...clientParty,
@@ -760,6 +764,7 @@ function CotizadorInner() {
     clientAddress,
     clientNit,
     clientDv,
+    clientIdType,
     clientParty,
     clientWithholds,
     clientGranContribuyente,
@@ -1012,6 +1017,7 @@ function CotizadorInner() {
       clientAddress,
       clientNit,
       clientDv,
+      clientIdType,
       clientParty,
       systemKwp,
       peakSunHours,
@@ -1131,7 +1137,9 @@ function CotizadorInner() {
     if (party.phone) setClientPhone(party.phone);
     if (party.address) setClientAddress(party.address);
     if (party.nit) setClientNit(party.nit);
-    if (party.dv) setClientDv(party.dv);
+    if (party.dv && party.idType !== "cc") setClientDv(party.dv);
+    setClientIdType(party.idType || "nit");
+    if (party.idType === "cc") setClientDv("");
     setClientWithholds(clientWithholdsFromParty(party));
     setClientGranContribuyente(
       party.granContribuyente || party.agenteRetenedorIva
@@ -1158,6 +1166,7 @@ function CotizadorInner() {
     setClientAddress(q.clientAddress || "");
     setClientNit(q.clientNit || "");
     setClientDv(q.clientDv || "");
+    setClientIdType(q.clientIdType || q.clientParty?.idType || "nit");
     if (q.clientParty) {
       setClientParty({ ...emptyClientParty(), ...q.clientParty });
     }
@@ -1780,25 +1789,30 @@ function CotizadorInner() {
                   onChange={(e) => setClientAddress(e.target.value)}
                 />
               </label>
+              <ClientIdFields
+                idType={clientIdType}
+                number={clientNit}
+                dv={clientDv}
+                onType={(next) => {
+                  setClientIdType(next);
+                  if (next === "cc") setClientDv("");
+                  setClientParty((p) => ({
+                    ...p,
+                    idType: next,
+                    dv: next === "cc" ? "" : p.dv,
+                    personType: next === "cc" ? "natural" : p.personType,
+                  }));
+                }}
+                onNumber={(next) => {
+                  setClientNit(next);
+                  setClientParty((p) => ({ ...p, nit: next }));
+                }}
+                onDv={(next) => {
+                  setClientDv(next);
+                  setClientParty((p) => ({ ...p, dv: next }));
+                }}
+              />
               <div className="grid grid-cols-2 gap-3">
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">NIT / DV</span>
-                  <div className="flex gap-2">
-                    <input
-                      className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                      placeholder="NIT"
-                      value={clientNit}
-                      onChange={(e) => setClientNit(e.target.value)}
-                    />
-                    <input
-                      className="w-16 rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                      placeholder="DV"
-                      maxLength={1}
-                      value={clientDv}
-                      onChange={(e) => setClientDv(e.target.value)}
-                    />
-                  </div>
-                </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium">Ciudad</span>
                   <input

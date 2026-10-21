@@ -2,7 +2,7 @@
 
 import { BrandLogo } from "@/components/BrandLogo";
 import { MonthlyEnergyChart } from "@/components/proposal/MonthlyEnergyChart";
-import { formatNit } from "@/lib/client-party";
+import { formatClientDocument } from "@/lib/client-party";
 import { resolveClientDeliverables } from "@/lib/proposal-bonuses";
 import {
   cloneWarranties,
@@ -90,7 +90,11 @@ export function EpcProposalView({
   const warrantyItems = visibleWarrantyItems(warranties, p.includeBattery);
   const clientDocs = resolveClientDeliverables(p.toggles);
   const isEquipos = p.kind === "equipos";
-  const nitLabel = formatNit(p.clientNit || "", p.clientDv);
+  const nitLabel = formatClientDocument(
+    p.clientIdType,
+    p.clientNit || "",
+    p.clientDv
+  );
   const showLinePrices = p.commercialLines.some(
     (line) => line.saleTotalCOP != null
   );
@@ -156,7 +160,7 @@ export function EpcProposalView({
           {isEquipos ? (
             <p className="mt-2 text-sm text-[#8aa0c2]">
               {[
-                nitLabel ? `NIT ${nitLabel}` : "",
+                nitLabel || "",
                 p.clientEmail,
                 p.clientPhone,
               ]
@@ -181,9 +185,7 @@ export function EpcProposalView({
           <InfoTile
             label="Cliente"
             value={p.clientName}
-            hint={[nitLabel ? `NIT ${nitLabel}` : "", p.clientCity]
-              .filter(Boolean)
-              .join(" · ")}
+            hint={[nitLabel, p.clientCity].filter(Boolean).join(" · ")}
           />
           {isEquipos ? (
             <>

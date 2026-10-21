@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { ClientIdFields } from "@/components/ClientIdFields";
 import { ClientRutPanel } from "@/components/ClientRutPanel";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
 import { WorkFold } from "@/components/WorkFold";
@@ -12,6 +13,7 @@ import {
   displayClientName,
   emptyClientParty,
   withholdingNote,
+  type ClientIdType,
   type ClientParty,
 } from "@/lib/client-party";
 import {
@@ -87,6 +89,7 @@ function CotizadorEquiposInner() {
   const [clientAddress, setClientAddress] = useState("");
   const [clientNit, setClientNit] = useState("");
   const [clientDv, setClientDv] = useState("");
+  const [clientIdType, setClientIdType] = useState<ClientIdType>("nit");
   const [clientParty, setClientParty] = useState<ClientParty>(emptyClientParty);
   const [chargeIva, setChargeIva] = useState(true);
   const [clientWithholds, setClientWithholds] = useState(false);
@@ -225,6 +228,7 @@ function CotizadorEquiposInner() {
       clientAddress,
       clientNit,
       clientDv,
+      clientIdType,
       withholdingsNote:
         clientNit || clientParty.nit
           ? withholdingNote({
@@ -254,6 +258,7 @@ function CotizadorEquiposInner() {
     clientAddress,
     clientNit,
     clientDv,
+    clientIdType,
     clientParty,
     clientWithholds,
     clientGranContribuyente,
@@ -282,7 +287,9 @@ function CotizadorEquiposInner() {
     if (party.phone) setClientPhone(party.phone);
     if (party.address) setClientAddress(party.address);
     if (party.nit) setClientNit(party.nit);
-    if (party.dv) setClientDv(party.dv);
+    if (party.dv && party.idType !== "cc") setClientDv(party.dv);
+    setClientIdType(party.idType || "nit");
+    if (party.idType === "cc") setClientDv("");
     setClientWithholds(clientWithholdsFromParty(party));
     setClientGranContribuyente(
       party.granContribuyente || party.agenteRetenedorIva
@@ -310,6 +317,7 @@ function CotizadorEquiposInner() {
     setClientAddress(q.clientAddress || "");
     setClientNit(q.clientNit || "");
     setClientDv(q.clientDv || "");
+    setClientIdType(q.clientIdType || q.clientParty?.idType || "nit");
     if (q.clientParty) setClientParty({ ...emptyClientParty(), ...q.clientParty });
     setClientWithholds(q.clientWithholds ?? false);
     setClientGranContribuyente(q.clientGranContribuyente ?? false);
@@ -352,6 +360,7 @@ function CotizadorEquiposInner() {
       clientAddress,
       clientNit,
       clientDv,
+      clientIdType,
       clientParty,
       systemKwp: 0,
       peakSunHours: 0,
@@ -661,24 +670,31 @@ function CotizadorEquiposInner() {
                   onChange={(e) => setClientCity(e.target.value)}
                 />
               </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">NIT / DV</span>
-                <div className="flex gap-2">
-                  <input
-                    className={field}
-                    placeholder="NIT"
-                    value={clientNit}
-                    onChange={(e) => setClientNit(e.target.value)}
-                  />
-                  <input
-                    className={`${field} w-16`}
-                    placeholder="DV"
-                    maxLength={1}
-                    value={clientDv}
-                    onChange={(e) => setClientDv(e.target.value)}
-                  />
-                </div>
-              </label>
+              <div className="sm:col-span-2">
+                <ClientIdFields
+                  idType={clientIdType}
+                  number={clientNit}
+                  dv={clientDv}
+                  onType={(next) => {
+                    setClientIdType(next);
+                    if (next === "cc") setClientDv("");
+                    setClientParty((p) => ({
+                      ...p,
+                      idType: next,
+                      dv: next === "cc" ? "" : p.dv,
+                      personType: next === "cc" ? "natural" : p.personType,
+                    }));
+                  }}
+                  onNumber={(next) => {
+                    setClientNit(next);
+                    setClientParty((p) => ({ ...p, nit: next }));
+                  }}
+                  onDv={(next) => {
+                    setClientDv(next);
+                    setClientParty((p) => ({ ...p, dv: next }));
+                  }}
+                />
+              </div>
             </div>
             <label className="mt-3 flex items-center gap-2 text-sm">
               <input

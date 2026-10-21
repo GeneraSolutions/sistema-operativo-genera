@@ -3,6 +3,7 @@ import { buildMonthlyEnergy } from "@/lib/monthly-energy";
 import { buildPaymentSchedule, type PaymentInput } from "@/lib/payment-schedule";
 import type { QuoteBreakdown, QuoteEquipmentSelection } from "@/lib/quote-engine";
 import { cloneWarranties, type SystemWarranties } from "@/lib/warranties";
+import type { ClientIdType } from "@/lib/client-party";
 import type { PaymentKind } from "@/types/proposal";
 import {
   ColombiaSolarFinancials,
@@ -24,6 +25,7 @@ export interface BuildProposalInput {
   clientAddress?: string;
   clientNit?: string;
   clientDv?: string;
+  clientIdType?: ClientIdType;
   withholdingsNote?: string;
   systemKwp: number;
   peakSunHours: number;
@@ -193,6 +195,7 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
     clientAddress: input.clientAddress?.trim() || "",
     clientNit: input.clientNit?.trim() || "",
     clientDv: input.clientDv?.trim() || "",
+    clientIdType: input.clientIdType || "nit",
     withholdingsNote: input.withholdingsNote,
     executionDays: input.executionDays,
     systemKwp,
