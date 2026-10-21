@@ -5,5 +5,8 @@ export const GENERA_LEGAL = {
   email: "info@generasolutions.co",
   phone: "317 455 3288",
   web: "www.generasolutions.com.co",
-  city: "Colombia",
+  city: "Bogotá",
+  address: "Carrera 79 # 7A-53, Bogotá, Colombia",
+  contactName: "Camilo Rendón Chacón",
+  contactRole: "Director de proyectos",
 };
