@@ -70,6 +70,8 @@ export interface SavedQuote {
   toggles: ProposalToggles;
   warranties?: SystemWarranties;
   bonusIds?: string[];
+  /** Enlace comercial ya publicado; las fichas se liberan sobre este mismo id. */
+  commercialProposalId?: string;
 }
 
 const KEY = "genera.saved-quotes.v1";

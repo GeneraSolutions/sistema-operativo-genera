@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { proposalForClient } from "@/lib/proposal-bonuses";
 import { getProposalServer } from "@/lib/proposal-server";
 
 export const runtime = "nodejs";
@@ -19,5 +20,8 @@ export async function GET(
       { status: 404, headers: NO_STORE }
     );
   }
-  return NextResponse.json({ proposal }, { headers: NO_STORE });
+  return NextResponse.json(
+    { proposal: proposalForClient(proposal) },
+    { headers: NO_STORE }
+  );
 }

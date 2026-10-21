@@ -82,6 +82,7 @@ import {
 } from "@/lib/colombia-tax";
 import {
   CLIENT_DELIVERABLE_LABELS,
+  datasheetsReleased,
   defaultBonusIds,
   DEFAULT_CLIENT_DELIVERABLES,
   GENERA_BONUSES,
@@ -234,6 +235,8 @@ function CotizadorInner() {
   const [ppaYears, setPpaYears] = useState(15);
   const [ppaPricePerKWh, setPpaPricePerKWh] = useState(650);
   const [linkFlash, setLinkFlash] = useState("");
+  const [commercialProposalId, setCommercialProposalId] = useState("");
+  const [publishingLink, setPublishingLink] = useState(false);
   const [saveFlash, setSaveFlash] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [visitLinked, setVisitLinked] = useState(false);
@@ -681,10 +684,27 @@ function CotizadorInner() {
     window.print();
   }
 
-  async function handleCommercialLink() {
+  async function publishCommercial(opts?: {
+    fichas?: boolean;
+    open?: boolean;
+  }) {
     if (!liveProposal) return;
-    const proposal = { ...liveProposal, id: crypto.randomUUID() };
+    const id = commercialProposalId || crypto.randomUUID();
+    const fichas =
+      opts?.fichas ??
+      (Boolean(commercialProposalId) && datasheetsReleased(toggles));
+    const nextToggles = {
+      ...toggles,
+      deliverables: {
+        ...resolveClientDeliverables(toggles),
+        fichas,
+      },
+    };
+    setToggles(nextToggles);
+    setCommercialProposalId(id);
+    const proposal = { ...liveProposal, id, toggles: nextToggles };
     saveProposal(proposal);
+    setPublishingLink(true);
     try {
       const res = await fetch("/api/propuestas", {
         method: "POST",
@@ -702,13 +722,30 @@ function CotizadorInner() {
     } catch {
       setLinkFlash("No hay conexión con el servidor para publicar la cotización.");
       return;
+    } finally {
+      setPublishingLink(false);
     }
-    const url = `${window.location.origin}/propuesta/epc/${proposal.id}`;
-    navigator.clipboard?.writeText(url).then(() => {
-      setLinkFlash("Enlace comercial copiado · abriendo propuesta…");
-      window.setTimeout(() => setLinkFlash(""), 2500);
-    });
-    window.open(url, "_blank", "noopener,noreferrer");
+    const saved = snapshotCurrent();
+    saved.commercialProposalId = id;
+    saved.toggles = nextToggles;
+    void persistQuote(saved);
+    const url = `${window.location.origin}/propuesta/epc/${id}`;
+    await navigator.clipboard?.writeText(url).catch(() => undefined);
+    if (opts?.open !== false) {
+      setLinkFlash(
+        fichas
+          ? "Enlace copiado. Las fichas técnicas ya están visibles para el cliente."
+          : "Enlace copiado. Las fichas técnicas quedan ocultas hasta que las libere."
+      );
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      setLinkFlash(
+        fichas
+          ? "Fichas técnicas liberadas. El cliente las abre en el mismo enlace de la cotización."
+          : "Fichas técnicas ocultas de nuevo en el enlace del cliente."
+      );
+    }
+    window.setTimeout(() => setLinkFlash(""), 4500);
   }
 
   function applyKit(kit: EquipmentKit) {
@@ -824,6 +861,7 @@ function CotizadorInner() {
       toggles,
       warranties: cloneWarranties(warranties),
       bonusIds,
+      commercialProposalId: commercialProposalId || undefined,
     };
   }
 
@@ -929,6 +967,7 @@ function CotizadorInner() {
     });
     setWarranties(cloneWarranties(q.warranties ?? loadCompanyWarranties()));
     setBonusIds(q.bonusIds ?? defaultBonusIds());
+    setCommercialProposalId(q.commercialProposalId ?? "");
     const restored = resolveQuoteLines(q);
     if (restored) {
       setQuoteLines(restored);
@@ -1135,6 +1174,7 @@ function CotizadorInner() {
             onClick={() => {
               const copy = snapshotCurrent(`Copia · ${savedQuotes[0].name}`);
               copy.clientName = `${copy.clientName} (copia)`;
+              copy.commercialProposalId = undefined;
               persistQuote(copy);
               loadQuote(copy);
             }}
@@ -3118,7 +3158,9 @@ function CotizadorInner() {
             </p>
             <p className="mt-1 text-xs text-[#6d7c74]">
               Cada interruptor muestra u oculta ese documento en la cotización.
-              Usted sigue pudiendo abrirlos desde Bonos.
+              Las fichas técnicas no se entregan con la oferta: úselas cuando
+              el cliente pague anticipo o se cierre la obra, y pulse Liberar
+              fichas junto al enlace comercial.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {CLIENT_DELIVERABLE_LABELS.map((item) => (
@@ -3166,12 +3208,49 @@ function CotizadorInner() {
             </button>
             <button
               type="button"
-              onClick={handleCommercialLink}
-              className="flex-1 rounded-xl bg-[#0f2a1f] px-4 py-3.5 text-sm font-semibold tracking-wide text-white uppercase hover:bg-[#163d2c]"
+              disabled={publishingLink || !liveProposal}
+              onClick={() => void publishCommercial({ open: true })}
+              className="flex-1 rounded-xl bg-[#0f2a1f] px-4 py-3.5 text-sm font-semibold tracking-wide text-white uppercase hover:bg-[#163d2c] disabled:opacity-50"
             >
-              Obtener Enlace Comercial Interactivo
+              {publishingLink
+                ? "Publicando…"
+                : "Obtener Enlace Comercial Interactivo"}
+            </button>
+            <button
+              type="button"
+              disabled={publishingLink || !liveProposal}
+              onClick={() =>
+                void publishCommercial({
+                  fichas: !datasheetsReleased(toggles),
+                  open: false,
+                })
+              }
+              className="flex-1 rounded-xl border border-[#1f6b45] bg-white px-4 py-3.5 text-sm font-semibold tracking-wide text-[#1f6b45] uppercase disabled:opacity-50"
+            >
+              {datasheetsReleased(toggles)
+                ? "Ocultar fichas técnicas"
+                : "Liberar fichas técnicas"}
             </button>
           </div>
+          <p className="text-center text-xs leading-5 text-[#6d7c74] print:hidden">
+            Al enviar la cotización el cliente no ve las fichas. Cuando haya
+            anticipo de obra o cierre del proyecto, pulse Liberar fichas
+            técnicas: el botón aparece en el mismo enlace.
+            {commercialProposalId ? (
+              <>
+                {" "}
+                Enlace actual:{" "}
+                <a
+                  className="font-medium text-[#1f6b45] underline"
+                  href={`/propuesta/epc/${commercialProposalId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  abrir cotización
+                </a>
+              </>
+            ) : null}
+          </p>
           {linkFlash ? (
             <p className="text-center text-sm font-medium text-[#1f6b45] print:hidden">
               {linkFlash}

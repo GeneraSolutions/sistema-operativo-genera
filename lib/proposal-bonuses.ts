@@ -1,6 +1,7 @@
 import type {
   ClientDeliverableKey,
   ClientDeliverables,
+  EpcProposal,
   ProposalBonus,
   ProposalToggles,
 } from "@/types/proposal";
@@ -163,7 +164,7 @@ export function bonusById(id: string): ProposalBonus | undefined {
 }
 
 export const DEFAULT_CLIENT_DELIVERABLES: ClientDeliverables = {
-  fichas: true,
+  fichas: false,
   explicacion: true,
   manual: true,
   "primera-factura": true,
@@ -178,7 +179,8 @@ export const CLIENT_DELIVERABLE_LABELS: {
   {
     key: "fichas",
     label: "Fichas técnicas",
-    description: "Botón de fichas del fabricante en la cotización",
+    description:
+      "Se libera después del anticipo o al cerrar la obra. En la cotización el cliente no las ve.",
   },
   {
     key: "explicacion",
@@ -208,10 +210,20 @@ export function resolveClientDeliverables(
   const fallback = toggles?.showDeliverables !== false;
   const d = toggles?.deliverables ?? {};
   return {
-    fichas: d.fichas ?? fallback,
+    fichas: d.fichas === true,
     explicacion: d.explicacion ?? fallback,
     manual: d.manual ?? fallback,
     "primera-factura": d["primera-factura"] ?? fallback,
     certificado: d.certificado ?? fallback,
   };
+}
+
+export function datasheetsReleased(toggles?: ProposalToggles | null) {
+  return resolveClientDeliverables(toggles).fichas;
+}
+
+/** Vista pública: sin URLs de fichas hasta que Genera Solutions las libere. */
+export function proposalForClient(proposal: EpcProposal): EpcProposal {
+  if (datasheetsReleased(proposal.toggles)) return proposal;
+  return { ...proposal, datasheets: [] };
 }

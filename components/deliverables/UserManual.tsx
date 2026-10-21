@@ -142,7 +142,8 @@ export function UserManual({ proposal: p }: { proposal: EpcProposal }) {
           ))}
         </ul>
         <p className="mt-2 text-xs text-[#6d7c74]">
-          El set completo también está en la cotización, pestaña Fichas técnicas.
+          El set completo se habilita en el enlace de la cotización cuando
+          Genera Solutions libera las fichas técnicas.
         </p>
       </section>
 
