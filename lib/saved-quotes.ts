@@ -1,3 +1,4 @@
+import type { EnergyBill } from "@/lib/energy-bill";
 import type { AddonState } from "@/lib/eng-labor-addons";
 import type {
   MountPreference,
@@ -72,6 +73,7 @@ export interface SavedQuote {
   bonusIds?: string[];
   /** Enlace comercial ya publicado; las fichas se liberan sobre este mismo id. */
   commercialProposalId?: string;
+  energyBill?: EnergyBill;
 }
 
 const KEY = "genera.saved-quotes.v1";

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
 import { BrandLogo } from "@/components/BrandLogo";
+import { EnergyBillPanel } from "@/components/EnergyBillPanel";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
 import { Toggle } from "@/components/Toggle";
 import {
@@ -73,6 +74,12 @@ import {
   visitHasCoords,
   type SiteVisit,
 } from "@/lib/site-visit";
+import {
+  consumptionForQuote,
+  emptyEnergyBill,
+  tariffForQuote,
+  type EnergyBill,
+} from "@/lib/energy-bill";
 import {
   applyCityPreset,
   DEFAULT_TAX_CONFIG,
@@ -241,6 +248,9 @@ function CotizadorInner() {
   const [hydrated, setHydrated] = useState(false);
   const [visitLinked, setVisitLinked] = useState(false);
   const [siteVisit, setSiteVisit] = useState<SiteVisit | null>(null);
+  const [energyBill, setEnergyBill] = useState<EnergyBill>(() =>
+    emptyEnergyBill()
+  );
   const [openFolds, setOpenFolds] = useState({
     params: true,
     equipos: false,
@@ -251,6 +261,7 @@ function CotizadorInner() {
     propuesta: false,
     garantias: true,
     bonos: true,
+    recibo: false,
   });
   const [kits, setKits] = useState<EquipmentKit[]>([]);
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
@@ -451,6 +462,16 @@ function CotizadorInner() {
       applySiteCoords(storedVisit.visit.lat as number, storedVisit.visit.lon as number);
     }
     if (forceLink) setMount(mountFromRoof(storedVisit.visit.roofType));
+    if (storedVisit.visit.energyBill?.photos?.length || storedVisit.visit.energyBill?.consumptionKWh) {
+      const bill = storedVisit.visit.energyBill;
+      setEnergyBill(bill);
+      if (forceLink) {
+        const kwh = consumptionForQuote(bill);
+        const tariff = tariffForQuote(bill);
+        if (kwh > 0) setMonthlyConsumption(kwh);
+        if (tariff > 0) setEnergyTariff(tariff);
+      }
+    }
   }, [hydrated]);
 
   const irradiance = useMemo(
@@ -862,6 +883,7 @@ function CotizadorInner() {
       warranties: cloneWarranties(warranties),
       bonusIds,
       commercialProposalId: commercialProposalId || undefined,
+      energyBill,
     };
   }
 
@@ -968,6 +990,7 @@ function CotizadorInner() {
     setWarranties(cloneWarranties(q.warranties ?? loadCompanyWarranties()));
     setBonusIds(q.bonusIds ?? defaultBonusIds());
     setCommercialProposalId(q.commercialProposalId ?? "");
+    setEnergyBill(q.energyBill ?? emptyEnergyBill());
     const restored = resolveQuoteLines(q);
     if (restored) {
       setQuoteLines(restored);
@@ -1076,8 +1099,27 @@ function CotizadorInner() {
       setMount(mountFromRoof(v.roofType));
       setQuoteLines((lines) => applyVisitToQuoteLines(lines, inventory, v));
       setEngAddons((prev) => applyVisitToAddons(prev, v));
+      if (v.energyBill) {
+        applyEnergyBill(v.energyBill);
+      }
     } else {
       setQuoteLines((lines) => stripVisitQuoteLines(lines));
+    }
+  }
+
+  function applyEnergyBill(bill: EnergyBill) {
+    setEnergyBill(bill);
+    const kwh = consumptionForQuote(bill);
+    const tariff = tariffForQuote(bill);
+    if (kwh > 0) setMonthlyConsumption(kwh);
+    if (tariff > 0) setEnergyTariff(tariff);
+    const stored = loadStoredSiteVisit();
+    if (stored?.visit) {
+      saveStoredSiteVisit({
+        ...stored,
+        visit: { ...stored.visit, energyBill: bill },
+      });
+      setSiteVisit({ ...stored.visit, energyBill: bill });
     }
   }
 
@@ -1663,6 +1705,28 @@ function CotizadorInner() {
                 Proyecto elegible Ley 1715 / 2099
               </label>
             </div>
+          </QuoteFold>
+
+          <QuoteFold
+            title="Recibo de energía"
+            summary={
+              consumptionForQuote(energyBill)
+                ? `${consumptionForQuote(energyBill).toLocaleString("es-CO")} kWh/mes · $${tariffForQuote(energyBill).toLocaleString("es-CO")}/kWh`
+                : "Foto del recibo · lectura automática"
+            }
+            open={openFolds.recibo}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, recibo: !s.recibo }))
+            }
+            printHidden
+          >
+            <EnergyBillPanel
+              bill={energyBill}
+              peakSunHours={peakSunHours}
+              applyLabel="Pasar consumo y tarifa a esta cotización"
+              onChange={setEnergyBill}
+              onApply={applyEnergyBill}
+            />
           </QuoteFold>
 
           <QuoteFold

@@ -1,3 +1,4 @@
+import { emptyEnergyBill, type EnergyBill } from "@/lib/energy-bill";
 import { addonsToState, resolveEngLaborAddons, type AddonState } from "@/lib/eng-labor-addons";
 import {
   lineFromItem,
@@ -64,6 +65,7 @@ export interface SiteVisit {
   notes: string;
   extraNotes: string;
   photos: SiteVisitPhoto[];
+  energyBill?: EnergyBill;
   updatedAt: string;
 }
 
@@ -133,6 +135,7 @@ export function emptySiteVisit(): SiteVisit {
     notes: "",
     extraNotes: "",
     photos: [],
+    energyBill: emptyEnergyBill(),
     updatedAt: new Date().toISOString(),
   };
 }

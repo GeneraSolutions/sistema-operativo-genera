@@ -29,6 +29,8 @@ import {
   loadLeads,
   persistLeadsCloud,
 } from "@/lib/pipeline";
+import { EnergyBillPanel } from "@/components/EnergyBillPanel";
+import { emptyEnergyBill } from "@/lib/energy-bill";
 
 const inputClass =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
@@ -540,6 +542,13 @@ export default function VisitaTecnicaPage() {
               onChange={(e) => patch("notes", e.target.value)}
             />
           </Field>
+        </VisitCard>
+
+        <VisitCard title="Recibo de energía">
+          <EnergyBillPanel
+            bill={visit.energyBill ?? emptyEnergyBill()}
+            onChange={(energyBill) => patch("energyBill", energyBill)}
+          />
         </VisitCard>
 
         <VisitCard title="Registro fotográfico">
