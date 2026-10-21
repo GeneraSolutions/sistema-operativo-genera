@@ -9,6 +9,7 @@ import {
   tariffForQuote,
   type EnergyBill,
 } from "@/lib/energy-bill";
+import { isPdfFile, renderBillPdf } from "@/lib/bill-pdf";
 import { compressVisitPhoto } from "@/lib/site-visit";
 
 const field =
@@ -43,19 +44,49 @@ export function EnergyBillPanel({
 
   async function addPhotos(files: FileList | null) {
     if (!files?.length) return;
-    const room = MAX_BILL_PHOTOS - value.photos.length;
-    const extras = await Promise.all(
-      [...files].slice(0, room).map(async (file) => ({
-        id: crypto.randomUUID(),
-        dataUrl: await compressVisitPhoto(file),
-      }))
-    );
-    onChange({ ...value, photos: [...value.photos, ...extras] });
+    const extras: EnergyBill["photos"] = [];
+    let pdfText = value.pdfText || "";
+    try {
+      for (const file of [...files]) {
+        const room = MAX_BILL_PHOTOS - value.photos.length - extras.length;
+        if (room <= 0) break;
+        if (isPdfFile(file)) {
+          const rendered = await renderBillPdf(file, room);
+          extras.push(
+            ...rendered.pages.map((page) => ({
+              id: crypto.randomUUID(),
+              dataUrl: page.dataUrl,
+              fileName: page.fileName,
+            }))
+          );
+          if (rendered.text) {
+            pdfText = [pdfText, rendered.text].filter(Boolean).join("\n\n");
+          }
+        } else {
+          extras.push({
+            id: crypto.randomUUID(),
+            dataUrl: await compressVisitPhoto(file),
+            fileName: file.name,
+          });
+        }
+      }
+      onChange({
+        ...value,
+        photos: [...value.photos, ...extras].slice(0, MAX_BILL_PHOTOS),
+        pdfText,
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo abrir el PDF. Pruebe foto o otro archivo."
+      );
+    }
   }
 
   async function leer() {
     if (!value.photos.length) {
-      setError("Agregue al menos una foto del recibo.");
+      setError("Agregue al menos una foto o un PDF del recibo.");
       return;
     }
     setReading(true);
@@ -64,12 +95,20 @@ export function EnergyBillPanel({
       const res = await fetch("/api/recibos/leer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photos: value.photos }),
+        body: JSON.stringify({
+          photos: value.photos,
+          pdfText: value.pdfText,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo leer el recibo");
       setOffline(Boolean(data.offline));
-      onChange({ ...value, ...data.bill, photos: value.photos });
+      onChange({
+        ...value,
+        ...data.bill,
+        photos: value.photos,
+        pdfText: value.pdfText,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al leer");
     } finally {
@@ -80,15 +119,14 @@ export function EnergyBillPanel({
   return (
     <div className="space-y-3">
       <p className="text-xs leading-5 text-[#6d7c74]">
-        Fotografíe el recibo (frente, reverso e histórico si cabe). La lectura
+        Suba foto o PDF del recibo (frente, reverso e histórico). La lectura
         extrae transformador, circuito, kWh, $/kWh y si hay reactiva. Revise
         los números antes de cotizar.
       </p>
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
-        capture="environment"
+        accept="image/*,application/pdf"
         multiple
         className="sr-only"
         onChange={(e) => {
@@ -103,7 +141,7 @@ export function EnergyBillPanel({
           className="rounded-xl bg-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           onClick={() => fileRef.current?.click()}
         >
-          Agregar foto del recibo
+          Agregar foto o PDF
         </button>
         <button
           type="button"
@@ -139,9 +177,14 @@ export function EnergyBillPanel({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={p.dataUrl}
-                alt=""
-                className="h-24 w-full rounded-xl object-cover"
+                alt={p.fileName || ""}
+                className="h-24 w-full rounded-xl object-cover bg-[#f7f4ee]"
               />
+              {p.fileName ? (
+                <p className="mt-0.5 truncate text-[10px] text-[#6d7c74]">
+                  {p.fileName}
+                </p>
+              ) : null}
               <button
                 type="button"
                 className="absolute right-1 top-1 rounded-full bg-white/90 px-2 text-xs"

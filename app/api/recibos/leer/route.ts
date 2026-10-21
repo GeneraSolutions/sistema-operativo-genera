@@ -14,6 +14,7 @@ export const maxDuration = 90;
 
 interface Body {
   photos?: EnergyBillPhoto[];
+  pdfText?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -26,9 +27,10 @@ export async function POST(req: NextRequest) {
     const photos = (body.photos ?? [])
       .filter((p) => p.dataUrl?.startsWith("data:image"))
       .slice(0, MAX_BILL_PHOTOS);
-    if (!photos.length) {
+    const pdfText = body.pdfText?.trim() || "";
+    if (!photos.length && !pdfText) {
       return NextResponse.json(
-        { error: "Suba al menos una foto del recibo." },
+        { error: "Suba al menos una foto o un PDF del recibo." },
         { status: 400 }
       );
     }
@@ -68,7 +70,14 @@ export async function POST(req: NextRequest) {
           content: [
             {
               type: "text",
-              text: `Lea ${photos.length} foto(s) de un recibo de energía colombiano y extraiga los campos. Sea literal con números de transformador, circuito, kWh y $/kWh.`,
+              text: [
+                `Lea un recibo de energía colombiano y extraiga los campos. Sea literal con transformador, circuito, kWh y $/kWh.`,
+                pdfText
+                  ? `Texto extraído del PDF (prioridad para cifras):\n${pdfText.slice(0, 12000)}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join("\n\n"),
             },
             ...imageParts,
           ],

@@ -1,8 +1,9 @@
-export const MAX_BILL_PHOTOS = 4;
+export const MAX_BILL_PHOTOS = 6;
 
 export interface EnergyBillPhoto {
   id: string;
   dataUrl: string;
+  fileName?: string;
 }
 
 export interface EnergyBillMonth {
@@ -40,6 +41,7 @@ export interface EnergyBill {
   subsidyOrContribution: string;
   history: EnergyBillMonth[];
   extras: string;
+  pdfText: string;
   analyzedAt: string;
 }
 
@@ -74,6 +76,7 @@ export function emptyEnergyBill(): EnergyBill {
     subsidyOrContribution: "",
     history: [],
     extras: "",
+    pdfText: "",
     analyzedAt: "",
   };
 }
@@ -149,6 +152,7 @@ export function normalizeEnergyBill(
     subsidyOrContribution: text(raw?.subsidyOrContribution),
     history,
     extras: text(raw?.extras),
+    pdfText: text(raw?.pdfText),
     analyzedAt: text(raw?.analyzedAt) || new Date().toISOString(),
   };
 }
