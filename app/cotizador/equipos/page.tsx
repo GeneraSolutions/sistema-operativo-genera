@@ -20,6 +20,7 @@ import {
   type ColombiaTaxConfig,
 } from "@/lib/colombia-tax";
 import { saleFromCost } from "@/lib/eng-labor-addons";
+import { IVA_RATE } from "@/lib/pricing";
 import {
   MAX_EQUIPMENT_LINES,
   buildEquipmentProposal,
@@ -734,6 +735,10 @@ function CotizadorEquiposInner() {
               {quoteLines.map((line) => {
                 const item = inventory.find((i) => i.id === line.itemId);
                 const sale = saleFromCost(line.costUnitCOP, line.marginPercent);
+                const lineIva =
+                  chargeIva && line.applyIva
+                    ? Math.round(sale * IVA_RATE)
+                    : 0;
                 return (
                   <div
                     key={line.key}
@@ -747,6 +752,9 @@ function CotizadorEquiposInner() {
                         <p className="text-xs text-[#6d7c74]">
                           {item ? categoryLabel(item.category) : ""} ·{" "}
                           {cop.format(sale)} / und
+                          {lineIva
+                            ? ` · IVA ${cop.format(lineIva)}`
+                            : " · sin IVA"}
                         </p>
                       </div>
                       <button
@@ -800,6 +808,22 @@ function CotizadorEquiposInner() {
                         </label>
                       ) : null}
                     </div>
+                    <label className="mt-3 flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(line.applyIva)}
+                        onChange={(e) =>
+                          setQuoteLines((rows) =>
+                            rows.map((r) =>
+                              r.key === line.key
+                                ? { ...r, applyIva: e.target.checked }
+                                : r
+                            )
+                          )
+                        }
+                      />
+                      IVA 19% en este equipo
+                    </label>
                   </div>
                 );
               })}
