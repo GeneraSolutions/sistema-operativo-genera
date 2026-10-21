@@ -346,6 +346,7 @@ export function buildEquipmentProposal(input: {
         manual: false,
         "primera-factura": false,
         certificado: false,
+        contrato: true,
       },
     },
     warranties: input.warranties ?? warrantiesForEquipment(categories),

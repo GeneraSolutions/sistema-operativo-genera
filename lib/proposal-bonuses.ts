@@ -10,7 +10,8 @@ export type BonusDocumentSlug =
   | "explicacion"
   | "manual"
   | "primera-factura"
-  | "certificado";
+  | "certificado"
+  | "contrato";
 
 /** Valor agregado incluido en cada propuesta comercial Genera. */
 export const GENERA_BONUSES: ProposalBonus[] = [
@@ -139,6 +140,18 @@ export const GENERA_BONUSES: ProposalBonus[] = [
       moment: "quote",
     },
   },
+  {
+    id: "commercial-contract",
+    title: "Contrato comercial (PDF)",
+    tagline: "Cierre · datos de esta cotización",
+    description:
+      "Minuta lista para que el cliente la lea antes de decidir. Se arma con el nombre, NIT, equipos, precio y forma de pago de esta oferta. Imprimir o guardar como PDF desde el enlace.",
+    document: {
+      slug: "contrato",
+      cta: "Abrir contrato de esta cotización",
+      moment: "quote",
+    },
+  },
 ];
 
 export function defaultBonusIds(): string[] {
@@ -169,6 +182,7 @@ export const DEFAULT_CLIENT_DELIVERABLES: ClientDeliverables = {
   manual: true,
   "primera-factura": true,
   certificado: true,
+  contrato: true,
 };
 
 export const CLIENT_DELIVERABLE_LABELS: {
@@ -202,6 +216,11 @@ export const CLIENT_DELIVERABLE_LABELS: {
     label: "Certificado de puesta en marcha",
     description: "Acta oficial con kWp, RETIE y fecha de energización",
   },
+  {
+    key: "contrato",
+    label: "Contrato comercial",
+    description: "Documento para enviar al cliente al cerrar, con datos de esta cotización",
+  },
 ];
 
 export function resolveClientDeliverables(
@@ -215,6 +234,7 @@ export function resolveClientDeliverables(
     manual: d.manual ?? fallback,
     "primera-factura": d["primera-factura"] ?? fallback,
     certificado: d.certificado ?? fallback,
+    contrato: d.contrato ?? true,
   };
 }
 

@@ -30,7 +30,7 @@ export interface ProposalBonus {
   tagline: string;
   description: string;
   document?: {
-    slug: "explicacion" | "manual" | "primera-factura" | "certificado";
+    slug: "explicacion" | "manual" | "primera-factura" | "certificado" | "contrato";
     cta: string;
     moment: "quote" | "handover";
   };
@@ -84,7 +84,8 @@ export type ClientDeliverableKey =
   | "explicacion"
   | "manual"
   | "primera-factura"
-  | "certificado";
+  | "certificado"
+  | "contrato";
 
 export type ClientDeliverables = Record<ClientDeliverableKey, boolean>;
 

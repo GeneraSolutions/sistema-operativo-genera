@@ -216,6 +216,7 @@ export const DEMO_EPC_PROPOSAL: EpcProposal = {
       manual: true,
       "primera-factura": true,
       certificado: true,
+      contrato: true,
     },
   },
 };

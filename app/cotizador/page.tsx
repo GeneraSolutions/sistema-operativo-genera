@@ -869,6 +869,7 @@ function CotizadorInner() {
   async function publishCommercial(opts?: {
     fichas?: boolean;
     open?: boolean;
+    doc?: "quote" | "contrato";
   }) {
     if (!liveProposal) return;
     const id = commercialProposalId || crypto.randomUUID();
@@ -880,6 +881,7 @@ function CotizadorInner() {
       deliverables: {
         ...resolveClientDeliverables(toggles),
         fichas,
+        contrato: true,
       },
     };
     setToggles(nextToggles);
@@ -911,13 +913,19 @@ function CotizadorInner() {
     saved.commercialProposalId = id;
     saved.toggles = nextToggles;
     void persistQuote(saved);
-    const url = `${window.location.origin}/propuesta/epc/${id}`;
+    const path =
+      opts?.doc === "contrato"
+        ? `/propuesta/epc/${id}/contrato`
+        : `/propuesta/epc/${id}`;
+    const url = `${window.location.origin}${path}`;
     await navigator.clipboard?.writeText(url).catch(() => undefined);
     if (opts?.open !== false) {
       setLinkFlash(
-        fichas
-          ? "Enlace copiado. Las fichas técnicas ya están visibles para el cliente."
-          : "Enlace copiado. Las fichas técnicas quedan ocultas hasta que las libere."
+        opts?.doc === "contrato"
+          ? "Enlace del contrato copiado. Ábralo, pulse Imprimir / PDF y envíelo al cliente."
+          : fichas
+            ? "Enlace copiado. Las fichas técnicas ya están visibles para el cliente."
+            : "Enlace copiado. Las fichas técnicas quedan ocultas hasta que las libere."
       );
       window.open(url, "_blank", "noopener,noreferrer");
     } else {
@@ -3786,6 +3794,16 @@ function CotizadorInner() {
               type="button"
               disabled={publishingLink || !liveProposal}
               onClick={() =>
+                void publishCommercial({ open: true, doc: "contrato" })
+              }
+              className="flex-1 rounded-xl border border-[#d4b46a] bg-[#fff8e8] px-4 py-2.5 text-sm font-semibold tracking-wide text-[#8a6b2a] uppercase disabled:opacity-50"
+            >
+              Contrato PDF
+            </button>
+            <button
+              type="button"
+              disabled={publishingLink || !liveProposal}
+              onClick={() =>
                 void publishCommercial({
                   fichas: !datasheetsReleased(toggles),
                   open: false,
@@ -3813,6 +3831,15 @@ function CotizadorInner() {
                 rel="noreferrer"
               >
                 abrir cotización
+              </a>
+              {" · "}
+              <a
+                className="font-medium text-[#1f6b45] underline"
+                href={`/propuesta/epc/${commercialProposalId}/contrato`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                abrir contrato
               </a>
             </p>
           ) : null}

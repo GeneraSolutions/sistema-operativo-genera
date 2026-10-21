@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { CommercialContract } from "@/components/deliverables/CommercialContract";
 import { CommissioningCert } from "@/components/deliverables/CommissioningCert";
 import { FirstBillGuide } from "@/components/deliverables/FirstBillGuide";
 import { QuoteExplainer } from "@/components/deliverables/QuoteExplainer";
@@ -13,6 +14,7 @@ const DOCS = {
   manual: UserManual,
   "primera-factura": FirstBillGuide,
   certificado: CommissioningCert,
+  contrato: CommercialContract,
 } as const;
 
 type DocKey = keyof typeof DOCS;

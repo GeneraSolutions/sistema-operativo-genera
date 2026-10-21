@@ -123,6 +123,7 @@ function CotizadorEquiposInner() {
       manual: false,
       "primera-factura": false,
       certificado: false,
+      contrato: true,
     },
   });
   const editingQuoteId = useRef<string | undefined>(undefined);
@@ -420,13 +421,20 @@ function CotizadorEquiposInner() {
     window.setTimeout(() => setSaveFlash(""), 4000);
   }
 
-  async function publishCommercial(opts?: { fichas?: boolean }) {
+  async function publishCommercial(opts?: {
+    fichas?: boolean;
+    doc?: "quote" | "contrato";
+  }) {
     if (!liveProposal) return;
     const id = commercialProposalId || crypto.randomUUID();
     const fichas = opts?.fichas ?? datasheetsReleased(toggles);
     const nextToggles = {
       ...toggles,
-      deliverables: { ...resolveClientDeliverables(toggles), fichas },
+      deliverables: {
+        ...resolveClientDeliverables(toggles),
+        fichas,
+        contrato: true,
+      },
     };
     setToggles(nextToggles);
     setCommercialProposalId(id);
@@ -454,13 +462,20 @@ function CotizadorEquiposInner() {
     saved.commercialProposalId = id;
     saved.toggles = nextToggles;
     void persistQuote(saved);
-    const url = `${window.location.origin}/propuesta/epc/${id}`;
+    const path =
+      opts?.doc === "contrato"
+        ? `/propuesta/epc/${id}/contrato`
+        : `/propuesta/epc/${id}`;
+    const url = `${window.location.origin}${path}`;
     await navigator.clipboard?.writeText(url).catch(() => undefined);
     setLinkFlash(
-      fichas
-        ? "Enlace copiado. Las fichas ya están visibles."
-        : "Enlace copiado. Las fichas quedan ocultas hasta que las libere."
+      opts?.doc === "contrato"
+        ? "Enlace del contrato copiado. Ábralo, pulse Imprimir / PDF y envíelo al cliente."
+        : fichas
+          ? "Enlace copiado. Las fichas ya están visibles."
+          : "Enlace copiado. Las fichas quedan ocultas hasta que las libere."
     );
+    window.open(path, "_blank", "noopener,noreferrer");
     window.setTimeout(() => setLinkFlash(""), 4500);
   }
 
@@ -529,13 +544,29 @@ function CotizadorEquiposInner() {
         >
           {publishingLink ? "Publicando…" : "Publicar enlace"}
         </button>
+        <button
+          type="button"
+          disabled={!liveProposal || publishingLink || quoteLines.length === 0}
+          onClick={() => void publishCommercial({ doc: "contrato" })}
+          className="rounded-full border border-[#d4b46a] bg-[#fff8e8] px-3 py-1.5 text-xs font-semibold text-[#8a6b2a] disabled:opacity-50"
+        >
+          Contrato PDF
+        </button>
         {commercialProposalId ? (
-          <a
-            href={`/propuesta/epc/${commercialProposalId}`}
-            className="rounded-full border border-[#1f6b45] px-3 py-1.5 text-xs font-semibold text-[#1f6b45]"
-          >
-            Ver propuesta
-          </a>
+          <>
+            <a
+              href={`/propuesta/epc/${commercialProposalId}`}
+              className="rounded-full border border-[#1f6b45] px-3 py-1.5 text-xs font-semibold text-[#1f6b45]"
+            >
+              Ver propuesta
+            </a>
+            <a
+              href={`/propuesta/epc/${commercialProposalId}/contrato`}
+              className="rounded-full border border-[#1f6b45] px-3 py-1.5 text-xs font-semibold text-[#1f6b45]"
+            >
+              Abrir contrato
+            </a>
+          </>
         ) : null}
       </div>
       {saveFlash ? <p className="mb-3 text-sm text-[#1f6b45]">{saveFlash}</p> : null}
