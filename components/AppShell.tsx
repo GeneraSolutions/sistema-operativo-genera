@@ -7,6 +7,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { OsLookToggle } from "@/components/OsLookToggle";
 import {
   ROLE_LABELS,
+  isAliadoRole,
   sessionAllowsModule,
   type AppModule,
   type Role,
@@ -62,6 +63,9 @@ export function AppShell({
   }, []);
 
   const nav = NAV.filter((item) => {
+    if (me && isAliadoRole(me.role)) {
+      return item.module === "cotizador";
+    }
     if (item.always) return true;
     if (!item.module) return true;
     if (!me) return item.module !== "equipo";

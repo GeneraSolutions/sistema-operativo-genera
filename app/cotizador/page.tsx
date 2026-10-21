@@ -19,10 +19,18 @@ import {
 } from "@/lib/inventory";
 import {
   addonsToState,
+  emptyAddonState,
   marginFromSale,
   saleFromCost,
   type AddonState,
 } from "@/lib/eng-labor-addons";
+import { isAliadoRole } from "@/lib/auth/roles";
+import {
+  DEFAULT_ALIADO_INSTALL,
+  suggestInstallBreakdown,
+  type AliadoInstallConfig,
+  type AliadoTripId,
+} from "@/lib/aliado-install";
 import {
   applySuggestedQuantities,
   calculateParametricQuote,
@@ -52,6 +60,7 @@ import {
   loadSavedQuotes,
   mergeQuotes,
   pinActiveQuote,
+  quotesForCotizador,
   putQuoteLines,
   qtyFromLines,
   resolveQuoteLines,
@@ -155,6 +164,7 @@ export interface ProposalToggles {
   showIvaAranceles: boolean;
   showDepreciacion: boolean;
   showCharts: boolean;
+  showPricePerKwp?: boolean;
   showDeliverables?: boolean;
   deliverables?: Partial<ClientDeliverables>;
 }
@@ -166,11 +176,26 @@ const DEFAULT_TOGGLES: ProposalToggles = {
   showIvaAranceles: true,
   showDepreciacion: true,
   showCharts: true,
+  showPricePerKwp: false,
   deliverables: { ...DEFAULT_CLIENT_DELIVERABLES },
 };
 
 function CotizadorInner() {
   const searchParams = useSearchParams();
+  const [sessionUser, setSessionUser] = useState<{
+    id: string;
+    username: string;
+    name: string;
+    role: string;
+  } | null>(null);
+  const aliado = isAliadoRole(sessionUser?.role);
+  const [installConfig, setInstallConfig] = useState<AliadoInstallConfig>(
+    DEFAULT_ALIADO_INSTALL
+  );
+  const [installLocked, setInstallLocked] = useState(false);
+  const [aliadoTrip, setAliadoTrip] = useState<AliadoTripId>("local");
+  const [partnerCompanyName, setPartnerCompanyName] = useState("");
+  const [partnerLogoDataUrl, setPartnerLogoDataUrl] = useState("");
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [systemKwp, setSystemKwp] = useState(50);
   const [peakSunHours, setPeakSunHours] = useState(4.5);
@@ -270,6 +295,20 @@ function CotizadorInner() {
   });
   const [kits, setKits] = useState<EquipmentKit[]>([]);
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
+  const visibleQuotes = useMemo(
+    () =>
+      quotesForCotizador(savedQuotes, {
+        aliado,
+        username: sessionUser?.username,
+      }),
+    [savedQuotes, aliado, sessionUser?.username]
+  );
+  const installPlan = useMemo(
+    () => suggestInstallBreakdown(systemKwp, installConfig, aliadoTrip),
+    [systemKwp, installConfig, aliadoTrip]
+  );
+  const suggestedInstall = installPlan.totalCOP;
+  const installBand = installPlan.band;
   const [customCats, setCustomCats] = useState<
     { id: string; label: string }[]
   >([]);
@@ -446,6 +485,70 @@ function CotizadorInner() {
   }, [searchParams]);
 
   useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.user) return;
+        setSessionUser({
+          id: data.user.id,
+          username: data.user.username,
+          name: data.user.name,
+          role: data.user.role,
+        });
+        if (isAliadoRole(data.user.role)) {
+          try {
+            const raw = localStorage.getItem(
+              `genera.aliado-brand.${data.user.username}`
+            );
+            const brand = raw ? JSON.parse(raw) : null;
+            setPartnerCompanyName(
+              brand?.companyName || data.user.name || ""
+            );
+            setPartnerLogoDataUrl(brand?.logoDataUrl || "");
+          } catch {
+            setPartnerCompanyName(data.user.name || "");
+          }
+        }
+      })
+      .catch(() => null);
+    void fetch("/api/aliado/install", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.config) setInstallConfig(data.config);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!aliado || !sessionUser) return;
+    try {
+      localStorage.setItem(
+        `genera.aliado-brand.${sessionUser.username}`,
+        JSON.stringify({
+          companyName: partnerCompanyName,
+          logoDataUrl: partnerLogoDataUrl,
+        })
+      );
+    } catch {
+      /* quota */
+    }
+  }, [aliado, sessionUser, partnerCompanyName, partnerLogoDataUrl]);
+
+  useEffect(() => {
+    if (!aliado) return;
+    setTechnicians(0);
+    setOverheadPercent(0);
+    setEngAddons(emptyAddonState());
+    setOpenFolds((s) => ({ ...s, equipos: true, ingenieria: true }));
+  }, [aliado]);
+
+  useEffect(() => {
+    if (!aliado || installLocked) return;
+    setEngineeringCostCOP(suggestedInstall);
+    setEngineeringSaleCOP(suggestedInstall);
+  }, [aliado, installLocked, suggestedInstall]);
+
+  useEffect(() => {
     if (!hydrated) return;
     const storedVisit = loadStoredSiteVisit();
     if (!storedVisit) return;
@@ -606,6 +709,13 @@ function CotizadorInner() {
       applyLey1715,
       warranties,
       bonusIds,
+      companyName: aliado
+        ? partnerCompanyName || sessionUser?.name || "Aliado comercial"
+        : undefined,
+      companyTag: aliado
+        ? `COTIZACIÓN · ${(partnerCompanyName || sessionUser?.name || "ALIADO").toUpperCase()}`
+        : undefined,
+      partnerLogoDataUrl: aliado ? partnerLogoDataUrl || undefined : undefined,
     });
   }, [
     hydrated,
@@ -642,6 +752,10 @@ function CotizadorInner() {
     applyLey1715,
     warranties,
     bonusIds,
+    aliado,
+    partnerCompanyName,
+    partnerLogoDataUrl,
+    sessionUser,
   ]);
 
   useEffect(() => {
@@ -889,6 +1003,12 @@ function CotizadorInner() {
       bonusIds,
       commercialProposalId: commercialProposalId || undefined,
       energyBill,
+      channel: aliado ? "aliado" : "genera",
+      savedBy: sessionUser?.username,
+      savedByName: sessionUser?.name,
+      partnerCompanyName: aliado ? partnerCompanyName : undefined,
+      partnerLogoDataUrl: aliado ? partnerLogoDataUrl : undefined,
+      aliadoTrip: aliado ? aliadoTrip : undefined,
     };
   }
 
@@ -926,7 +1046,9 @@ function CotizadorInner() {
           setSavedQuotes(merged);
         }
         setSaveFlash(
-          "Cotización guardada. Ya aparece en Archivo en todos los equipos."
+          aliado
+            ? "Cotización guardada en su espacio. El equipo de Genera puede verla; sus otras fichas no."
+            : "Cotización guardada. Ya aparece en Archivo en todos los equipos."
         );
         const leadId = sessionStorage.getItem(OPEN_LEAD_KEY);
         if (leadId) {
@@ -996,6 +1118,12 @@ function CotizadorInner() {
     setBonusIds(q.bonusIds ?? defaultBonusIds());
     setCommercialProposalId(q.commercialProposalId ?? "");
     setEnergyBill(q.energyBill ?? emptyEnergyBill());
+    if (q.channel === "aliado") {
+      setInstallLocked(true);
+      setPartnerCompanyName(q.partnerCompanyName || partnerCompanyName);
+      setPartnerLogoDataUrl(q.partnerLogoDataUrl || partnerLogoDataUrl);
+      if (q.aliadoTrip) setAliadoTrip(q.aliadoTrip);
+    }
     const restored = resolveQuoteLines(q);
     if (restored) {
       setQuoteLines(restored);
@@ -1179,6 +1307,12 @@ function CotizadorInner() {
           <p className="mt-1 text-sm text-[#4d5c55]">
             Dimensiona CAPEX desde inventario, aplica Ley 1715 y personaliza la
             propuesta con interruptores.{" "}
+            {aliado ? (
+              <span>
+                Equipos a su costo de compra. Genera entra solo con la instalación.
+              </span>
+            ) : (
+              <>
             <Link href="/inventario" className="font-medium text-[#1f6b45] underline">
               Gestionar catálogo
             </Link>
@@ -1186,6 +1320,8 @@ function CotizadorInner() {
             <Link href="/visita-tecnica" className="font-medium text-[#1f6b45] underline">
               Visita técnica
             </Link>
+              </>
+            )}
           </p>
         </div>
         <div className="rounded-xl bg-[#0f2a1f] px-4 py-2 text-right text-white">
@@ -1215,11 +1351,11 @@ function CotizadorInner() {
         >
           Guardar cotización
         </button>
-        {savedQuotes[0] ? (
+        {visibleQuotes[0] ? (
           <button
             type="button"
             onClick={() => {
-              const copy = snapshotCurrent(`Copia · ${savedQuotes[0].name}`);
+              const copy = snapshotCurrent(`Copia · ${visibleQuotes[0].name}`);
               copy.clientName = `${copy.clientName} (copia)`;
               copy.commercialProposalId = undefined;
               persistQuote(copy);
@@ -1230,17 +1366,19 @@ function CotizadorInner() {
             Duplicar última
           </button>
         ) : null}
+        {aliado ? null : (
         <a
           href="/archivo"
           className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#1f6b45] underline"
         >
           Ver archivo
         </a>
+        )}
       </div>
       {saveFlash ? (
         <p className="mb-3 text-sm text-[#1f6b45] print:hidden">{saveFlash}</p>
       ) : null}
-      {marginRate < 12 ? (
+      {!aliado && marginRate < 12 ? (
         <p className="mb-3 rounded-xl bg-[#fff4e5] px-4 py-2 text-sm text-[#9a5b00] print:hidden">
           Alerta de utilidad neta: {numFmt.format(marginRate)}% sobre venta (objetivo
           ≥ 12% después de ICA y renta). Ajuste márgenes, ingeniería o precio de
@@ -1254,16 +1392,23 @@ function CotizadorInner() {
           ))}
         </div>
       ) : null}
-      {savedQuotes.length > 0 ? (
+      {visibleQuotes.length > 0 ? (
         <div className="mb-4 print:hidden">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#8a6b2a]">
-            Cotizaciones guardadas ·{" "}
-            <a href="/archivo" className="normal-case tracking-normal underline">
-              ver todas
-            </a>
+            Cotizaciones guardadas
+            {aliado ? (
+              " · solo las suyas"
+            ) : (
+              <>
+                {" · "}
+                <a href="/archivo" className="normal-case tracking-normal underline">
+                  ver todas
+                </a>
+              </>
+            )}
           </p>
           <div className="mt-1 flex flex-wrap gap-2">
-            {savedQuotes.slice(0, 6).map((q) => (
+            {visibleQuotes.slice(0, 6).map((q) => (
               <span key={q.id} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs ring-1 ring-[#d8d2c4]">
                 <button
                   type="button"
@@ -1283,6 +1428,12 @@ function CotizadorInner() {
                   onClick={() => {
                     deleteSavedQuote(q.id);
                     setSavedQuotes(loadSavedQuotes());
+                    if (aliado) {
+                      void fetch(
+                        `/api/archivo?quote=${encodeURIComponent(q.id)}`,
+                        { method: "DELETE" }
+                      );
+                    }
                   }}
                 >
                   ×
@@ -1305,6 +1456,25 @@ function CotizadorInner() {
             }
           >
             <div className="space-y-4">
+              {aliado ? (
+                <div className="rounded-2xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">
+                      Empresa que firma el contrato
+                    </span>
+                    <input
+                      className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2"
+                      value={partnerCompanyName}
+                      onChange={(e) => setPartnerCompanyName(e.target.value)}
+                      placeholder="Razón social de su empresa"
+                    />
+                  </label>
+                  <p className="mt-2 text-xs text-[#6d7c74]">
+                    El cliente ve su logo y su nombre. Genera no aparece en
+                    portada.
+                  </p>
+                </div>
+              ) : (
               <div
                 className={`rounded-2xl border px-3 py-3 ${
                   visitLinked
@@ -1352,6 +1522,7 @@ function CotizadorInner() {
                   Abrir formulario de visita
                 </Link>
               </div>
+              )}
               <label className="block">
                 <div className="mb-1.5 flex justify-between text-sm">
                   <span className="font-medium">Potencia (kWp)</span>
@@ -1626,12 +1797,58 @@ function CotizadorInner() {
                     onChange={(e) => setLogoHeight(Number(e.target.value))}
                   />
                 </label>
+                {aliado ? (
+                  <div className="mt-3 space-y-2">
+                    <label className="cursor-pointer rounded-xl bg-[#0f3d2e] px-3 py-2 text-sm font-semibold text-white">
+                      Logo de su empresa
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          try {
+                            setPartnerLogoDataUrl(await compressSiteImage(file));
+                          } catch {
+                            setPartnerLogoDataUrl("");
+                          }
+                        }}
+                      />
+                    </label>
+                    {partnerLogoDataUrl ? (
+                      <button
+                        type="button"
+                        className="rounded-xl border border-[#d8d2c4] px-3 py-2 text-sm"
+                        onClick={() => setPartnerLogoDataUrl("")}
+                      >
+                        Quitar logo
+                      </button>
+                    ) : null}
+                    <div className="flex justify-center rounded-xl bg-[#070b16] p-4">
+                      {partnerLogoDataUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={partnerLogoDataUrl}
+                          alt=""
+                          style={{ height: logoHeight, width: "auto" }}
+                        />
+                      ) : (
+                        <p className="text-xs text-[#8aa0c2]">Sin logo aún</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 <div className="mt-3 flex justify-center rounded-xl bg-[#070b16] p-4">
                   <BrandLogo height={logoHeight} />
                 </div>
                 <p className="mt-2 text-center text-[11px] tracking-widest text-[#6b6458] uppercase">
                   Cotización EPC · Genera
                 </p>
+                  </>
+                )}
                 </WorkFold>
               </div>
 
@@ -1951,8 +2168,9 @@ function CotizadorInner() {
             }
           >
             <p className="text-xs text-[#6d7c74]">
-              Precio base del inventario, con margen e IVA por línea. Puede agregar o
-              quitar productos; el cliente no ve este desglose.
+              {aliado
+                ? "Ponga en Costo COP lo que usted paga al proveedor. En venta, lo que le cobra al cliente. Las cantidades las sugiere el kWp."
+                : "Precio base del inventario, con margen e IVA por línea. Puede agregar o quitar productos; el cliente no ve este desglose."}
             </p>
             <div className="mt-3 rounded-xl border border-[#e4dfd4] bg-white px-3 py-2 text-xs text-[#4d5c55]">
               {qtyLocked ? (
@@ -2305,6 +2523,138 @@ function CotizadorInner() {
             </div>
           </QuoteFold>
 
+          {aliado ? (
+          <QuoteFold
+            title="Instalación Genera"
+            summary={`${copFmt.format(engineeringCostCOP)} · ${installBand?.label ?? ""}`}
+            open={openFolds.ingenieria}
+            onToggle={() =>
+              setOpenFolds((s) => ({ ...s, ingenieria: !s.ingenieria }))
+            }
+          >
+            <p className="text-xs text-[#6d7c74]">
+              Mano de obra Genera: tarifa por kWp (mínimo{" "}
+              {installConfig.minBillableKwp} kWp), herramienta, viaje y ARL.
+              {installBand
+                ? ` Franja ${installBand.label} · ${copFmt.format(installBand.copPerKwp)} / kWp.`
+                : ""}
+            </p>
+            <div className="mt-3">
+              <p className="mb-1 text-sm font-medium">Viaje / movilización</p>
+              <div className="flex flex-wrap gap-2">
+                {installConfig.trips.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setAliadoTrip(t.id);
+                      setInstallLocked(false);
+                    }}
+                    className={`rounded-xl px-3 py-2 text-left text-xs ${
+                      aliadoTrip === t.id
+                        ? "bg-[#0f2a1f] text-white"
+                        : "bg-white ring-1 ring-[#d8d2c4]"
+                    }`}
+                  >
+                    <span className="block font-semibold">{t.label}</span>
+                    <span className={aliadoTrip === t.id ? "text-[#c9d7cf]" : "text-[#6d7c74]"}>
+                      {t.hint} · {copFmt.format(t.cop)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <ul className="mt-3 space-y-1 rounded-xl bg-[#f7f4ee] px-3 py-2 text-xs text-[#4d5c55]">
+              <li>
+                Mano de obra{" "}
+                {installPlan.billableKwp !== installPlan.kwp
+                  ? `(se cobra como ${installPlan.billableKwp} kWp)`
+                  : `(${numFmt.format(installPlan.kwp)} kWp)`}
+                : {copFmt.format(installPlan.laborCOP)}
+              </li>
+              <li>
+                Herramienta ({copFmt.format(installConfig.toolCopPerKwp)} / kWp):{" "}
+                {copFmt.format(installPlan.toolsCOP)}
+              </li>
+              <li>
+                Viaje {installPlan.trip.label}: {copFmt.format(installPlan.tripCOP)}
+              </li>
+              <li>ARL del proyecto: {copFmt.format(installPlan.arlCOP)}</li>
+              <li className="font-semibold text-[#12241c]">
+                Total a Genera: {copFmt.format(installPlan.totalCOP)}
+              </li>
+            </ul>
+            <p className="mt-2 text-[11px] text-[#6d7c74]">
+              Piso de gente (no se cobra aparte): {installPlan.crew.technicians}{" "}
+              personas × {installPlan.crew.days} días ×{" "}
+              {copFmt.format(installConfig.dailyWageCOP)} ={" "}
+              {copFmt.format(installPlan.jornalesCOP)} + ARL. Si ese piso se
+              acerca al total, la tarifa queda justa.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">
+                  Lo que paga a Genera (COP)
+                </span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={engineeringCostCOP}
+                  onChange={(e) => {
+                    setInstallLocked(true);
+                    const n = Math.max(0, Number(e.target.value) || 0);
+                    setEngineeringCostCOP(n);
+                    if (engineeringSaleCOP < n) setEngineeringSaleCOP(n);
+                  }}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">
+                  Lo que cobra al cliente (COP)
+                </span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                  value={engineeringSaleCOP}
+                  onChange={(e) => {
+                    setInstallLocked(true);
+                    setEngineeringSaleCOP(Math.max(0, Number(e.target.value) || 0));
+                  }}
+                />
+              </label>
+            </div>
+            {engineeringSaleCOP < engineeringCostCOP ? (
+              <p className="mt-2 text-sm text-[#9a5b00]">
+                La venta al cliente está por debajo de lo que cuesta la
+                instalación. El presupuesto queda corto.
+              </p>
+            ) : null}
+            {engineeringCostCOP < suggestedInstall ? (
+              <p className="mt-2 text-sm text-[#9a5b00]">
+                Está por debajo del sugerido de Genera. Confirme con Camilo
+                antes de comprometer la obra.
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className="mt-2 text-xs font-semibold text-[#1f6b45] underline"
+              onClick={() => {
+                setInstallLocked(false);
+                setEngineeringCostCOP(suggestedInstall);
+                setEngineeringSaleCOP(suggestedInstall);
+              }}
+            >
+              Volver al sugerido
+            </button>
+            <p className="mt-3 text-sm font-medium text-[#12241c]">
+              Precio al cliente: {copFmt.format(quote.totalCapexCOP)}
+              {systemKwp > 0
+                ? ` · ${copFmt.format(Math.round(quote.totalCapexCOP / systemKwp))} / kWp`
+                : ""}
+            </p>
+          </QuoteFold>
+          ) : (
+          <>
           <QuoteFold
             title="Ingeniería y cuadrilla"
             summary={`${quote.addons.filter((a) => a.enabled).length} partidas · ${technicians} técnicos`}
@@ -2953,6 +3303,8 @@ function CotizadorInner() {
               ))}
             </div>
           </QuoteFold>
+          </>
+          )}
 
           <QuoteFold
             title="Garantías del sistema"
@@ -3226,6 +3578,12 @@ function CotizadorInner() {
                 description="Activos en 5 años"
               />
               <Toggle
+                checked={Boolean(toggles.showPricePerKwp)}
+                onChange={(v) => updateToggle("showPricePerKwp", v)}
+                label="Mostrar COP / kWp instalado"
+                description="Precio de venta al cliente por kWp, no el costo"
+              />
+              <Toggle
                 checked={toggles.showCharts}
                 onChange={(v) => updateToggle("showCharts", v)}
                 label="Gráficos de flujo y ahorro 25 años"
@@ -3333,12 +3691,14 @@ function CotizadorInner() {
             </p>
           ) : null}
 
+          {aliado ? null : (
           <p className="text-center text-xs text-[#8a7f70] print:hidden">
             ¿Necesita un unifilar o concepto CREG?{" "}
             <Link href="/inteligencia" className="font-medium text-[#1f6b45] underline">
               Abrir Centro de Inteligencia
             </Link>
           </p>
+          )}
         </div>
       </div>
     </AppShell>

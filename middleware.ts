@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { moduleFromPath, sessionAllowsModule } from "@/lib/auth/roles";
+import {
+  isAliadoRole,
+  moduleFromPath,
+  sessionAllowsModule,
+} from "@/lib/auth/roles";
 import { SESSION_COOKIE, authSecret } from "@/lib/auth/session-public";
 import type { Role } from "@/lib/auth/roles";
 
@@ -97,6 +101,13 @@ export async function middleware(req: NextRequest) {
     const login = new URL("/login", req.url);
     login.searchParams.set("next", pathname);
     return NextResponse.redirect(login);
+  }
+
+  if (
+    isAliadoRole(session.role) &&
+    (pathname === "/" || pathname.startsWith("/inicio"))
+  ) {
+    return NextResponse.redirect(new URL("/cotizador", req.url));
   }
 
   const mod = moduleFromPath(pathname);

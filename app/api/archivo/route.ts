@@ -23,7 +23,7 @@ import {
   upsertArchivoVisits,
 } from "@/lib/archivo-server";
 import { getSessionFromCookies } from "@/lib/auth/request";
-import { canAccessModule } from "@/lib/auth/roles";
+import { canAccessModule, isAliadoRole } from "@/lib/auth/roles";
 import { listCustomRoles } from "@/lib/auth/custom-roles";
 import type { ObraJob } from "@/lib/obra";
 import type { CommercialLead } from "@/lib/pipeline";
@@ -41,13 +41,35 @@ async function requireArchivo() {
   const session = await getSessionFromCookies();
   if (!session) return { error: NextResponse.json({ error: "No autenticado." }, { status: 401 }) };
   const custom = await listCustomRoles();
+  if (isAliadoRole(session.role)) return { session, aliado: true as const };
   if (!canAccessModule(session.role, "archivo", custom)) {
     return { error: NextResponse.json({ error: "Sin permiso." }, { status: 403 }) };
   }
-  return { session };
+  return { session, aliado: false as const };
 }
 
-async function payload() {
+function ownAliadoQuotes(
+  quotes: SavedQuote[],
+  session: { id: string; username: string }
+) {
+  return quotes.filter(
+    (q) =>
+      q.channel === "aliado" &&
+      (q.savedBy === session.username || q.savedBy === session.id)
+  );
+}
+
+async function payload(session: { id: string; username: string }, aliado: boolean) {
+  if (aliado) {
+    return {
+      quotes: ownAliadoQuotes(await loadArchivoQuotes(), session),
+      visits: [],
+      reports: [],
+      plants: [],
+      obras: [],
+      leads: [],
+    };
+  }
   return {
     quotes: await loadArchivoQuotes(),
     visits: await loadArchivoVisits(),
@@ -61,7 +83,9 @@ async function payload() {
 export async function GET() {
   const gate = await requireArchivo();
   if ("error" in gate && gate.error) return gate.error;
-  return NextResponse.json(await payload(), { headers: NO_STORE });
+  return NextResponse.json(await payload(gate.session, Boolean(gate.aliado)), {
+    headers: NO_STORE,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -80,9 +104,15 @@ export async function POST(req: NextRequest) {
   };
   const stampQuote = (q: SavedQuote): SavedQuote => ({
     ...q,
+    channel: gate.aliado ? "aliado" : q.channel,
     savedBy: q.savedBy || gate.session.username,
     savedByName: q.savedByName || gate.session.name,
   });
+  if (gate.aliado) {
+    if (body.visit || body.visits || body.report || body.reports || body.plants || body.obras || body.leads) {
+      return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
+    }
+  }
   if (body.quote?.id) await upsertArchivoQuote(stampQuote(body.quote));
   if (body.quotes?.length) {
     await upsertArchivoQuotes(body.quotes.map(stampQuote));
@@ -104,7 +134,9 @@ export async function POST(req: NextRequest) {
   if (body.plants?.length) await upsertArchivoPlants(body.plants);
   if (body.obras?.length) await upsertArchivoObras(body.obras);
   if (body.leads?.length) await upsertArchivoLeads(body.leads);
-  return NextResponse.json(await payload(), { headers: NO_STORE });
+  return NextResponse.json(await payload(gate.session, Boolean(gate.aliado)), {
+    headers: NO_STORE,
+  });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -117,7 +149,19 @@ export async function DELETE(req: NextRequest) {
   const plantId = searchParams.get("plant");
   const obraId = searchParams.get("obra");
   const leadId = searchParams.get("lead");
-  if (quoteId) await removeArchivoQuote(quoteId);
+  if (quoteId) {
+    if (gate.aliado) {
+      const current = await loadArchivoQuotes();
+      const mine = ownAliadoQuotes(current, gate.session).some((q) => q.id === quoteId);
+      if (!mine) {
+        return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
+      }
+    }
+    await removeArchivoQuote(quoteId);
+  }
+  if (gate.aliado && (visitId || reportId || plantId || obraId || leadId)) {
+    return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
+  }
   if (visitId) await removeArchivoVisit(visitId);
   if (reportId) await removeArchivoReport(reportId);
   if (plantId) await removeArchivoPlant(plantId);

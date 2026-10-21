@@ -93,8 +93,17 @@ export function EpcProposalView({
     <div className={`proposal-print bg-[#070b16] text-[#e8eef8] ${embedded ? "" : "min-h-screen"}`}>
       <header className={`sticky top-0 z-20 flex items-center justify-between border-b border-[#1a2744] bg-[#070b16]/90 px-5 py-3 backdrop-blur print:static ${embedded ? "print:hidden" : ""}`}>
         <div className="flex items-center gap-2 text-sm text-[#c5d4ea]">
-          <BrandLogo height={32} />
-          {p.companyName} · Cotización EPC
+          {p.partnerLogoDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={p.partnerLogoDataUrl}
+              alt={p.companyName}
+              style={{ height: 32, width: "auto" }}
+            />
+          ) : (
+            <BrandLogo height={32} />
+          )}
+          {p.companyName} · Cotización
         </div>
         <div className="flex items-center gap-2 print:hidden">
           {clientDocs.fichas ? (
@@ -117,7 +126,11 @@ export function EpcProposalView({
 
       <div className="mx-auto max-w-5xl px-4 py-10">
         <div className="text-center">
-          <GeneraMark height={p.logoHeight ?? 80} />
+          <ProposalMark
+            height={p.logoHeight ?? 80}
+            logoUrl={p.partnerLogoDataUrl}
+            companyName={p.companyName}
+          />
           <p className="mt-4 inline-flex rounded-full bg-[#14352c] px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-[#5eead4] uppercase">
             {p.companyTag}
           </p>
@@ -183,6 +196,14 @@ export function EpcProposalView({
               value={p.includeBattery ? `${p.batteryKwh} kWh` : "No incluida"}
               hint={p.includeBattery ? p.batteryLabel : "Solo autoconsumo / red"}
             />
+            {p.toggles.showPricePerKwp && p.systemKwp > 0 ? (
+              <SpecCard
+                badge="COP / kWp instalado"
+                badgeClass="text-amber-200"
+                value={cop.format(Math.round(p.totalCOP / p.systemKwp))}
+                hint="Precio de esta oferta por kilovatio pico"
+              />
+            ) : null}
           </div>
 
           {p.toggles.showCharts ? (
@@ -657,7 +678,27 @@ function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
   );
 }
 
-function GeneraMark({ height }: { height: number }) {
+function ProposalMark({
+  height,
+  logoUrl,
+  companyName,
+}: {
+  height: number;
+  logoUrl?: string;
+  companyName: string;
+}) {
+  if (logoUrl) {
+    return (
+      <div className="flex justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={logoUrl}
+          alt={companyName}
+          style={{ height, width: "auto", maxWidth: 280 }}
+        />
+      </div>
+    );
+  }
   return (
     <div className="flex justify-center">
       <BrandLogo height={height} />

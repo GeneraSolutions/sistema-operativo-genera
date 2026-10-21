@@ -12,6 +12,7 @@ import {
   pinActiveQuote,
   putQuoteLines,
   saveQuoteSnapshot,
+  isAliadoQuote,
   type SavedQuote,
 } from "@/lib/saved-quotes";
 import {
@@ -51,9 +52,12 @@ export default function ArchivoPage() {
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [openPack, setOpenPack] = useState({
     quotes: true,
+    aliado: false,
     visits: false,
     reports: false,
   });
+  const generaQuotes = quotes.filter((q) => !isAliadoQuote(q));
+  const aliadoQuotes = quotes.filter((q) => isAliadoQuote(q));
 
   function refresh() {
     setQuotes(loadSavedQuotes());
@@ -144,7 +148,7 @@ export default function ArchivoPage() {
 
       <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
         <WorkFold
-          title={quotes.length ? `Cotizaciones · ${quotes.length}` : "Cotizaciones"}
+          title={generaQuotes.length ? `Cotizaciones · ${generaQuotes.length}` : "Cotizaciones"}
           open={openPack.quotes}
           onToggle={() => setOpenPack((s) => ({ ...s, quotes: !s.quotes }))}
           actions={
@@ -160,7 +164,7 @@ export default function ArchivoPage() {
             </a>
           }
         >
-        {quotes.length === 0 ? (
+        {generaQuotes.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-[#ddd6c8] bg-white px-4 py-8 text-sm text-[#6d7c74]">
             Aún no hay cotizaciones guardadas.
           </p>
@@ -179,7 +183,7 @@ export default function ArchivoPage() {
                 </tr>
               </thead>
               <tbody>
-                {quotes.map((q) => (
+                {generaQuotes.map((q) => (
                   <tr key={q.id} className="border-t border-[#eee8dc]">
                     <td className="px-4 py-3 font-medium">{q.name}</td>
                     <td className="px-4 py-3">{q.clientName}</td>
@@ -219,6 +223,48 @@ export default function ArchivoPage() {
             </table>
           </div>
         )}
+        </WorkFold>
+      </section>
+
+      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title={
+            aliadoQuotes.length
+              ? `Aliado comercial · ${aliadoQuotes.length}`
+              : "Aliado comercial"
+          }
+          open={openPack.aliado}
+          onToggle={() => setOpenPack((s) => ({ ...s, aliado: !s.aliado }))}
+        >
+          {aliadoQuotes.length === 0 ? (
+            <p className="text-sm text-[#6d7c74]">
+              Aún no hay cotizaciones del aliado. Solo Genera ve este cajón.
+            </p>
+          ) : (
+            <ul className="divide-y divide-[#eee8dc] text-sm">
+              {aliadoQuotes.map((q) => (
+                <li
+                  key={q.id}
+                  className="flex flex-wrap items-center justify-between gap-2 py-2"
+                >
+                  <span>
+                    <span className="font-medium">{q.name}</span>
+                    <span className="mt-0.5 block text-xs text-[#6d7c74]">
+                      {q.partnerCompanyName || q.savedByName || q.savedBy} ·{" "}
+                      {q.systemKwp} kWp · {when(q.savedAt)}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-[#1f6b45] underline"
+                    onClick={() => openQuote(q.id)}
+                  >
+                    Abrir
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </WorkFold>
       </section>
 

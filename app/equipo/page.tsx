@@ -10,6 +10,10 @@ import {
   type AppModule,
   type Role,
 } from "@/lib/auth/roles";
+import {
+  DEFAULT_ALIADO_INSTALL,
+  type AliadoInstallConfig,
+} from "@/lib/aliado-install";
 
 interface TeamUser {
   id: string;
@@ -73,6 +77,10 @@ export default function EquipoPage() {
     label: "",
     modules: ["visita", "inteligencia"] as AppModule[],
   });
+  const [installOpen, setInstallOpen] = useState(false);
+  const [installConfig, setInstallConfig] = useState<AliadoInstallConfig>(
+    DEFAULT_ALIADO_INSTALL
+  );
 
   const roleLabel = useMemo(() => {
     const map = new Map(roles.map((r) => [r.id, r.label]));
@@ -110,6 +118,12 @@ export default function EquipoPage() {
 
   useEffect(() => {
     void load();
+    void fetch("/api/aliado/install", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.config) setInstallConfig(data.config);
+      })
+      .catch(() => undefined);
   }, []);
 
   async function onCreate(e: FormEvent) {
@@ -394,6 +408,185 @@ export default function EquipoPage() {
                 ))}
             </ul>
           ) : null}
+        </WorkFold>
+      </section>
+
+      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <WorkFold
+          title="Instalación para aliado"
+          open={installOpen}
+          onToggle={() => setInstallOpen((v) => !v)}
+        >
+          <p className="mb-3 text-xs text-[#6d7c74]">
+            Tarifa al aliado: máximo(kWp, piso) × COP/kWp + herramienta + viaje +
+            ARL. Los jornales son el piso interno, no se le cobran aparte.
+          </p>
+          <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-[#6d7c74]">Piso (kWp)</span>
+              <input
+                type="number"
+                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2"
+                value={installConfig.minBillableKwp}
+                onChange={(e) =>
+                  setInstallConfig((c) => ({
+                    ...c,
+                    minBillableKwp: Math.max(1, Number(e.target.value) || 1),
+                  }))
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-[#6d7c74]">Jornal (COP/día)</span>
+              <input
+                type="number"
+                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2"
+                value={installConfig.dailyWageCOP}
+                onChange={(e) =>
+                  setInstallConfig((c) => ({
+                    ...c,
+                    dailyWageCOP: Math.max(0, Number(e.target.value) || 0),
+                  }))
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-[#6d7c74]">ARL por obra</span>
+              <input
+                type="number"
+                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2"
+                value={installConfig.arlPerProjectCOP}
+                onChange={(e) =>
+                  setInstallConfig((c) => ({
+                    ...c,
+                    arlPerProjectCOP: Math.max(0, Number(e.target.value) || 0),
+                  }))
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-[#6d7c74]">
+                Herramienta COP/kWp
+              </span>
+              <input
+                type="number"
+                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2"
+                value={installConfig.toolCopPerKwp}
+                onChange={(e) =>
+                  setInstallConfig((c) => ({
+                    ...c,
+                    toolCopPerKwp: Math.max(0, Number(e.target.value) || 0),
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#8a6b2a]">
+            Viajes
+          </p>
+          <div className="mb-4 grid gap-2 sm:grid-cols-3">
+            {installConfig.trips.map((t) => (
+              <label key={t.id} className="text-sm">
+                <span className="mb-1 block text-xs text-[#6d7c74]">
+                  {t.label} (COP)
+                </span>
+                <input
+                  type="number"
+                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2"
+                  value={t.cop}
+                  onChange={(e) => {
+                    const cop = Math.max(0, Number(e.target.value) || 0);
+                    setInstallConfig((c) => ({
+                      ...c,
+                      trips: c.trips.map((x) =>
+                        x.id === t.id ? { ...x, cop } : x
+                      ),
+                    }));
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#8a6b2a]">
+            Franjas COP / kWp
+          </p>
+          <div className="space-y-2">
+            {installConfig.bands.map((band, i) => (
+              <div key={band.maxKwp} className="grid gap-2 sm:grid-cols-3">
+                <label className="text-sm">
+                  <span className="mb-1 block text-xs text-[#6d7c74]">Hasta kWp</span>
+                  <input
+                    type="number"
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2"
+                    value={band.maxKwp}
+                    onChange={(e) => {
+                      const maxKwp = Math.max(1, Number(e.target.value) || 1);
+                      setInstallConfig((c) => ({
+                        ...c,
+                        bands: c.bands.map((b, j) =>
+                          j === i ? { ...b, maxKwp } : b
+                        ),
+                      }));
+                    }}
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-xs text-[#6d7c74]">COP / kWp</span>
+                  <input
+                    type="number"
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2"
+                    value={band.copPerKwp}
+                    onChange={(e) => {
+                      const copPerKwp = Math.max(0, Number(e.target.value) || 0);
+                      setInstallConfig((c) => ({
+                        ...c,
+                        bands: c.bands.map((b, j) =>
+                          j === i ? { ...b, copPerKwp } : b
+                        ),
+                      }));
+                    }}
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-xs text-[#6d7c74]">Nombre</span>
+                  <input
+                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2"
+                    value={band.label}
+                    onChange={(e) => {
+                      const label = e.target.value;
+                      setInstallConfig((c) => ({
+                        ...c,
+                        bands: c.bands.map((b, j) =>
+                          j === i ? { ...b, label } : b
+                        ),
+                      }));
+                    }}
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="mt-3 rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white"
+            onClick={async () => {
+              setError("");
+              const res = await fetch("/api/aliado/install", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ config: installConfig }),
+              });
+              const data = await res.json();
+              if (!res.ok) {
+                setError(data.error || "No se guardó la tarifa");
+                return;
+              }
+              if (data.config) setInstallConfig(data.config);
+              setOk("Tarifa de instalación para aliado guardada.");
+            }}
+          >
+            Guardar tarifas
+          </button>
         </WorkFold>
       </section>
 

@@ -8,6 +8,7 @@ import type {
 } from "@/lib/quote-engine";
 import type { SystemWarranties } from "@/lib/warranties";
 import type { PaymentKind, ProposalToggles } from "@/types/proposal";
+import type { AliadoTripId } from "@/lib/aliado-install";
 
 export interface SavedQuote {
   id: string;
@@ -74,6 +75,10 @@ export interface SavedQuote {
   /** Enlace comercial ya publicado; las fichas se liberan sobre este mismo id. */
   commercialProposalId?: string;
   energyBill?: EnergyBill;
+  channel?: "genera" | "aliado";
+  partnerCompanyName?: string;
+  partnerLogoDataUrl?: string;
+  aliadoTrip?: AliadoTripId;
 }
 
 const KEY = "genera.saved-quotes.v1";
@@ -213,6 +218,26 @@ export function mergeQuotes(local: SavedQuote[], remote: SavedQuote[]): SavedQuo
     })
     .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
     .slice(0, 40);
+}
+
+export function isAliadoQuote(q: SavedQuote) {
+  return q.channel === "aliado";
+}
+
+export function quotesForCotizador(
+  quotes: SavedQuote[],
+  opts: { aliado: boolean; username?: string }
+): SavedQuote[] {
+  if (opts.aliado) {
+    return quotes.filter(
+      (q) =>
+        isAliadoQuote(q) &&
+        (!opts.username ||
+          q.savedBy === opts.username ||
+          !q.savedBy)
+    );
+  }
+  return quotes.filter((q) => !isAliadoQuote(q));
 }
 
 export function loadSavedQuotes(): SavedQuote[] {

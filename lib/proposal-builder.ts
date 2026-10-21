@@ -31,6 +31,9 @@ export interface BuildProposalInput {
   issuedAt?: string;
   siteImageDataUrl?: string;
   logoHeight?: number;
+  partnerLogoDataUrl?: string;
+  companyName?: string;
+  companyTag?: string;
   paymentKind?: PaymentKind;
   twoStartPercent?: number;
   threeStartPercent?: number;
@@ -169,8 +172,13 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
     validUntilDays: Math.min(45, Math.max(1, input.validUntilDays)),
     siteImageDataUrl: input.siteImageDataUrl,
     logoHeight: input.logoHeight ?? 80,
-    companyName: "Genera Solutions SAS",
-    companyTag: "COTIZACIÓN EPC · GENERA",
+    partnerLogoDataUrl: input.partnerLogoDataUrl,
+    companyName: input.companyName?.trim() || "Genera Solutions SAS",
+    companyTag:
+      input.companyTag?.trim() ||
+      (input.companyName?.trim()
+        ? `COTIZACIÓN · ${input.companyName.trim().toUpperCase()}`
+        : "COTIZACIÓN EPC · GENERA"),
     clientName: input.clientName.trim() || "Cliente",
     clientCity: input.clientCity.trim() || "Colombia",
     executionDays: input.executionDays,

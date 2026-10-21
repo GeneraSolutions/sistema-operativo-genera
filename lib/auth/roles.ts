@@ -7,6 +7,7 @@ export const ROLES = [
   "compras",
   "contabilidad",
   "sst",
+  "aliado",
 ] as const;
 
 export type BuiltinRole = (typeof ROLES)[number];
@@ -21,6 +22,7 @@ export const ROLE_LABELS: Record<string, string> = {
   compras: "Compras y logística",
   contabilidad: "Contabilidad",
   sst: "SST / HSE",
+  aliado: "Aliado comercial",
 };
 
 export type AppModule =
@@ -57,6 +59,7 @@ const MODULE_ROLES: Record<AppModule, string[]> = {
     "ingenieria",
     "operaciones",
     "contabilidad",
+    "aliado",
   ],
   visita: [
     "ceo",
@@ -158,11 +161,16 @@ export function modulesForRole(
   );
 }
 
+export function isAliadoRole(role?: string | null): boolean {
+  return role === "aliado";
+}
+
 export function canAccessModule(
   role: string,
   mod: AppModule,
   custom: CustomRoleDef[] = []
 ): boolean {
+  if (isAliadoRole(role)) return mod === "cotizador";
   const mods = modulesForRole(role, custom);
   if (mod === "archivo") {
     return (
@@ -186,6 +194,7 @@ export function sessionAllowsModule(
 ): boolean {
   // Built-in cargos: ignore the module list frozen in the cookie so new OS
   // modules (Informes, etc.) appear without forcing a new login.
+  if (isAliadoRole(role)) return mod === "cotizador";
   if (isBuiltinRole(role)) {
     return canAccessModule(role, mod);
   }
@@ -228,8 +237,9 @@ export function moduleFromPath(pathname: string): AppModule | null {
 }
 
 export function defaultHomeForRole(
-  _role?: string,
+  role?: string,
   _custom: CustomRoleDef[] = []
 ): string {
+  if (isAliadoRole(role)) return "/cotizador";
   return "/inicio";
 }

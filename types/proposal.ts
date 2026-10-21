@@ -87,6 +87,8 @@ export interface ProposalToggles {
   showIvaAranceles: boolean;
   showDepreciacion: boolean;
   showCharts: boolean;
+  /** COP/kWp de venta al cliente, no el costo. */
+  showPricePerKwp?: boolean;
   /** @deprecated use deliverables */
   showDeliverables?: boolean;
   deliverables?: Partial<ClientDeliverables>;
@@ -98,6 +100,7 @@ export interface EpcProposal {
   validUntilDays: number;
   siteImageDataUrl?: string;
   logoHeight?: number;
+  partnerLogoDataUrl?: string;
   companyName: string;
   companyTag: string;
   clientName: string;
