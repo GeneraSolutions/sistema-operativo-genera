@@ -16,7 +16,7 @@ export function BrandLogo({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/brand/logo-genera-mark.png"
-        alt="Genera Solutions"
+        alt="Genera Solutions SAS"
         style={{ height, width: "auto" }}
         className="block max-w-[min(420px,80vw)] bg-transparent object-contain"
       />

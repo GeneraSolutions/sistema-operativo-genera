@@ -267,7 +267,7 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
         id: slot.itemId,
         category: "panel",
         name: slot.label || slot.key,
-        brand: "GENERA",
+        brand: "Genera Solutions SAS",
         model: slot.label || slot.key,
         priceCOP: slot.costUnitCOP,
         priceUSD: 0,

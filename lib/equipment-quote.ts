@@ -85,7 +85,7 @@ export function warrantiesFromQuoteLines(
     items: [...items, ...custom],
     notes:
       prev?.notes ||
-      "Garantías de fábrica de los equipos de esta oferta. No incluye instalación, ingeniería ni mano de obra GENERA.",
+      "Garantías de fábrica de los equipos de esta oferta. No incluye instalación, ingeniería ni mano de obra de Genera Solutions SAS.",
   };
 }
 
@@ -110,7 +110,7 @@ export function warrantiesForEquipment(
       enabled: enable.has(item.id),
     })),
     notes:
-      "Garantías de fábrica de los equipos de esta oferta. No incluye instalación, ingeniería ni mano de obra GENERA.",
+      "Garantías de fábrica de los equipos de esta oferta. No incluye instalación, ingeniería ni mano de obra de Genera Solutions SAS.",
   };
 }
 
@@ -288,7 +288,7 @@ export function buildEquipmentProposal(input: {
     logoHeight: input.logoHeight ?? 80,
     partnerLogoDataUrl: input.partnerLogoDataUrl,
     companyName: input.companyName?.trim() || "Genera Solutions SAS",
-    companyTag: "COTIZACIÓN DE EQUIPOS · GENERA",
+    companyTag: "COTIZACIÓN DE EQUIPOS · Genera Solutions SAS",
     clientName: input.clientName.trim() || "Cliente",
     clientCity: input.clientCity.trim() || "Colombia",
     clientEmail: input.clientEmail?.trim() || "",

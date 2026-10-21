@@ -54,7 +54,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           <strong>EL CONTRATISTA:</strong> {GENERA_LEGAL.name}
           {GENERA_LEGAL.nit ? `, NIT ${GENERA_LEGAL.nit}` : ""}, con domicilio en{" "}
           {GENERA_LEGAL.city}, correo {GENERA_LEGAL.email}, teléfono{" "}
-          {GENERA_LEGAL.phone}. En adelante, «Genera».
+          {GENERA_LEGAL.phone}. En adelante, «Genera Solutions SAS».
         </p>
         <p className="mt-3">
           <strong>EL CONTRATANTE:</strong> {p.clientName}
@@ -71,7 +71,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
         <DocH2>Artículo 1. Objeto</DocH2>
         {equipos ? (
           <p className="text-sm leading-7 text-[#4d5c55]">
-            Genera se obliga a vender y entregar al Cliente los equipos descritos
+            Genera Solutions SAS se obliga a vender y entregar al Cliente los equipos descritos
             en la cotización anexa, en las cantidades y especificaciones allí
             indicadas. Este contrato <strong>no incluye</strong> instalación,
             ingeniería de detalle, visita técnica, obra civil, trámites RETIE,
@@ -80,7 +80,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           </p>
         ) : (
           <p className="text-sm leading-7 text-[#4d5c55]">
-            Genera se obliga a suministrar e instalar un sistema solar
+            Genera Solutions SAS se obliga a suministrar e instalar un sistema solar
             fotovoltaico de {num.format(p.systemKwp)} kWp, según la cotización
             anexa: {p.panelCount} módulos {p.panelLabel}; inversor {p.inverterLabel}{" "}
             ({num.format(p.inverterKwAc)} kW AC)
@@ -157,9 +157,9 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           ))}
         </ul>
         <p className="mt-3 text-sm leading-7 text-[#4d5c55]">
-          El pago se hace contra factura de Genera. Mientras exista saldo, la
-          propiedad de los equipos permanece en cabeza de Genera. El retraso
-          superior a quince (15) días calendario autoriza a Genera a suspender
+          El pago se hace contra factura de Genera Solutions SAS. Mientras exista saldo, la
+          propiedad de los equipos permanece en cabeza de Genera Solutions SAS. El retraso
+          superior a quince (15) días calendario autoriza a Genera Solutions SAS a suspender
           despachos o la obra, sin perjuicio de cobrar intereses de mora a la
           tasa máxima legal.
         </p>
@@ -187,14 +187,14 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
             cargo del Cliente (acceso, punto de conexión, permisos de
             cubierta/predio). Retrasos imputables al Cliente, al operador de
             red, a autoridad o a fuerza mayor no constituyen incumplimiento de
-            Genera y desplazan el cronograma en igual medida.
+            Genera Solutions SAS y desplazan el cronograma en igual medida.
           </p>
         )}
       </section>
 
       <section>
         <DocH2>Artículo 6. Obligaciones de las partes</DocH2>
-        <p className="text-sm font-semibold text-[#12241c]">Genera se obliga a:</p>
+        <p className="text-sm font-semibold text-[#12241c]">Genera Solutions SAS se obliga a:</p>
         <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-[#4d5c55]">
           {equipos ? (
             <>
@@ -226,7 +226,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
               <li>
                 Facilitar acceso al predio, energía de obra, puntos de anclaje
                 y condiciones de cubiertas/estructura aptas. Daños preexistentes
-                de la edificación no son a cargo de Genera.
+                de la edificación no son a cargo de Genera Solutions SAS.
               </li>
               <li>
                 Tramitar o colaborar en permisos de copropiedad, operador de red,
@@ -260,7 +260,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           </p>
         ) : null}
         <p className="mt-3 text-sm leading-7 text-[#4d5c55]">
-          Las garantías de producto las cubre el fabricante. Genera gestiona el
+          Las garantías de producto las cubre el fabricante. Genera Solutions SAS gestiona el
           canal de reclamo durante el periodo indicado, siempre que el Cliente
           haya pagado el contrato y no haya alterado, sobrecargado o instalado
           indebidamente los equipos. Quedan excluidos daños por mal manejo,
@@ -287,12 +287,12 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
       <section>
         <DocH2>{equipos ? "Artículo 8" : "Artículo 9"}. Limitación de responsabilidad</DocH2>
         <p className="text-sm leading-7 text-[#4d5c55]">
-          La responsabilidad total de Genera por este contrato, incluida culpa
+          La responsabilidad total de Genera Solutions SAS por este contrato, incluida culpa
           leve, se limita al valor efectivamente pagado por el Cliente. No hay
           lugar a lucro cesante, daño emergente indirecto ni pérdida de ahorros
-          esperados. Esta limitación no aplica en dolo o culpa grave de Genera,
+          esperados. Esta limitación no aplica en dolo o culpa grave de Genera Solutions SAS,
           ni en lesiones a personas imputables a ella. El Cliente mantiene
-          asegurada su edificación y bienes. Genera no responde por la estructura
+          asegurada su edificación y bienes. Genera Solutions SAS no responde por la estructura
           existente del predio ni por redes internas ajenas al alcance cotizado.
         </p>
       </section>
@@ -302,7 +302,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
         <p className="text-sm leading-7 text-[#4d5c55]">
           Guerra, pandemia, desastres naturales, actos de autoridad, escasez
           extraordinaria de fletes o de equipos del fabricante, y fallas del
-          operador de red ajenas a Genera, suspenden plazos mientras dure el
+          operador de red ajenas a Genera Solutions SAS, suspenden plazos mientras dure el
           evento. La parte afectada informa a la otra tan pronto le sea posible.
         </p>
       </section>
@@ -312,7 +312,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
         <p className="text-sm leading-7 text-[#4d5c55]">
           Cualquiera puede terminar por incumplimiento grave no subsanado en diez
           (10) días hábiles desde el requerimiento escrito. Si el Cliente
-          desiste sin causa después de pedido de equipos, Genera retiene los
+          desiste sin causa después de pedido de equipos, Genera Solutions SAS retiene los
           costos ya comprometidos y hasta el treinta por ciento (30%) del valor
           del contrato como cláusula penal, sin perjuicio de mayores daños
           demostrados. Lo pagado de más, si lo hay, se reembolsa en treinta (30)
@@ -337,7 +337,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           Se rige por la ley colombiana. Las partes intentan arreglo directo en
           quince (15) días hábiles. De persistir, son competentes los jueces de
           la República de Colombia en el domicilio del Cliente o, a elección de
-          Genera, en el del CONTRATISTA. Se pacta la cláusula de integridad: este
+          Genera Solutions SAS, en el del CONTRATISTA. Se pacta la cláusula de integridad: este
           contrato y la cotización anexa son el acuerdo completo y sustituyen
           tratativas previas sobre el mismo objeto.
         </p>
@@ -367,7 +367,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
       </section>
 
       <p className="text-[11px] leading-5 text-[#6d7c74]">
-        Plantilla generada por el Sistema Operativo Solar de Genera a partir de
+        Plantilla generada por el Sistema Operativo Solar de Genera Solutions SAS a partir de
         la cotización. Es un documento comercial de trabajo. Un abogado
         colombiano puede revisarlo antes de usarlo en operaciones de alto valor
         o con cláusulas especiales (PPA, financiación, predios en copropiedad).

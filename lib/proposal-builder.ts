@@ -146,13 +146,13 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
 
   const panelLabel = selection.panel
     ? `${selection.panel.brand} · ${selection.panel.model}`
-    : "Módulos FV catálogo GENERA";
+    : "Módulos FV catálogo Genera Solutions SAS";
   const inverterLabel = selection.inverter
     ? `${selection.inverter.model}`
-    : "Inversor catálogo GENERA";
+    : "Inversor catálogo Genera Solutions SAS";
   const batteryLabel = selection.battery
     ? `${selection.battery.brand} · ${selection.battery.model}`
-    : "BESS catálogo GENERA";
+    : "BESS catálogo Genera Solutions SAS";
 
   const bundles = buildBundles({
     includeBattery,
@@ -185,7 +185,7 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
       input.companyTag?.trim() ||
       (input.companyName?.trim()
         ? `COTIZACIÓN · ${input.companyName.trim().toUpperCase()}`
-        : "COTIZACIÓN EPC · GENERA"),
+        : "COTIZACIÓN EPC · Genera Solutions SAS"),
     clientName: input.clientName.trim() || "Cliente",
     clientCity: input.clientCity.trim() || "Colombia",
     clientEmail: input.clientEmail?.trim() || "",
@@ -286,7 +286,7 @@ function buildBundles(opts: {
       index: 1,
       title: "Inversores",
       description:
-        "Conversores DC/AC con MPPT. Equipos predeterminados del catálogo GENERA OS según potencia del proyecto.",
+        "Conversores DC/AC con MPPT. Equipos predeterminados del catálogo de Genera Solutions SAS según potencia del proyecto.",
       accent: "#38bdf8",
     },
     {
@@ -329,7 +329,7 @@ function buildBundles(opts: {
     {
       index: 7,
       title: "Estructura",
-      description: `Rieles, clamps y soportes (predeterminados GENERA OS). · Soporte: ${opts.mountCopy.label} · ${opts.mountCopy.roof}`,
+      description: `Rieles, clamps y soportes (predeterminados Genera Solutions SAS). · Soporte: ${opts.mountCopy.label} · ${opts.mountCopy.roof}`,
       accent: "#fb923c",
     },
     {

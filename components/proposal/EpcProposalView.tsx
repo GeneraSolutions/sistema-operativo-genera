@@ -373,7 +373,7 @@ export function EpcProposalView({
               <p className="pt-1 text-xs text-[#6b7c99]">
                 {isEquipos
                   ? "Suministro de equipos. No incluye instalación, ingeniería, visita técnica ni obra civil."
-                  : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera."}
+                  : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera Solutions SAS."}
               </p>
               {p.withholdingsNote ? (
                 <p className="pt-1 text-xs text-[#5eead4]">{p.withholdingsNote}</p>
@@ -476,7 +476,7 @@ export function EpcProposalView({
           </div>
           {p.payment.kind === "ppa" ? (
             <p className="mt-3 text-sm text-[#8aa0c2]">
-              Modelo PPA: Genera invierte y opera la planta. El cliente paga la energía
+              Modelo PPA: Genera Solutions SAS invierte y opera la planta. El cliente paga la energía
               generada a {cop.format(p.payment.ppaPricePerKWhCOP ?? 0)}/kWh durante{" "}
               {p.payment.ppaYears} años (máximo 25).
             </p>
@@ -549,7 +549,7 @@ export function EpcProposalView({
         <section className="mt-12">
           <SectionHead
             n={6}
-            title="Bonos y compromisos GENERA"
+            title="Bonos y compromisos Genera Solutions SAS"
             subtitle="Valor agregado incluido en su propuesta"
           />
           <div className="grid gap-3 md:grid-cols-2">

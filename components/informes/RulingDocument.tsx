@@ -476,7 +476,7 @@ export function RulingDocument({
       ) : null}
 
       <footer className="mt-10 border-t border-[#eee8dc] pt-4 text-xs leading-5 text-[#6d7c74]">
-        Memoria de interventoría Genera Solutions (RETIE / NTC 2050 y normas
+        Memoria de interventoría Genera Solutions SAS (RETIE / NTC 2050 y normas
         conexas). No reemplaza el dictamen de un organismo de inspección
         acreditado ONAC ni la firma del ingeniero competente. Verificar
         numerales en la edición vigente.

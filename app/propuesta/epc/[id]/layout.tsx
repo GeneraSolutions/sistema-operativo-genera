@@ -12,7 +12,7 @@ export async function generateMetadata({
   const { id } = await params;
   const proposal = await getProposalServer(id);
   const title = proposal
-    ? `Cotización EPC · ${proposal.clientName} | Genera Solutions`
+    ? `Cotización EPC · ${proposal.clientName} | Genera Solutions SAS`
     : "Cotización EPC | Genera Solutions SAS";
   const description = proposal
     ? `Propuesta solar de ${proposal.systemKwp} kWp para ${proposal.clientName} en ${proposal.clientCity}.`

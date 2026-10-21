@@ -44,7 +44,7 @@ export function UserManual({ proposal: p }: { proposal: EpcProposal }) {
           </div>
           <div className="border-t border-white/10 px-5 py-5 sm:border-l sm:border-t-0">
             <p className="text-[11px] tracking-[0.18em] text-[#d4b46a] uppercase">
-              Contactos GENERA
+              Contactos Genera Solutions SAS
             </p>
             <p className="mt-3 text-sm leading-6 text-[#c9d7cf]">
               Soporte: 317 455 3288
@@ -68,7 +68,7 @@ export function UserManual({ proposal: p }: { proposal: EpcProposal }) {
           <li>Revise la app de monitoreo: producción del día vs. días parecidos.</li>
           <li>Si hay baterías, confirme que cargan de día y respaldan de noche según el modo dejado en la entrega.</li>
           <li>No cubra paneles, no cuelgue ropa en la estructura, no apile cosas en el inversor.</li>
-          <li>Si va a hacer obra en techo o pintura, avise a GENERA antes de desconectar.</li>
+          <li>Si va a hacer obra en techo o pintura, avise a Genera Solutions SAS antes de desconectar.</li>
         </ol>
       </section>
 
@@ -95,7 +95,7 @@ export function UserManual({ proposal: p }: { proposal: EpcProposal }) {
             <p className="mt-1">
               Humo, olor a quemado, agua dentro del tablero, o un golpe fuerte
               en el inversor: abra el breaker de la planta (le indicamos cuál
-              en la entrega) y no lo rearme. Llame a GENERA.
+              en la entrega) y no lo rearme. Llame a Genera Solutions SAS.
             </p>
           </div>
           <div className="rounded-2xl border border-[#ddd6c8] bg-[#fbfaf6] px-4 py-3 text-sm leading-6 text-[#4d5c55]">
@@ -135,7 +135,7 @@ export function UserManual({ proposal: p }: { proposal: EpcProposal }) {
                 </a>
               ) : (
                 <span className="text-xs text-[#8a7f70]">
-                  Ficha en el paquete de entrega / inventario GENERA
+                  Ficha en el paquete de entrega / inventario de Genera Solutions SAS
                 </span>
               )}
             </li>
@@ -143,7 +143,7 @@ export function UserManual({ proposal: p }: { proposal: EpcProposal }) {
         </ul>
         <p className="mt-2 text-xs text-[#6d7c74]">
           El set completo se habilita en el enlace de la cotización cuando
-          Genera Solutions libera las fichas técnicas.
+          Genera Solutions SAS libera las fichas técnicas.
         </p>
       </section>
 
@@ -158,13 +158,13 @@ export function UserManual({ proposal: p }: { proposal: EpcProposal }) {
           ))}
         </ul>
         <p className="mt-2 text-sm text-[#4d5c55]">
-          El primer año GENERA intermedia el trámite con el fabricante si el
+          El primer año Genera Solutions SAS intermedia el trámite con el fabricante si el
           bono de gestor de garantías quedó incluido en su oferta.
         </p>
       </section>
 
       <Callout title="Este manual no reemplaza RETIE ni al fabricante">
-        Es la hoja de ruta GENERA para vivir con su planta. Los datos eléctricos
+        Es la hoja de ruta de Genera Solutions SAS para vivir con su planta. Los datos eléctricos
         oficiales quedan en el certificado de puesta en marcha y en las fichas
         del fabricante.
       </Callout>

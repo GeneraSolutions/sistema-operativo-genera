@@ -99,7 +99,7 @@ function CotizadorEquiposInner() {
   const [warranties, setWarranties] = useState<SystemWarranties>({
     items: [],
     notes:
-      "Garantías de fábrica de los equipos de esta oferta. No incluye instalación, ingeniería ni mano de obra GENERA.",
+      "Garantías de fábrica de los equipos de esta oferta. No incluye instalación, ingeniería ni mano de obra de Genera Solutions SAS.",
   });
   const [partnerCompanyName, setPartnerCompanyName] = useState("");
   const [partnerLogoDataUrl, setPartnerLogoDataUrl] = useState("");

@@ -49,7 +49,7 @@ export const DEFAULT_WARRANTY_ITEMS: WarrantyItem[] = [
   },
   {
     id: "labor",
-    label: "Mano de obra GENERA",
+    label: "Mano de obra Genera Solutions SAS",
     years: 1,
     detail: "",
     enabled: true,

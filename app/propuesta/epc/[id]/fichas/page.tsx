@@ -118,7 +118,7 @@ export default function FichasTecnicasPage() {
           </>
         ) : (
           <p className="mt-4 max-w-xl text-sm leading-6 text-[#8aa0c2]">
-            Genera Solutions entrega las fichas técnicas cuando hay anticipo de
+            Genera Solutions SAS entrega las fichas técnicas cuando hay anticipo de
             obra o al cierre del proyecto. Si ya pagó el anticipo, pida a su
             asesor que libere este paquete: usará el mismo enlace de la
             cotización.

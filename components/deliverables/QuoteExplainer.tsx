@@ -223,7 +223,7 @@ export function QuoteExplainer({ proposal: p }: { proposal: EpcProposal }) {
           Duración estimada de obra:{" "}
           <strong>{p.executionDays} días hábiles</strong>. La legalización ante
           el operador de red o el comercializador depende de sus calendarios,
-          no del de Genera. Vigencia de esta cotización: {p.validUntilDays}{" "}
+          no del de Genera Solutions SAS. Vigencia de esta cotización: {p.validUntilDays}{" "}
           días calendario.
         </p>
       </section>
@@ -275,7 +275,7 @@ export function QuoteExplainer({ proposal: p }: { proposal: EpcProposal }) {
                 {cop.format(p.taxes.ivaRefundCOP || p.ivaCOP)}
               </strong>
               . Quien no es responsable de IVA no recupera ese saldo por esta
-              vía. Lo confirma su contador, no Genera.
+              vía. Lo confirma su contador, no Genera Solutions SAS.
             </p>
           </div>
         </div>
@@ -349,7 +349,7 @@ export function QuoteExplainer({ proposal: p }: { proposal: EpcProposal }) {
           Autorice el inicio hoy. Una llamada al{" "}
           <strong>317 455 3288</strong> basta
           para confirmar el cierre, bloquear el suministro y fijar fecha de
-          montaje. El resto lo ejecuta Genera.
+          montaje. El resto lo ejecuta Genera Solutions SAS.
         </p>
       </section>
     </DeliverableShell>

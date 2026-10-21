@@ -1984,7 +1984,7 @@ function CotizadorInner() {
                   <BrandLogo height={logoHeight} />
                 </div>
                 <p className="mt-2 text-center text-[11px] tracking-widest text-[#6b6458] uppercase">
-                  Cotización EPC · Genera
+                  Cotización EPC · Genera Solutions SAS
                 </p>
                   </>
                 )}
@@ -3591,7 +3591,7 @@ function CotizadorInner() {
           </QuoteFold>
 
           <QuoteFold
-            title="Bonos y compromisos GENERA"
+            title="Bonos y compromisos Genera Solutions SAS"
             summary={`${bonusIds.length} de ${GENERA_BONUSES.length} encendidos`}
             open={openFolds.bonos}
             onToggle={() =>

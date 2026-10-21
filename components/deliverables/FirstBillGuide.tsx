@@ -71,7 +71,7 @@ export function FirstBillGuide({ proposal: p }: { proposal: EpcProposal }) {
         <ol className="mt-3 space-y-3 text-sm leading-6 text-[#4d5c55]">
           <li>
             <strong className="text-[#12241c]">El ciclo se parte.</strong> El
-            comercializador no espera al 1° del mes. Si GENERA energizó un
+            comercializador no espera al 1° del mes. Si Genera Solutions SAS energizó un
             martes, esa factura mezcla días sin solar y días con solar. Eso se
             llama prorrateo: no es un error, es una cuenta a medias.
           </li>
@@ -110,7 +110,7 @@ export function FirstBillGuide({ proposal: p }: { proposal: EpcProposal }) {
             ["Consumo activo kWh", "Lo que aún le compró a la red"],
             ["Energía inyectada / excedentes", "Lo que exportó su planta"],
             ["Comercialización / cargo fijo", "No lo apaga el panel"],
-            ["Contribución / subsidio", "Regla del usuario, no de GENERA"],
+            ["Contribución / subsidio", "Regla del usuario, no de Genera Solutions SAS"],
             ["Saldo a favor", "Cruce de excedentes; no siempre es plata líquida"],
           ].map(([a, b]) => (
             <div
@@ -130,7 +130,7 @@ export function FirstBillGuide({ proposal: p }: { proposal: EpcProposal }) {
         <DocH2>Sesión breve incluida</DocH2>
         <p className="mt-2 text-sm leading-7 text-[#4d5c55]">
           Cuando llegue la primera factura real, agende 20–30 minutos con
-          GENERA. Lleve el PDF del comercializador y la captura del monitoreo
+          Genera Solutions SAS. Lleve el PDF del comercializador y la captura del monitoreo
           del mismo periodo. Juntos marcamos cada renglón. Si el bono de
           «revisión mes 1 y mes 3» está en su oferta, esa cita ya está pagada.
         </p>

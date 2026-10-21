@@ -148,7 +148,7 @@ export default function DictamenPage() {
       subtitle="RETIE · NTC 2050 · hasta 12 fotos"
     >
       <p className="os-page-intro mb-4 max-w-3xl text-sm leading-6 text-[#4d5c55] print:hidden">
-        Interventoría visual de Genera Solutions. Cada foto se llama foto1,
+        Interventoría visual de Genera Solutions SAS. Cada foto se llama foto1,
         foto2… La anotación va junto a esa imagen. Después de analizar puede
         editar cada hallazgo, quitar fotos o dejar el texto de la IA.
       </p>

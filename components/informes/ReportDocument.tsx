@@ -55,8 +55,8 @@ export function ReportDocument({ report }: { report: TechnicalReport }) {
         <p className="sm:col-span-2">
           <strong>Origen de la planta:</strong>{" "}
           {report.plant.ours
-            ? "Instalación Genera Solutions"
-            : "Tercero / no Genera Solutions"}
+            ? "Instalación Genera Solutions SAS"
+            : "Tercero / no Genera Solutions SAS"}
         </p>
       </section>
 
@@ -180,7 +180,7 @@ export function ReportDocument({ report }: { report: TechnicalReport }) {
       <footer className="mt-10 border-t border-[#eee8dc] pt-4 text-xs leading-5 text-[#6d7c74]">
         Documento interno y/o para el cliente según el estado de publicación.
         El criterio de la mesa redonda es apoyo; la firma técnica es del
-        inspector e ingeniería de Genera Solutions. No reemplaza dictamen RETIE
+        inspector e ingeniería de Genera Solutions SAS. No reemplaza dictamen RETIE
         de un organismo de inspección.
       </footer>
     </article>

@@ -461,7 +461,7 @@ export default function InformesPage() {
                   checked={report.plant.ours}
                   onChange={(e) => patchPlant({ ours: e.target.checked })}
                 />
-                Planta instalada por Genera Solutions
+                Planta instalada por Genera Solutions SAS
               </label>
             </div>
             <label className="mt-3 block text-sm">

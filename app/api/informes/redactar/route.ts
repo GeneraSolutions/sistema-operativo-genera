@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const briefing = briefingForMesa(body.report);
     const system = `${composeMesaPrompt(body.manuals ?? {})}
 
-Hoy no estás en modo chat: redactas un INFORME TÉCNICO GENERA para entregar al cliente o al dueño de la planta.
+Hoy no estás en modo chat: redactas un INFORME TÉCNICO de Genera Solutions SAS para entregar al cliente o al dueño de la planta. Nombre la empresa siempre “Genera Solutions SAS”.
 Tono: formal, colombiano, de ingeniero (fotovoltaico, eléctrico, estructural, O&M, SST y RETIE según el capítulo).
 No inventes mediciones numéricas que el inspector no escribió. Si falta un dato, indícalo como pendiente de campo.
 No adules. Separa hechos, criterio y recomendación.
@@ -49,7 +49,7 @@ Responde SOLO JSON válido con esta forma:
 {
   "sintesis": "2 a 4 párrafos de síntesis ejecutiva",
   "recomendaciones": "lista en texto de recomendaciones priorizadas",
-  "proximosPasos": "pasos concretos para GENERA y para el cliente",
+  "proximosPasos": "pasos concretos para Genera Solutions SAS y para el cliente",
   "capitulos": [
     { "specialistId": "fotovoltaico", "body": "markdown del capítulo" }
   ]
@@ -138,7 +138,7 @@ function offlineDraft(report: TechnicalReport) {
     approved: false,
     body: `## ${ch.title} (borrador demo)
 
-Pendiente de OPENAI_API_KEY. Con la clave, la mesa redacta este capítulo con criterio GENERA.
+Pendiente de OPENAI_API_KEY. Con la clave, la mesa redacta este capítulo con criterio de Genera Solutions SAS.
 
 Hechos de campo a incorporar: ${report.findings || "sin hallazgos escritos todavía"}.
 Checklist: ${report.checklist.filter((c) => c.status === "no").length} ítems en no conformidad, ${report.checklist.filter((c) => c.status === "ok").length} conformes.

@@ -29,7 +29,7 @@ export default function ProposalDocumentPage() {
   if (proposal === undefined) {
     return (
       <div className="grid min-h-screen place-items-center bg-[#f4efe4] text-sm text-[#6d7c74]">
-        Preparando documento GENERA…
+        Preparando documento Genera Solutions SAS…
       </div>
     );
   }

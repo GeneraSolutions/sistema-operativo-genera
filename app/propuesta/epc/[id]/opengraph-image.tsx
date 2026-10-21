@@ -21,7 +21,7 @@ export default async function QuoteOpenGraphImage({
     });
   }
   return renderOgImage({
-    kicker: "Cotización EPC · Genera Solutions",
+    kicker: "Cotización EPC · Genera Solutions SAS",
     title: proposal.clientName || "Propuesta solar",
     subtitle: `${proposal.systemKwp} kWp · ${proposal.clientCity}`,
   });

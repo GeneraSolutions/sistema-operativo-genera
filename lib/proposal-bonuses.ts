@@ -24,17 +24,17 @@ export const GENERA_BONUSES: ProposalBonus[] = [
   },
   {
     id: "proactive-alerts",
-    title: "Alertas proactivas GENERA",
+    title: "Alertas proactivas Genera Solutions SAS",
     tagline: "Ingeniería revisa · no solo app de fábrica",
     description:
-      "Además de la app, ingeniería GENERA mira anomalías de producción. Si el sistema se queda corto, nosotros llamamos: usted no tiene que descubrirlo en la factura.",
+      "Además de la app, ingeniería de Genera Solutions SAS mira anomalías de producción. Si el sistema se queda corto, nosotros llamamos: usted no tiene que descubrirlo en la factura.",
   },
   {
     id: "priority-support",
-    title: "Soporte técnico prioritario GENERA",
+    title: "Soporte técnico prioritario Genera Solutions SAS",
     tagline: "Respuesta en 48 h hábiles",
     description:
-      "Canal directo con ingeniería GENERA. Una falla, una duda de monitoreo o un ruido raro: responde el equipo que instaló, no un call center genérico.",
+      "Canal directo con ingeniería de Genera Solutions SAS. Una falla, una duda de monitoreo o un ruido raro: responde el equipo que instaló, no un call center genérico.",
   },
   {
     id: "90-days",
@@ -45,10 +45,10 @@ export const GENERA_BONUSES: ProposalBonus[] = [
   },
   {
     id: "user-manual",
-    title: "Manual de Usuario GENERA (PDF)",
+    title: "Manual de Usuario Genera Solutions SAS (PDF)",
     tagline: "Operación · emergencias · contactos · su planta",
     description:
-      "Cuando el sistema quede instalado según esta cotización, GENERA le entrega un manual con los equipos reales de su proyecto: cómo se opera, qué hacer en una emergencia, a quién llamar y dónde están las fichas técnicas.",
+      "Cuando el sistema quede instalado según esta cotización, Genera Solutions SAS le entrega un manual con los equipos reales de su proyecto: cómo se opera, qué hacer en una emergencia, a quién llamar y dónde están las fichas técnicas.",
     document: {
       slug: "manual",
       cta: "Abrir manual de esta planta",
@@ -93,14 +93,14 @@ export const GENERA_BONUSES: ProposalBonus[] = [
     title: "Actualizaciones de firmware incluidas",
     tagline: "3 años · inversores certificados",
     description:
-      "Durante 3 años GENERA gestiona las actualizaciones de firmware de inversores y medición certificada, para no dejar el equipo desactualizado.",
+      "Durante 3 años Genera Solutions SAS gestiona las actualizaciones de firmware de inversores y medición certificada, para no dejar el equipo desactualizado.",
   },
   {
     id: "commissioning-cert",
     title: "Certificado de puesta en marcha",
     tagline: "PDF oficial · kWp · RETIE · fecha de energización",
     description:
-      "Acta formal GENERA con los datos de su planta, fecha de energización y referencia de legalización. Sirve para seguros, bancos, contabilidad y auditorías.",
+      "Acta formal de Genera Solutions SAS con los datos de su planta, fecha de energización y referencia de legalización. Sirve para seguros, bancos, contabilidad y auditorías.",
     document: {
       slug: "certificado",
       cta: "Abrir certificado",
@@ -116,10 +116,10 @@ export const GENERA_BONUSES: ProposalBonus[] = [
   },
   {
     id: "warranty-desk",
-    title: "Gestor de garantías GENERA — año 1",
+    title: "Gestor de garantías Genera Solutions SAS — año 1",
     tagline: "Intermediario con fabricante",
     description:
-      "Si un panel o un inversor falla en el primer año, GENERA gestiona el trámite con el fabricante. Usted no tiene que pelear el caso en inglés ni con un call center de fábrica.",
+      "Si un panel o un inversor falla en el primer año, Genera Solutions SAS gestiona el trámite con el fabricante. Usted no tiene que pelear el caso en inglés ni con un call center de fábrica.",
   },
   {
     id: "regulatory-bulletin",

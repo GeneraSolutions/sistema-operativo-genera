@@ -10,7 +10,7 @@ export const DEMO_EPC_PROPOSAL: EpcProposal = {
   validUntilDays: 15,
   logoHeight: 80,
   companyName: "Genera Solutions SAS",
-  companyTag: "COTIZACIÓN EPC · GENERA",
+  companyTag: "COTIZACIÓN EPC · Genera Solutions SAS",
   clientName: "Carlos Mauricio Fuentes",
   clientCity: "Sopó",
   executionDays: 7,
@@ -33,7 +33,7 @@ export const DEMO_EPC_PROPOSAL: EpcProposal = {
       index: 1,
       title: "Inversores",
       description:
-        "Conversores DC/AC con MPPT. Equipos predeterminados del catálogo GENERA OS según potencia del proyecto.",
+        "Conversores DC/AC con MPPT. Equipos predeterminados del catálogo de Genera Solutions SAS según potencia del proyecto.",
       accent: "#38bdf8",
     },
     {
@@ -75,7 +75,7 @@ export const DEMO_EPC_PROPOSAL: EpcProposal = {
       index: 7,
       title: "Estructura",
       description:
-        "Rieles, clamps y soportes Clenergy (predeterminados GENERA OS). · Soporte: Techo · Cubierta: Concreto / losa · NSR-10 · RETIE · Montaje losa/concreto — Base ajustable D y T",
+        "Rieles, clamps y soportes Clenergy (predeterminados Genera Solutions SAS). · Soporte: Techo · Cubierta: Concreto / losa · NSR-10 · RETIE · Montaje losa/concreto — Base ajustable D y T",
       accent: "#fb923c",
     },
     {

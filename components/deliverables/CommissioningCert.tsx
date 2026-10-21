@@ -66,7 +66,7 @@ export function CommissioningCert({ proposal: p }: { proposal: EpcProposal }) {
       proposal={p}
       kicker="Documento oficial · Puesta en marcha"
       title="Certificado de puesta en marcha"
-      subtitle="Constancia GENERA de que la planta cotizada fue energizada. Completar fecha RETIE y referencias al momento de la entrega; luego imprimir o exportar PDF."
+      subtitle="Constancia de Genera Solutions SAS de que la planta cotizada fue energizada. Completar fecha RETIE y referencias al momento de la entrega; luego imprimir o exportar PDF."
       accent="official"
     >
       <div className="rounded-2xl border-2 border-[#d4b46a] bg-[#fffdf6] px-5 py-5">
@@ -120,7 +120,7 @@ export function CommissioningCert({ proposal: p }: { proposal: EpcProposal }) {
       <section>
         <DocH2>Campos de cierre de obra</DocH2>
         <p className="mt-1 text-xs text-[#6d7c74] print:hidden">
-          GENERA completa estos datos el día de la energización. Quedan en este
+          Genera Solutions SAS completa estos datos el día de la energización. Quedan en este
           equipo para reimprimir el certificado.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
