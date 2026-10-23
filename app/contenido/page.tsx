@@ -40,7 +40,11 @@ import {
   type ContentStatus,
 } from "@/lib/content";
 import { loadSpecialistManuals } from "@/lib/specialist-manuals";
-import type { LinkAnalysis, LinkPreview } from "@/lib/content-link";
+import {
+  SPOKEN_SOURCE_LABELS,
+  type LinkAnalysis,
+  type PublicLinkPreview,
+} from "@/lib/content-link";
 
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
@@ -124,7 +128,7 @@ export default function ContenidoPage() {
   const [videoUrl, setVideoUrl] = useState("");
   const [videoNotes, setVideoNotes] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
-  const [preview, setPreview] = useState<LinkPreview | null>(null);
+  const [preview, setPreview] = useState<PublicLinkPreview | null>(null);
   const [analysis, setAnalysis] = useState<LinkAnalysis | null>(null);
 
   const today = localYmd();
@@ -474,10 +478,10 @@ export default function ContenidoPage() {
           onToggle={() => setLinkOpen((v) => !v)}
         >
           <p className="os-page-intro mb-3 text-sm">
-            Peguen un Reel, Short o video que vieron. Daniela no lo clona: marca
-            errores de plano y de lo que dice, se queda con el tema y reescribe
-            un guion de Genera Solutions SAS, con dónde filmarlo. Si la red no
-            deja leer el archivo, anoten qué se ve y qué se dice.
+            Solo el enlace. Daniela saca sola lo que se dice (subtítulos o voz
+            a texto) y les devuelve crítica + guion Genera. No transcriban.
+            YouTube es el más limpio; en Instagram/TikTok usa el audio si la
+            red lo suelta, si no, el texto del post.
           </p>
           <div className="flex flex-wrap gap-2">
             <input
@@ -492,26 +496,34 @@ export default function ContenidoPage() {
               className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               onClick={() => void analizarEnlace()}
             >
-              {analyzing ? "Leyendo…" : "Analizar con Daniela"}
+              {analyzing ? "Escuchando…" : "Analizar con Daniela"}
             </button>
           </div>
           <textarea
             className={`${field} mt-2`}
             rows={3}
-            placeholder="Opcional y muy útil: qué se ve, qué dice, qué promesa hace, en qué segundo se van…"
+            placeholder="Contexto nuestro, no el video. Ej.: esta semana hay visita en Sopó."
             value={videoNotes}
             onChange={(e) => setVideoNotes(e.target.value)}
           />
           {preview ? (
-            <p className="mt-3 text-xs text-[#6d7c74]">
-              {preview.platform ? `${preview.platform} · ` : ""}
-              {preview.title || "Sin título público"}
-              {preview.author ? ` · ${preview.author}` : ""}
-              {preview.note ? ` · ${preview.note}` : ""}
+            <p className="mt-3 text-sm text-[#4d5c55]">
+              {preview.spokenSource
+                ? `${SPOKEN_SOURCE_LABELS[preview.spokenSource]} · ${preview.spokenChars} caracteres leídos. `
+                : "No hubo audio ni subtítulos. "}
+              {preview.note}
             </p>
           ) : null}
           {analysis ? (
             <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {analysis.saidSummary ? (
+                <div className="rounded-xl border border-[#eee8dc] bg-[#fbfaf6] p-3 md:col-span-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6d7c74]">
+                    De qué habla (resumen, no el original)
+                  </p>
+                  <p className="mt-2 text-sm leading-6">{analysis.saidSummary}</p>
+                </div>
+              ) : null}
               <AnalysisList title="Audiovisual" items={analysis.audiovisual} />
               <AnalysisList title="Manera de hablar" items={analysis.speech} />
               <AnalysisList title="Lo que dice (riesgo)" items={analysis.claims} />
@@ -520,7 +532,7 @@ export default function ContenidoPage() {
               <AnalysisList title="Otras ideas (no clones)" items={analysis.nextIdeas} />
               <div className="rounded-xl border border-[#eee8dc] bg-[#fbfaf6] p-3 md:col-span-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[#6d7c74]">
-                  Guion nuevo · {analysis.limited ? "con lo público y sus notas" : "versión Genera"}
+                  Guion nuevo · {analysis.limited ? "con poco audio; tema inferido" : "versión Genera"}
                 </p>
                 <p className="mt-2 font-semibold">{analysis.piece.title}</p>
                 <p className="mt-1 text-sm">

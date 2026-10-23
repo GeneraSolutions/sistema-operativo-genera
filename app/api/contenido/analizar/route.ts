@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth/request";
 import { appendIntelligenceLog } from "@/lib/intelligence-log";
@@ -8,13 +8,47 @@ import { CONTENT_PLAYBOOK } from "@/lib/content";
 import {
   emptyAnalysisPiece,
   fetchLinkPreview,
+  mediaHostAllowed,
   parsePublicVideoUrl,
+  publicLinkPreview,
   type LinkAnalysis,
 } from "@/lib/content-link";
 import { composeSpecialistPrompt, getSpecialist } from "@/lib/specialists";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+async function transcribeMedia(client: OpenAI, mediaUrl: string): Promise<string> {
+  try {
+    const host = new URL(mediaUrl).hostname;
+    if (!mediaHostAllowed(host)) return "";
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const res = await fetch(mediaUrl, {
+      signal: ctrl.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; GeneraSolutionsBot/1.0; +https://www.generasolutions.com.co)",
+      },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return "";
+    const type = res.headers.get("content-type") || "";
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength < 8000 || buf.byteLength > 12_000_000) return "";
+    const ext = type.includes("webm") ? "webm" : "mp4";
+    const file = await toFile(Buffer.from(buf), `clip.${ext}`);
+    const out = await client.audio.transcriptions.create({
+      file,
+      model: "whisper-1",
+      language: "es",
+    });
+    return String(out.text || "").replace(/\s+/g, " ").trim().slice(0, 8000);
+  } catch {
+    return "";
+  }
+}
 
 function asList(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -41,6 +75,7 @@ function fallbackAnalysis(preview: Awaited<ReturnType<typeof fetchLinkPreview>>)
     keep: [
       "Quédense con el tema (recibo, techo, mito), no con las frases ni la música.",
     ],
+    saidSummary: "Tema solar en redes. No copien el original: arman la versión Genera.",
     trends: [
       "Texto en pantalla + corte cada 2–3 s + pregunta al inicio sigue reteniendo en Reels/Shorts.",
     ],
@@ -109,10 +144,24 @@ export async function POST(req: NextRequest) {
         question: `Enlace ${url}`,
         answer: analysis.note,
       });
-      return NextResponse.json({ preview, analysis, offline: true });
+      return NextResponse.json({
+        preview: publicLinkPreview(preview),
+        analysis,
+        offline: true,
+      });
     }
 
     const client = new OpenAI({ apiKey });
+    if (preview.spokenText.length < 40 && preview.mediaUrl) {
+      const voice = await transcribeMedia(client, preview.mediaUrl);
+      if (voice.length > 20) {
+        preview.spokenText = voice;
+        preview.spokenSource = "voz-whisper";
+        preview.note = "Daniela pasó el audio a texto. No transcriban nada.";
+      }
+    }
+
+    const heard = preview.spokenText.trim();
     const completion = await client.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
       temperature: 0.55,
@@ -128,20 +177,24 @@ export async function POST(req: NextRequest) {
         {
           role: "user",
           content: `Analiza este video de redes como referencia para Genera Solutions SAS.
-NO copies el guion ni la estructura frase a frase. Extrae el tema y reescribe una pieza NUEVA, más honesta y más retenedora.
-Si no puedes ver el archivo, dilo en "limited": true y trabaja con título, descripción y las notas del equipo.
+El equipo NO transcribe. Tú ya tienes voz a texto o subtítulos o el texto del post.
+NO copies el guion ni lo pegues. Extrae el tema y reescribe una pieza NUEVA, más honesta y más retenedora.
+Si el texto automático es corto, limited=true, pero igual entrega guion Genera con el tema.
 
 Enlace: ${preview.url}
 Plataforma: ${preview.platform}
-Título público: ${preview.title || "(no hubo)"}
+Título: ${preview.title || "(no hubo)"}
 Autor: ${preview.author || "(no hubo)"}
-Descripción: ${preview.description || "(no hubo)"}
-Notas del equipo (lo que vieron y oyeron):
-${body.notes?.trim() || "(no pegaron transcripción)"}
+Fuente del texto: ${preview.spokenSource || "ninguna"}
+Texto automático (voz/subtítulos/post), úsalo como lo que dice el video:
+${heard || "(no hubo audio ni subtítulos)"}
+Contexto del equipo (NO es transcripción del video):
+${body.notes?.trim() || "(nada)"}
 
 Responde SOLO JSON:
 {
-  "limited": true,
+  "limited": false,
+  "saidSummary": "2 o 3 frases: de qué habla, sin copiar el original",
   "audiovisual": ["errores o mejoras de plano, luz, texto, ritmo, audio"],
   "speech": ["manera de hablar: ritmo, muletillas, tono, claridad"],
   "claims": ["lo que dice mal o peligroso: kWh, factura, ley, garantía"],
@@ -184,6 +237,7 @@ Responde SOLO JSON:
       speech: asList(parsed.speech).length ? asList(parsed.speech) : base.speech,
       claims: asList(parsed.claims).length ? asList(parsed.claims) : base.claims,
       keep: asList(parsed.keep).length ? asList(parsed.keep) : base.keep,
+      saidSummary: String(parsed.saidSummary || base.saidSummary),
       trends: asList(parsed.trends).length ? asList(parsed.trends) : base.trends,
       retention: asList(parsed.retention).length
         ? asList(parsed.retention)
@@ -193,7 +247,7 @@ Responde SOLO JSON:
         ? asList(parsed.nextIdeas)
         : base.nextIdeas,
       note: String(parsed.note || "Listo. Sumen la pieza al día si el guion sirve."),
-      limited: Boolean(parsed.limited) || !preview.fetched,
+      limited: Boolean(parsed.limited) || heard.length < 40,
       piece: {
         ...emptyAnalysisPiece(),
         ...piece,
@@ -216,7 +270,11 @@ Responde SOLO JSON:
       answer: analysis.note,
     });
 
-    return NextResponse.json({ preview, analysis, offline: false });
+    return NextResponse.json({
+      preview: publicLinkPreview(preview),
+      analysis,
+      offline: false,
+    });
   } catch (err) {
     const detail = err instanceof Error ? err.message : "Error desconocido";
     return NextResponse.json(
