@@ -40,6 +40,7 @@ import {
   type ContentStatus,
 } from "@/lib/content";
 import { loadSpecialistManuals } from "@/lib/specialist-manuals";
+import type { LinkAnalysis, LinkPreview } from "@/lib/content-link";
 
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
@@ -52,6 +53,22 @@ function readView(): CalendarView {
   const raw = window.localStorage.getItem(VIEW_KEY);
   if (raw === "dia" || raw === "semana" || raw === "mes") return raw;
   return "semana";
+}
+
+function AnalysisList({ title, items }: { title: string; items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="rounded-xl border border-[#eee8dc] bg-[#fbfaf6] p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#6d7c74]">
+        {title}
+      </p>
+      <ul className="mt-2 list-disc space-y-1 pl-4 text-sm leading-5">
+        {items.map((item, i) => (
+          <li key={`${title}-${i}`}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function PieceCard({
@@ -103,6 +120,12 @@ export default function ContenidoPage() {
   const [ask, setAsk] = useState("");
   const [briefOpen, setBriefOpen] = useState(true);
   const [bankOpen, setBankOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(true);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoNotes, setVideoNotes] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [preview, setPreview] = useState<LinkPreview | null>(null);
+  const [analysis, setAnalysis] = useState<LinkAnalysis | null>(null);
 
   const today = localYmd();
   const weekStart = mondayOf(cursor);
@@ -241,6 +264,72 @@ export default function ContenidoPage() {
     setCursor(date);
   }
 
+  async function analizarEnlace() {
+    setAnalyzing(true);
+    setFlash("");
+    setAnalysis(null);
+    setPreview(null);
+    try {
+      const manuals = loadSpecialistManuals();
+      const res = await fetch("/api/contenido/analizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: videoUrl,
+          notes: videoNotes,
+          manual: manuals.growth,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFlash(data.error || "No se pudo analizar el enlace.");
+        return;
+      }
+      setPreview(data.preview ?? null);
+      setAnalysis(data.analysis ?? null);
+      setFlash(
+        data.offline
+          ? "Checklist local. Con OPENAI_API_KEY Daniela reescribe el guion."
+          : "Daniela analizó el enlace. Revisen y sumen la pieza si sirve."
+      );
+    } catch {
+      setFlash("No hay conexión con Daniela.");
+    } finally {
+      setAnalyzing(false);
+      window.setTimeout(() => setFlash(""), 5000);
+    }
+  }
+
+  function addAnalysisPiece() {
+    if (!analysis?.piece) return;
+    const p = analysis.piece;
+    const piece = emptyPiece({
+      date: cursor,
+      title: p.title,
+      hook: p.hook,
+      script: p.script,
+      format: p.format,
+      network: p.network,
+      durationSec: p.durationSec,
+      cta: p.cta,
+      objective: p.objective,
+      location: p.location || analysis.location,
+      notes: [
+        preview?.url ? `Referencia (no copiar): ${preview.url}` : "",
+        analysis.note,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      status: "idea",
+    });
+    const next = upsertContent(piece);
+    setPieces(next);
+    persistContentCloud(next);
+    setSelectedId(piece.id);
+    setFlash("Pieza nueva en el día enfocado. No es el video original: es la versión Genera.");
+    window.setTimeout(() => setFlash(""), 5000);
+  }
+
   function addEmpty(date: string) {
     const piece = emptyPiece({ date, status: "idea" });
     const next = upsertContent(piece);
@@ -377,6 +466,85 @@ export default function ContenidoPage() {
         </p>
       ) : null}
       {flash ? <p className="mb-3 text-sm text-[#1f6b45]">{flash}</p> : null}
+
+      <div className="os-panel mb-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">
+        <WorkFold
+          title="Enlace de redes · Daniela analiza"
+          open={linkOpen}
+          onToggle={() => setLinkOpen((v) => !v)}
+        >
+          <p className="os-page-intro mb-3 text-sm">
+            Peguen un Reel, Short o video que vieron. Daniela no lo clona: marca
+            errores de plano y de lo que dice, se queda con el tema y reescribe
+            un guion de Genera Solutions SAS, con dónde filmarlo. Si la red no
+            deja leer el archivo, anoten qué se ve y qué se dice.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              className={`${field} min-w-[16rem] flex-1`}
+              placeholder="https://www.instagram.com/reel/… o TikTok / YouTube"
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
+            />
+            <button
+              type="button"
+              disabled={analyzing || !videoUrl.trim()}
+              className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              onClick={() => void analizarEnlace()}
+            >
+              {analyzing ? "Leyendo…" : "Analizar con Daniela"}
+            </button>
+          </div>
+          <textarea
+            className={`${field} mt-2`}
+            rows={3}
+            placeholder="Opcional y muy útil: qué se ve, qué dice, qué promesa hace, en qué segundo se van…"
+            value={videoNotes}
+            onChange={(e) => setVideoNotes(e.target.value)}
+          />
+          {preview ? (
+            <p className="mt-3 text-xs text-[#6d7c74]">
+              {preview.platform ? `${preview.platform} · ` : ""}
+              {preview.title || "Sin título público"}
+              {preview.author ? ` · ${preview.author}` : ""}
+              {preview.note ? ` · ${preview.note}` : ""}
+            </p>
+          ) : null}
+          {analysis ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <AnalysisList title="Audiovisual" items={analysis.audiovisual} />
+              <AnalysisList title="Manera de hablar" items={analysis.speech} />
+              <AnalysisList title="Lo que dice (riesgo)" items={analysis.claims} />
+              <AnalysisList title="Qué sí aprovechamos" items={analysis.keep} />
+              <AnalysisList title="Tendencia y retención" items={[...analysis.trends, ...analysis.retention]} />
+              <AnalysisList title="Otras ideas (no clones)" items={analysis.nextIdeas} />
+              <div className="rounded-xl border border-[#eee8dc] bg-[#fbfaf6] p-3 md:col-span-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#6d7c74]">
+                  Guion nuevo · {analysis.limited ? "con lo público y sus notas" : "versión Genera"}
+                </p>
+                <p className="mt-2 font-semibold">{analysis.piece.title}</p>
+                <p className="mt-1 text-sm">
+                  <strong>Gancho:</strong> {analysis.piece.hook}
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+                  {analysis.piece.script}
+                </p>
+                <p className="mt-2 text-xs text-[#6d7c74]">
+                  Filmar: {analysis.location || analysis.piece.location} · CTA:{" "}
+                  {analysis.piece.cta}
+                </p>
+                <button
+                  type="button"
+                  className="mt-3 rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
+                  onClick={addAnalysisPiece}
+                >
+                  Sumar esta pieza al día
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </WorkFold>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <div>
