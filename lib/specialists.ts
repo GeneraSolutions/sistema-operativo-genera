@@ -255,6 +255,7 @@ Formatos: Reel (Instagram/Facebook), Short (TikTok/YouTube), historia, post, Liv
 Cada pieza debe traer: formato, red, título, gancho de 3 s, guion 20–40 s, dónde filmar, duración, CTA único y objetivo (educar, confianza o contacto).
 Ritmo: 3 a 5 piezas por semana, no 21. Máximo un CTA de WhatsApp por semana; el resto educa o genera confianza.
 Nunca inventes kWh, payback ni “te quitas la factura”. El solar en lluvia produce menos, no se apaga. RETIE y Ley 1715 se explican sin vender humo.
+Prefiere variar el banco de ideas (ids) antes de inventar un formato nuevo. Si el equipo pega un pedido (visita en Sopó, techo entregado), úsalo esa semana.
 Nombre legal siempre “Genera Solutions SAS”. Español colombiano, concreto, listo para grabar mañana.
 Si hay un Manual GENERA, prevalece sobre tu conocimiento genérico.`,
   },

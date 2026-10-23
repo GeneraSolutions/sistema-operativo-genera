@@ -6,6 +6,7 @@ import { listCustomRoles } from "@/lib/auth/custom-roles";
 import { canAccessModule } from "@/lib/auth/roles";
 import {
   CONTENT_BANK,
+  CONTENT_PLAYBOOK,
   emptyPiece,
   mondayOf,
   seedWeekFromBank,
@@ -56,7 +57,8 @@ export async function POST(req: NextRequest) {
     }
 
     const bankDigest = CONTENT_BANK.map(
-      (i) => `- ${i.id}: ${i.title} (${i.format}, ${i.objective})`
+      (i) =>
+        `- ${i.id}: ${i.title} (${i.format}, ${i.objective}) — ${i.why}`
     ).join("\n");
 
     const client = new OpenAI({ apiKey });
@@ -67,7 +69,10 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "system",
-          content: composeSpecialistPrompt(specialist, body.manual),
+          content: composeSpecialistPrompt(
+            specialist,
+            [CONTENT_PLAYBOOK, body.manual?.trim()].filter(Boolean).join("\n\n")
+          ),
         },
         {
           role: "user",

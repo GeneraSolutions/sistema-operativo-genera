@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { WorkFold } from "@/components/WorkFold";
 import {
+  CONTENT_BANK,
   CONTENT_FORMAT_LABELS,
   CONTENT_NETWORK_LABELS,
   CONTENT_OBJECTIVE_LABELS,
@@ -17,6 +18,7 @@ import {
   mergeContent,
   mondayOf,
   persistContentCloud,
+  pieceFromIdea,
   piecesInWeek,
   replaceContent,
   upsertContent,
@@ -42,6 +44,7 @@ export default function ContenidoPage() {
   const [note, setNote] = useState("");
   const [ask, setAsk] = useState("");
   const [briefOpen, setBriefOpen] = useState(true);
+  const [bankOpen, setBankOpen] = useState(false);
 
   const week = useMemo(
     () => piecesInWeek(pieces, weekStart),
@@ -131,6 +134,18 @@ export default function ContenidoPage() {
     const next = upsertContent({ ...selected, ...partial });
     setPieces(next);
     persistContentCloud(next);
+  }
+
+  function addFromBank(id: string) {
+    const idea = CONTENT_BANK.find((i) => i.id === id);
+    if (!idea) return;
+    const occupied = new Set(week.map((p) => p.date));
+    const date = days.find((d) => !occupied.has(d)) || weekStart;
+    const piece = pieceFromIdea(idea, date, "instagram");
+    const next = upsertContent(piece);
+    setPieces(next);
+    persistContentCloud(next);
+    setSelectedId(piece.id);
   }
 
   function addEmpty(date: string) {
@@ -453,6 +468,43 @@ export default function ContenidoPage() {
             </p>
           )}
         </div>
+      </div>
+
+      <div className="os-panel mt-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">
+        <WorkFold
+          title="Banco que ya funciona"
+          open={bankOpen}
+          onToggle={() => setBankOpen((v) => !v)}
+        >
+          <p className="os-page-intro mb-3 text-sm">
+            Objeciones y momentos reales de venta. Daniela rota esto. Si ya
+            están en visita, sumen la pieza al día libre.
+          </p>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {CONTENT_BANK.map((idea) => (
+              <li
+                key={idea.id}
+                className="rounded-xl border border-[#eee8dc] bg-[#fbfaf6] px-3 py-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold leading-5">{idea.title}</p>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs text-[#1f6b45] underline"
+                    onClick={() => addFromBank(idea.id)}
+                  >
+                    Sumar
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-[#6d7c74]">
+                  {CONTENT_FORMAT_LABELS[idea.format]} ·{" "}
+                  {CONTENT_OBJECTIVE_LABELS[idea.objective]}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-[#4d5c55]">{idea.why}</p>
+              </li>
+            ))}
+          </ul>
+        </WorkFold>
       </div>
     </AppShell>
   );
