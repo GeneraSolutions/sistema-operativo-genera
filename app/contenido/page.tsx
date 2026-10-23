@@ -135,6 +135,8 @@ export default function ContenidoPage() {
   const [reportOpen, setReportOpen] = useState(true);
   const [reports, setReports] = useState<ContentWeekReport[]>([]);
   const [reportBusy, setReportBusy] = useState(false);
+  const [improveAsk, setImproveAsk] = useState("");
+  const [improveBusy, setImproveBusy] = useState(false);
   const [linkOpen, setLinkOpen] = useState(true);
   const [videoUrl, setVideoUrl] = useState("");
   const [videoNotes, setVideoNotes] = useState("");
@@ -182,6 +184,10 @@ export default function ContenidoPage() {
     setPieces(saved);
     persistContentCloud(saved);
   }
+
+  useEffect(() => {
+    setImproveAsk("");
+  }, [selectedId]);
 
   useEffect(() => {
     setView(readView());
@@ -305,6 +311,46 @@ export default function ContenidoPage() {
       setFlash("No hay conexión con Daniela.");
     } finally {
       setReportBusy(false);
+      window.setTimeout(() => setFlash(""), 5000);
+    }
+  }
+
+  async function danielaMejoraPieza() {
+    if (!selected) return;
+    setImproveBusy(true);
+    setFlash("");
+    try {
+      const manuals = loadSpecialistManuals();
+      const res = await fetch("/api/contenido/mejorar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          piece: selected,
+          instruction: improveAsk,
+          manual: manuals.growth,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFlash(data.error || "No se pudo mejorar la pieza.");
+        return;
+      }
+      if (data.piece) {
+        const next = upsertContent({
+          ...selected,
+          ...data.piece,
+          id: selected.id,
+          date: selected.date,
+        });
+        setPieces(next);
+        persistContentCloud(next);
+      }
+      setImproveAsk("");
+      setFlash(data.note || "Daniela reescribió esta pieza.");
+    } catch {
+      setFlash("No hay conexión con Daniela.");
+    } finally {
+      setImproveBusy(false);
       window.setTimeout(() => setFlash(""), 5000);
     }
   }
@@ -993,6 +1039,26 @@ export default function ContenidoPage() {
                 />
                 Cliente autorizó salir en cámara
               </label>
+              <label className="mt-4 block text-sm">
+                <span className="mb-1 block font-medium">
+                  Pedido a Daniela (esta pieza)
+                </span>
+                <textarea
+                  className={field}
+                  rows={3}
+                  placeholder="Ej.: el gancho es flojo; no hables como comercial; más corto; no me gusta el CTA de WhatsApp…"
+                  value={improveAsk}
+                  onChange={(e) => setImproveAsk(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={improveBusy || !improveAsk.trim()}
+                className="mt-2 rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                onClick={() => void danielaMejoraPieza()}
+              >
+                {improveBusy ? "Reescribiendo…" : "Daniela mejora esta pieza"}
+              </button>
               {selected.status === "publicado" ? (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <label className="block text-sm col-span-2">
