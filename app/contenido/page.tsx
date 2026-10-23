@@ -16,10 +16,14 @@ import {
   addMonths,
   deleteContent,
   emptyPiece,
+  emptyWeekReport,
+  filmingBatches,
   loadContent,
   loadDeletedContentIds,
+  loadWeekReports,
   localYmd,
   mergeContent,
+  mergeWeekReports,
   saveDeletedContentIds,
   mondayOf,
   monthGrid,
@@ -28,6 +32,8 @@ import {
   pieceFromIdea,
   piecesInWeek,
   replaceContent,
+  replaceWeekReports,
+  upsertWeekReport,
   startOfMonth,
   upsertContent,
   weekDates,
@@ -38,6 +44,7 @@ import {
   type ContentObjective,
   type ContentPiece,
   type ContentStatus,
+  type ContentWeekReport,
 } from "@/lib/content";
 import { loadSpecialistManuals } from "@/lib/specialist-manuals";
 import {
@@ -124,6 +131,10 @@ export default function ContenidoPage() {
   const [ask, setAsk] = useState("");
   const [briefOpen, setBriefOpen] = useState(true);
   const [bankOpen, setBankOpen] = useState(false);
+  const [tandaOpen, setTandaOpen] = useState(true);
+  const [reportOpen, setReportOpen] = useState(true);
+  const [reports, setReports] = useState<ContentWeekReport[]>([]);
+  const [reportBusy, setReportBusy] = useState(false);
   const [linkOpen, setLinkOpen] = useState(true);
   const [videoUrl, setVideoUrl] = useState("");
   const [videoNotes, setVideoNotes] = useState("");
@@ -152,6 +163,10 @@ export default function ContenidoPage() {
   const visible =
     view === "dia" ? dayPieces : view === "semana" ? week : monthPieces;
   const pending = visible.filter((p) => p.status !== "publicado").length;
+  const batches = useMemo(() => filmingBatches(week), [week]);
+  const weekReport =
+    reports.find((r) => r.weekStart === weekStart) ?? emptyWeekReport(weekStart);
+  const followerDelta = weekReport.followersEnd - weekReport.followersStart;
 
   function setViewPersist(next: CalendarView) {
     setView(next);
@@ -172,6 +187,7 @@ export default function ContenidoPage() {
     setView(readView());
     const local = loadContent();
     setPieces(local);
+    setReports(loadWeekReports());
     void fetch("/api/contenido", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -183,6 +199,11 @@ export default function ContenidoPage() {
         const merged = mergeContent(loadContent(), data.pieces, deleted);
         replaceContent(merged);
         setPieces(merged);
+        if (data.reports) {
+          const nextReports = mergeWeekReports(loadWeekReports(), data.reports);
+          replaceWeekReports(nextReports);
+          setReports(nextReports);
+        }
         persistContentCloud(merged);
       })
       .catch(() => undefined);
@@ -241,6 +262,49 @@ export default function ContenidoPage() {
       setFlash("No hay conexión con Daniela.");
     } finally {
       setBusy(false);
+      window.setTimeout(() => setFlash(""), 5000);
+    }
+  }
+
+  function patchReport(partial: Partial<ContentWeekReport>) {
+    const next = upsertWeekReport({ ...weekReport, ...partial });
+    setReports(next);
+    persistContentCloud(pieces);
+  }
+
+  async function danielaLeeSemana() {
+    setReportBusy(true);
+    setFlash("");
+    try {
+      const manuals = loadSpecialistManuals();
+      const res = await fetch("/api/contenido/rendimiento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          report: weekReport,
+          pieces: week,
+          manual: manuals.growth,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFlash(data.error || "No se pudo leer el rendimiento.");
+        return;
+      }
+      if (data.report) {
+        const next = upsertWeekReport(data.report);
+        setReports(next);
+        persistContentCloud(pieces);
+      }
+      setFlash(
+        data.offline
+          ? "Lectura local. Con OPENAI_API_KEY Daniela interpreta la semana."
+          : "Daniela leyó la semana. Abajo está qué repetir y qué parar."
+      );
+    } catch {
+      setFlash("No hay conexión con Daniela.");
+    } finally {
+      setReportBusy(false);
       window.setTimeout(() => setFlash(""), 5000);
     }
   }
@@ -880,6 +944,91 @@ export default function ContenidoPage() {
                   onChange={(e) => patchSelected({ cta: e.target.value })}
                 />
               </label>
+              <label className="mt-3 block text-sm">
+                <span className="mb-1 block font-medium">Caption (texto al publicar)</span>
+                <textarea
+                  className={field}
+                  rows={3}
+                  value={selected.caption}
+                  onChange={(e) => patchSelected({ caption: e.target.value })}
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                <span className="mb-1 block font-medium">Primer comentario</span>
+                <input
+                  className={field}
+                  value={selected.firstComment}
+                  onChange={(e) =>
+                    patchSelected({ firstComment: e.target.value })
+                  }
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                <span className="mb-1 block font-medium">Planos (2 o 3)</span>
+                <textarea
+                  className={field}
+                  rows={2}
+                  placeholder="Cara 3 s · recibo tapado · tablero"
+                  value={selected.shots}
+                  onChange={(e) => patchSelected({ shots: e.target.value })}
+                />
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selected.subtitlesOnScreen}
+                  onChange={(e) =>
+                    patchSelected({ subtitlesOnScreen: e.target.checked })
+                  }
+                />
+                Subtítulos en pantalla (se ve sin audio)
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selected.clientOk}
+                  onChange={(e) =>
+                    patchSelected({ clientOk: e.target.checked })
+                  }
+                />
+                Cliente autorizó salir en cámara
+              </label>
+              {selected.status === "publicado" ? (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="block text-sm col-span-2">
+                    <span className="mb-1 block font-medium">Enlace publicado</span>
+                    <input
+                      className={field}
+                      value={selected.publishedUrl}
+                      onChange={(e) =>
+                        patchSelected({ publishedUrl: e.target.value })
+                      }
+                    />
+                  </label>
+                  {(
+                    [
+                      ["views", "Vistas"],
+                      ["likes", "Likes"],
+                      ["comments", "Comentarios"],
+                      ["conversations", "Recibos / visitas"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="block text-sm">
+                      <span className="mb-1 block font-medium">{label}</span>
+                      <input
+                        className={field}
+                        type="number"
+                        value={selected[key] || ""}
+                        onChange={(e) =>
+                          patchSelected({
+                            [key]: Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-2">
                 {(
                   [
@@ -912,6 +1061,170 @@ export default function ContenidoPage() {
             </p>
           )}
         </div>
+      </div>
+
+      <div className="os-panel mt-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">
+        <WorkFold
+          title="Tanda de grabación (esta semana)"
+          open={tandaOpen}
+          onToggle={() => setTandaOpen((v) => !v)}
+        >
+          <p className="os-page-intro mb-3 text-sm">
+            Lo aprobado o ya grabado, agrupado por lugar. Una salida, varios
+            takes. Pulse la pieza para abrir el brief.
+          </p>
+          {batches.length === 0 ? (
+            <p className="text-sm text-[#6d7c74]">
+              Aprueben piezas y aparece el lote por oficina, visita o bodega.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {batches.map(([lugar, items]) => (
+                <li key={lugar}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6d7c74]">
+                    {lugar} · {items.length}
+                  </p>
+                  <ul className="mt-1 space-y-1">
+                    {items.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          className="w-full rounded-xl border border-[#eee8dc] bg-[#fbfaf6] px-3 py-2 text-left text-sm"
+                          onClick={() => {
+                            setSelectedId(p.id);
+                            setCursor(p.date);
+                          }}
+                        >
+                          <span className="font-semibold">{p.title || "Sin título"}</span>
+                          <span className="ml-2 text-xs text-[#6d7c74]">
+                            {CONTENT_STATUS_LABELS[p.status]} · {p.owner || "quién sale"}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          )}
+        </WorkFold>
+      </div>
+
+      <div className="os-panel mt-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">
+        <WorkFold
+          title="Cómo nos fue · números de la semana"
+          open={reportOpen}
+          onToggle={() => setReportOpen((v) => !v)}
+        >
+          <p className="os-page-intro mb-3 text-sm">
+            Los copian el viernes desde Instagram, TikTok o YouTube Studio.
+            Daniela no entra sola a esas apps. El número que importa: recibos o
+            visitas, no solo likes.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Seguidores al inicio</span>
+              <input
+                className={field}
+                type="number"
+                value={weekReport.followersStart || ""}
+                onChange={(e) =>
+                  patchReport({ followersStart: Number(e.target.value) || 0 })
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Seguidores al cierre</span>
+              <input
+                className={field}
+                type="number"
+                value={weekReport.followersEnd || ""}
+                onChange={(e) =>
+                  patchReport({ followersEnd: Number(e.target.value) || 0 })
+                }
+              />
+            </label>
+            <p className="flex items-end pb-2 text-sm text-[#6d7c74] sm:col-span-2">
+              Delta: {followerDelta >= 0 ? "+" : ""}
+              {followerDelta}
+            </p>
+            <label className="text-sm sm:col-span-2">
+              <span className="mb-1 block font-medium">Video top (título)</span>
+              <input
+                className={field}
+                value={weekReport.topTitle}
+                onChange={(e) => patchReport({ topTitle: e.target.value })}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Vistas del top</span>
+              <input
+                className={field}
+                type="number"
+                value={weekReport.topViews || ""}
+                onChange={(e) =>
+                  patchReport({ topViews: Number(e.target.value) || 0 })
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Likes</span>
+              <input
+                className={field}
+                type="number"
+                value={weekReport.topLikes || ""}
+                onChange={(e) =>
+                  patchReport({ topLikes: Number(e.target.value) || 0 })
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Comentarios</span>
+              <input
+                className={field}
+                type="number"
+                value={weekReport.topComments || ""}
+                onChange={(e) =>
+                  patchReport({ topComments: Number(e.target.value) || 0 })
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Recibos / visitas</span>
+              <input
+                className={field}
+                type="number"
+                value={weekReport.conversations || ""}
+                onChange={(e) =>
+                  patchReport({ conversations: Number(e.target.value) || 0 })
+                }
+              />
+            </label>
+            <label className="text-sm sm:col-span-2 lg:col-span-4">
+              <span className="mb-1 block font-medium">Nota del equipo</span>
+              <textarea
+                className={field}
+                rows={2}
+                placeholder="El de la lluvia se compartió. El de Ley 1715 no."
+                value={weekReport.note}
+                onChange={(e) => patchReport({ note: e.target.value })}
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            disabled={reportBusy}
+            className="mt-3 rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            onClick={() => void danielaLeeSemana()}
+          >
+            {reportBusy ? "Leyendo…" : "Daniela lee la semana"}
+          </button>
+          {weekReport.analysis ? (
+            <pre className="mt-3 whitespace-pre-wrap rounded-xl bg-[#fbfaf6] p-3 text-sm leading-6 text-[#244a38]">
+              {weekReport.analysis}
+            </pre>
+          ) : null}
+        </WorkFold>
       </div>
 
       <div className="os-panel mt-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">

@@ -33,8 +33,32 @@ export interface ContentPiece {
   objective: ContentObjective;
   status: ContentStatus;
   owner: string;
+  caption: string;
+  firstComment: string;
+  shots: string;
+  subtitlesOnScreen: boolean;
+  clientOk: boolean;
+  publishedUrl: string;
+  views: number;
+  likes: number;
+  comments: number;
+  conversations: number;
   bankId?: string;
   notes: string;
+  updatedAt: string;
+}
+
+export interface ContentWeekReport {
+  weekStart: string;
+  followersStart: number;
+  followersEnd: number;
+  topTitle: string;
+  topViews: number;
+  topLikes: number;
+  topComments: number;
+  conversations: number;
+  note: string;
+  analysis: string;
   updatedAt: string;
 }
 
@@ -75,6 +99,7 @@ export const CONTENT_STATUS_TONE: Record<ContentStatus, string> = {
 
 const KEY = "genera.contenido.v1";
 const DELETED_KEY = "genera.contenido.deleted.v1";
+const REPORT_KEY = "genera.contenido.semanas.v1";
 
 export interface ContentIdea {
   id: string;
@@ -528,6 +553,16 @@ export function emptyPiece(partial?: Partial<ContentPiece>): ContentPiece {
     objective: "educar",
     status: "idea",
     owner: "",
+    caption: "",
+    firstComment: "",
+    shots: "",
+    subtitlesOnScreen: true,
+    clientOk: false,
+    publishedUrl: "",
+    views: 0,
+    likes: 0,
+    comments: 0,
+    conversations: 0,
     notes: "",
     updatedAt: new Date().toISOString(),
     ...partial,
@@ -606,10 +641,123 @@ export function sanitizePiece(raw: Partial<ContentPiece> | null | undefined): Co
     objective,
     status,
     owner: String(raw.owner || "").trim(),
+    caption: String(raw.caption || "").trim(),
+    firstComment: String(raw.firstComment || "").trim(),
+    shots: String(raw.shots || "").trim(),
+    subtitlesOnScreen: raw.subtitlesOnScreen !== false,
+    clientOk: Boolean(raw.clientOk),
+    publishedUrl: String(raw.publishedUrl || "").trim(),
+    views: Math.max(0, Number(raw.views) || 0),
+    likes: Math.max(0, Number(raw.likes) || 0),
+    comments: Math.max(0, Number(raw.comments) || 0),
+    conversations: Math.max(0, Number(raw.conversations) || 0),
     bankId: raw.bankId ? String(raw.bankId) : undefined,
     notes: String(raw.notes || "").trim(),
     updatedAt: String(raw.updatedAt || new Date().toISOString()),
   };
+}
+
+export function emptyWeekReport(weekStart: string): ContentWeekReport {
+  return {
+    weekStart: mondayOf(weekStart),
+    followersStart: 0,
+    followersEnd: 0,
+    topTitle: "",
+    topViews: 0,
+    topLikes: 0,
+    topComments: 0,
+    conversations: 0,
+    note: "",
+    analysis: "",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function sanitizeWeekReport(
+  raw: Partial<ContentWeekReport> | null | undefined
+): ContentWeekReport | null {
+  if (!raw || typeof raw !== "object") return null;
+  const rawWeek = String(raw.weekStart || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawWeek)) return null;
+  const weekStart = mondayOf(rawWeek);
+  return {
+    weekStart,
+    followersStart: Math.max(0, Number(raw.followersStart) || 0),
+    followersEnd: Math.max(0, Number(raw.followersEnd) || 0),
+    topTitle: String(raw.topTitle || "").trim(),
+    topViews: Math.max(0, Number(raw.topViews) || 0),
+    topLikes: Math.max(0, Number(raw.topLikes) || 0),
+    topComments: Math.max(0, Number(raw.topComments) || 0),
+    conversations: Math.max(0, Number(raw.conversations) || 0),
+    note: String(raw.note || "").trim(),
+    analysis: String(raw.analysis || "").trim(),
+    updatedAt: String(raw.updatedAt || new Date().toISOString()),
+  };
+}
+
+export function loadWeekReports(): ContentWeekReport[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REPORT_KEY) || "[]") as ContentWeekReport[];
+    return Array.isArray(parsed)
+      ? parsed.map((r) => sanitizeWeekReport(r)).filter(Boolean) as ContentWeekReport[]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function replaceWeekReports(reports: ContentWeekReport[]): ContentWeekReport[] {
+  const next = reports
+    .map((r) => sanitizeWeekReport(r))
+    .filter(Boolean) as ContentWeekReport[];
+  if (typeof window !== "undefined") {
+    localStorage.setItem(REPORT_KEY, JSON.stringify(next.slice(0, 80)));
+  }
+  return next;
+}
+
+export function upsertWeekReport(report: ContentWeekReport): ContentWeekReport[] {
+  const stamped = {
+    ...emptyWeekReport(report.weekStart),
+    ...sanitizeWeekReport(report),
+    updatedAt: new Date().toISOString(),
+  } as ContentWeekReport;
+  const next = [
+    stamped,
+    ...loadWeekReports().filter((r) => r.weekStart !== stamped.weekStart),
+  ];
+  return replaceWeekReports(next);
+}
+
+export function mergeWeekReports(
+  local: ContentWeekReport[],
+  remote: ContentWeekReport[]
+): ContentWeekReport[] {
+  const byWeek = new Map<string, ContentWeekReport>();
+  for (const raw of [...remote, ...local]) {
+    const clean = sanitizeWeekReport(raw);
+    if (!clean) continue;
+    const prev = byWeek.get(clean.weekStart);
+    const prevT = Date.parse(prev?.updatedAt || "") || 0;
+    const nextT = Date.parse(clean.updatedAt || "") || 0;
+    if (!prev || nextT >= prevT) byWeek.set(clean.weekStart, clean);
+  }
+  return [...byWeek.values()].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+}
+
+export function filmingBatches(pieces: ContentPiece[]) {
+  const ready = pieces.filter(
+    (p) => p.status === "aprobado" || p.status === "grabado"
+  );
+  const map = new Map<string, ContentPiece[]>();
+  for (const piece of ready) {
+    const key = piece.location.trim() || "Sin lugar";
+    const list = map.get(key) ?? [];
+    list.push(piece);
+    map.set(key, list);
+  }
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"));
 }
 
 export function loadContent(): ContentPiece[] {
@@ -703,6 +851,7 @@ export function persistContentCloud(pieces: ContentPiece[]) {
     body: JSON.stringify({
       pieces,
       deletedIds: loadDeletedContentIds(),
+      reports: loadWeekReports(),
     }),
   }).catch(() => undefined);
 }

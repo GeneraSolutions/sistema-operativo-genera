@@ -4,8 +4,10 @@ import { listCustomRoles } from "@/lib/auth/custom-roles";
 import { canAccessModule } from "@/lib/auth/roles";
 import {
   mergeContent,
+  mergeWeekReports,
   sanitizePiece,
   type ContentPiece,
+  type ContentWeekReport,
 } from "@/lib/content";
 import { persistGet, persistSet } from "@/lib/persist";
 
@@ -14,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 const KEY = "genera:contenido";
 const DELETED_KEY = "genera:contenido:deleted";
+const REPORT_KEY = "genera:contenido:semanas";
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
 
 function asIdList(raw: unknown): string[] {
@@ -41,7 +44,11 @@ export async function GET() {
   const deletedIds = asIdList(await persistGet<string[]>(DELETED_KEY));
   const stored = (await persistGet<ContentPiece[]>(KEY)) ?? [];
   const pieces = mergeContent([], stored, deletedIds);
-  return NextResponse.json({ pieces, deletedIds }, { headers: NO_STORE });
+  const reports = mergeWeekReports(
+    [],
+    (await persistGet<ContentWeekReport[]>(REPORT_KEY)) ?? []
+  );
+  return NextResponse.json({ pieces, deletedIds, reports }, { headers: NO_STORE });
 }
 
 export async function POST(req: NextRequest) {
@@ -50,6 +57,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     pieces?: ContentPiece[];
     deletedIds?: string[];
+    reports?: ContentWeekReport[];
   };
   const incoming = Array.isArray(body.pieces) ? body.pieces : [];
   const stored = (await persistGet<ContentPiece[]>(KEY)) ?? [];
@@ -60,5 +68,11 @@ export async function POST(req: NextRequest) {
   const merged = mergeContent(incoming, stored, deletedIds);
   await persistSet(KEY, merged);
   await persistSet(DELETED_KEY, deletedIds);
-  return NextResponse.json({ pieces: merged, deletedIds, ok: true }, { headers: NO_STORE });
+  const storedReports = (await persistGet<ContentWeekReport[]>(REPORT_KEY)) ?? [];
+  const reports = mergeWeekReports(body.reports ?? [], storedReports);
+  await persistSet(REPORT_KEY, reports);
+  return NextResponse.json(
+    { pieces: merged, deletedIds, reports, ok: true },
+    { headers: NO_STORE }
+  );
 }

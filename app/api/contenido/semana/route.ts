@@ -100,6 +100,10 @@ Responde SOLO JSON:
       "durationSec": 30,
       "cta": "",
       "objective": "educar|confianza|contacto",
+      "caption": "texto de publicación, 1 idea, hashtags al final",
+      "firstComment": "primer comentario opcional",
+      "shots": "3 planos: cara / evidencia / cierre",
+      "subtitlesOnScreen": true,
       "bankId": "id del banco o vacío"
     }
   ]
