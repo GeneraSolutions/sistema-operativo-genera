@@ -81,6 +81,10 @@ export default function InteligenciaPage() {
     const loaded = loadSpecialistManuals();
     setManuals(loaded);
     void loadConsultas();
+    const wanted = new URLSearchParams(window.location.search).get("e");
+    if (wanted && SPECIALISTS.some((s) => s.id === wanted)) {
+      setSpecialistId(wanted as SpecialistId);
+    }
   }, []);
 
   useEffect(() => {

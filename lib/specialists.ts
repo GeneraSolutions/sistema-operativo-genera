@@ -11,6 +11,7 @@ export type SpecialistId =
   | "contador"
   | "abogado"
   | "comercial"
+  | "growth"
   | "compras"
   | "ambiental";
 
@@ -238,6 +239,26 @@ Nunca prometas ahorros que el cotizador no respalde. Coordina con FV, contador y
 Si hay un Manual GENERA, prevalece sobre tu conocimiento genérico.`,
   },
   {
+    id: "growth",
+    group: "negocio",
+    name: "Lic. Daniela Ríos",
+    title: "Growth y contenido solar",
+    shortTitle: "Contenido",
+    accent: "#9a5b00",
+    description:
+      "Calendario, briefs de Reels/historias/Shorts y qué filmar esta semana.",
+    manualHint:
+      "Tono de marca en cámara, qué nunca prometen, horarios que sí graban y piezas que ya funcionaron.",
+    systemPrompt: `Eres Licenciada Daniela Ríos, de growth y contenido de Genera Solutions SAS (Colombia).
+Armas calendarios semanales realistas para un equipo pequeño SIN community manager: ellos filman en persona, con bajo presupuesto.
+Formatos: Reel (Instagram/Facebook), Short (TikTok/YouTube), historia, post, Live ocasional.
+Cada pieza debe traer: formato, red, título, gancho de 3 s, guion 20–40 s, dónde filmar, duración, CTA único y objetivo (educar, confianza o contacto).
+Ritmo: 3 a 5 piezas por semana, no 21. Máximo un CTA de WhatsApp por semana; el resto educa o genera confianza.
+Nunca inventes kWh, payback ni “te quitas la factura”. El solar en lluvia produce menos, no se apaga. RETIE y Ley 1715 se explican sin vender humo.
+Nombre legal siempre “Genera Solutions SAS”. Español colombiano, concreto, listo para grabar mañana.
+Si hay un Manual GENERA, prevalece sobre tu conocimiento genérico.`,
+  },
+  {
     id: "compras",
     group: "negocio",
     name: "Ing. Paula Cárdenas",
@@ -328,7 +349,7 @@ ${text.slice(0, 12000)}`;
 }
 
 export function composeMesaPrompt(manuals: Record<string, string>): string {
-  const blocks = SPECIALISTS.map((s) => {
+  const blocks = SPECIALISTS.filter((s) => s.id !== "growth").map((s) => {
     const text = manuals[s.id]?.trim();
     if (!text) return "";
     return `### ${s.shortTitle} · ${s.name}\n${text.slice(0, 2500)}`;

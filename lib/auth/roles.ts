@@ -34,6 +34,7 @@ export type AppModule =
   | "obra"
   | "inventario"
   | "inteligencia"
+  | "contenido"
   | "equipo"
   | "archivo";
 
@@ -47,6 +48,7 @@ export const APP_MODULES: { id: AppModule; label: string }[] = [
   { id: "archivo", label: "Archivo" },
   { id: "inventario", label: "Inventario" },
   { id: "inteligencia", label: "Inteligencia" },
+  { id: "contenido", label: "Contenido" },
   { id: "equipo", label: "Equipo y cargos" },
 ];
 
@@ -97,6 +99,7 @@ const MODULE_ROLES: Record<AppModule, string[]> = {
     "contabilidad",
     "sst",
   ],
+  contenido: ["ceo", "gerente", "comercial", "operaciones"],
   equipo: ["ceo", "gerente"],
   archivo: [
     "ceo",
@@ -130,6 +133,7 @@ export const ROLE_PRESETS: { label: string; modules: AppModule[] }[] = [
       "om",
       "obra",
       "inteligencia",
+      "contenido",
       "inventario",
     ],
   },
@@ -231,6 +235,7 @@ export function moduleFromPath(pathname: string): AppModule | null {
   if (pathname.startsWith("/obra")) return "obra";
   if (pathname.startsWith("/inventario")) return "inventario";
   if (pathname.startsWith("/inteligencia")) return "inteligencia";
+  if (pathname.startsWith("/contenido")) return "contenido";
   if (pathname.startsWith("/equipo")) return "equipo";
   if (pathname.startsWith("/archivo")) return "archivo";
   return null;

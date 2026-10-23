@@ -36,6 +36,15 @@ import {
   type PlantProfile,
 } from "@/lib/technical-reports";
 import { daysUntil, omStatus, plantLabel } from "@/lib/om";
+import {
+  CONTENT_STATUS_LABELS,
+  loadContent,
+  mergeContent,
+  mondayOf,
+  persistContentCloud,
+  piecesInWeek,
+  replaceContent,
+} from "@/lib/content";
 
 const cop = new Intl.NumberFormat("es-CO", {
   style: "currency",
@@ -65,6 +74,9 @@ export default function InicioPage() {
   const [leads, setLeads] = useState<CommercialLead[]>([]);
   const [jobs, setJobs] = useState<ObraJob[]>([]);
   const [plants, setPlants] = useState<PlantProfile[]>([]);
+  const [weekPieces, setWeekPieces] = useState(() =>
+    piecesInWeek(loadContent(), mondayOf())
+  );
   const [me, setMe] = useState<{
     role: Role;
     modules?: string[];
@@ -104,6 +116,21 @@ export default function InicioPage() {
         }
       })
       .catch(() => undefined);
+    void fetch("/api/contenido", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.pieces) {
+          setWeekPieces(piecesInWeek(loadContent(), mondayOf()));
+          return;
+        }
+        const merged = mergeContent(loadContent(), data.pieces);
+        replaceContent(merged);
+        persistContentCloud(merged);
+        setWeekPieces(piecesInWeek(merged, mondayOf()));
+      })
+      .catch(() =>
+        setWeekPieces(piecesInWeek(loadContent(), mondayOf()))
+      );
   }, []);
 
   function can(mod: AppModule) {
@@ -338,6 +365,44 @@ export default function InicioPage() {
             )}
           </section>
         ) : null}
+
+        {can("contenido") ? (
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
+            <div className="flex items-center justify-between gap-2 border-b border-[#eee8dc] px-4 py-3">
+              <h2 className="font-semibold">Contenido · esta semana</h2>
+              <Link
+                href="/contenido"
+                className="text-xs font-semibold text-[#1f6b45] underline"
+              >
+                Abrir
+              </Link>
+            </div>
+            {weekPieces.length === 0 ? (
+              <p className="px-4 py-5 text-sm text-[#6d7c74]">
+                Aún no hay briefs.
+                <span className="os-page-intro mt-1 block text-xs">
+                  En Contenido, pida la semana a Daniela.
+                </span>
+              </p>
+            ) : (
+              <ul className="divide-y divide-[#eee8dc]">
+                {weekPieces.slice(0, 8).map((p) => (
+                  <li key={p.id}>
+                    <Link
+                      href="/contenido"
+                      className="block px-4 py-3 hover:bg-[#fbfaf6]"
+                    >
+                      <p className="font-semibold">{p.title || "Sin título"}</p>
+                      <p className="text-xs text-[#6d7c74]">
+                        {p.date} · {CONTENT_STATUS_LABELS[p.status]}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : null}
       </div>
 
       <div className="mt-6 flex flex-wrap gap-2">
@@ -363,6 +428,14 @@ export default function InicioPage() {
             className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
           >
             Cotizar equipos
+          </Link>
+        ) : null}
+        {can("contenido") ? (
+          <Link
+            href="/contenido"
+            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
+          >
+            Contenido de la semana
           </Link>
         ) : null}
         {can("visita") ? (

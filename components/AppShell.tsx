@@ -31,6 +31,7 @@ const NAV: {
   { href: "/archivo", label: "Archivo", hint: "Guardados", module: "archivo" },
   { href: "/inventario", label: "Inventario", hint: "Catálogo & TRM", module: "inventario" },
   { href: "/inteligencia", label: "Inteligencia", hint: "Especialistas AI", module: "inteligencia" },
+  { href: "/contenido", label: "Contenido", hint: "Calendario y briefs", module: "contenido" },
   { href: "/equipo", label: "Equipo", hint: "Usuarios y cargos", module: "equipo" },
 ];
 
