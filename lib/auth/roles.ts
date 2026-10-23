@@ -99,7 +99,7 @@ const MODULE_ROLES: Record<AppModule, string[]> = {
     "contabilidad",
     "sst",
   ],
-  contenido: ["ceo", "gerente", "comercial", "operaciones"],
+  contenido: ["ceo", "gerente", "comercial", "operaciones", "ingenieria"],
   equipo: ["ceo", "gerente"],
   archivo: [
     "ceo",
