@@ -437,33 +437,82 @@ const WEEKDAY_PLAN: {
   { offset: 4, format: "reel", network: "instagram" },
 ];
 
+export function localYmd(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function parseLocalYmd(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
+}
+
 export function mondayOf(isoDate?: string): string {
-  const d = isoDate
-    ? new Date(`${isoDate.slice(0, 10)}T12:00:00`)
-    : new Date();
+  const d = isoDate ? parseLocalYmd(isoDate) : new Date();
+  d.setHours(12, 0, 0, 0);
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
+  return localYmd(d);
 }
 
 export function addDays(iso: string, days: number): string {
-  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  const d = parseLocalYmd(iso);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return localYmd(d);
 }
 
 export function weekDates(weekStart: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 }
 
-export function weekdayLabel(iso: string) {
-  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
-  return d.toLocaleDateString("es-CO", { weekday: "short", day: "numeric" });
+export function startOfMonth(iso: string): string {
+  const d = parseLocalYmd(iso);
+  d.setDate(1);
+  return localYmd(d);
 }
 
+export function addMonths(iso: string, months: number): string {
+  const d = parseLocalYmd(iso);
+  d.setMonth(d.getMonth() + months);
+  return localYmd(d);
+}
+
+export function monthLabel(iso: string): string {
+  const text = parseLocalYmd(iso).toLocaleDateString("es-CO", {
+    month: "long",
+    year: "numeric",
+  });
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** 6 semanas (42 días) empezando el lunes de la semana del día 1. */
+export function monthGrid(iso: string): string[] {
+  const start = mondayOf(startOfMonth(iso));
+  return Array.from({ length: 42 }, (_, i) => addDays(start, i));
+}
+
+export function weekdayLabel(iso: string) {
+  return parseLocalYmd(iso).toLocaleDateString("es-CO", {
+    weekday: "short",
+    day: "numeric",
+  });
+}
+
+export function weekdayLong(iso: string) {
+  return parseLocalYmd(iso).toLocaleDateString("es-CO", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
+export const WEEKDAY_NAMES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
 export function emptyPiece(partial?: Partial<ContentPiece>): ContentPiece {
-  const date = partial?.date || new Date().toISOString().slice(0, 10);
+  const date = partial?.date || localYmd();
   return {
     id: crypto.randomUUID(),
     date,

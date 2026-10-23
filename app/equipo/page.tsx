@@ -51,13 +51,10 @@ function writeTeamCache(users: TeamUser[]) {
   }
 }
 
-function mergeTeam(a: TeamUser[], b: TeamUser[]): TeamUser[] {
-  const byUser = new Map<string, TeamUser>();
-  for (const user of [...a, ...b]) {
-    if (!user?.username) continue;
-    byUser.set(user.username.toLowerCase(), user);
-  }
-  return [...byUser.values()];
+function applyUser(list: TeamUser[], user: TeamUser): TeamUser[] {
+  const next = list.map((u) => (u.id === user.id ? user : u));
+  if (!next.some((u) => u.id === user.id)) next.push(user);
+  return next;
 }
 
 export default function EquipoPage() {
@@ -88,31 +85,23 @@ export default function EquipoPage() {
   }, [roles]);
 
   async function load() {
-    const res = await fetch("/api/auth/users");
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "No se pudo cargar el equipo");
-      return;
-    }
-    const cached = readTeamCache();
-    const fromApi = (data.users as TeamUser[]) ?? [];
-    const merged = mergeTeam(fromApi, cached);
-    setUsers(merged);
-    writeTeamCache(merged);
-    if (data.roles) setRoles(data.roles);
-    if (cached.length > fromApi.length) {
-      const sync = await fetch("/api/auth/users/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ users: cached }),
-      });
-      if (sync.ok) {
-        const synced = await sync.json();
-        if (Array.isArray(synced.users)) {
-          setUsers(synced.users);
-          writeTeamCache(synced.users);
-        }
+    try {
+      const res = await fetch("/api/auth/users", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        const cached = readTeamCache();
+        if (cached.length) setUsers(cached);
+        setError(data.error || "No se pudo cargar el equipo");
+        return;
       }
+      const fromApi = (data.users as TeamUser[]) ?? [];
+      setUsers(fromApi);
+      writeTeamCache(fromApi);
+      if (data.roles) setRoles(data.roles);
+    } catch {
+      const cached = readTeamCache();
+      if (cached.length) setUsers(cached);
+      setError("No se pudo cargar el equipo");
     }
   }
 
@@ -141,7 +130,7 @@ export default function EquipoPage() {
       return;
     }
     if (data.user) {
-      const next = mergeTeam(users, [data.user]);
+      const next = applyUser(users, data.user);
       setUsers(next);
       writeTeamCache(next);
     }
@@ -152,24 +141,35 @@ export default function EquipoPage() {
 
   async function patch(id: string, body: Record<string, unknown>) {
     setError("");
+    setOk("");
     const res = await fetch(`/api/auth/users/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setError(data.error || "No se pudo actualizar");
       return;
     }
-    void load();
+    if (data.user) {
+      const next = applyUser(users, data.user);
+      setUsers(next);
+      writeTeamCache(next);
+      setOk(
+        data.user.active
+          ? `${data.user.name} quedó activo.`
+          : `${data.user.name} quedó inactivo. Ya no puede entrar.`
+      );
+    }
   }
 
   async function remove(id: string) {
-    if (!confirm("¿Eliminar este usuario?")) return;
+    if (!confirm("¿Eliminar este usuario? No volverá a aparecer al recargar.")) return;
     setError("");
+    setOk("");
     const res = await fetch(`/api/auth/users/${id}`, { method: "DELETE" });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setError(data.error || "No se pudo eliminar");
       return;
@@ -177,6 +177,7 @@ export default function EquipoPage() {
     const next = users.filter((u) => u.id !== id);
     setUsers(next);
     writeTeamCache(next);
+    setOk("Usuario eliminado.");
   }
 
   function toggleModule(mod: AppModule) {
@@ -618,7 +619,7 @@ export default function EquipoPage() {
                     <button
                       type="button"
                       className="text-xs font-semibold underline"
-                      onClick={() => patch(u.id, { active: !u.active })}
+                      onClick={() => void patch(u.id, { active: !u.active })}
                     >
                       {u.active ? "Desactivar" : "Activar"}
                     </button>

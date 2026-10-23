@@ -19,6 +19,7 @@ export const DEFAULT_CEO_USERNAME = "camilo";
 export const DEFAULT_CEO_PASSWORD = "GeneraCEO2026";
 
 const USERS_KEY = "genera:users";
+const DELETED_USERS_KEY = "genera:users:deleted";
 
 export interface StoredUser {
   id: string;
@@ -157,22 +158,47 @@ function mergeUserLists(
   return [...ceo, ...rest];
 }
 
+function dropTombstones(users: StoredUser[], deleted: string[]): StoredUser[] {
+  if (!deleted.length) return users;
+  const banned = new Set(deleted.map((x) => x.toLowerCase()));
+  return users.filter(
+    (u) => !banned.has(u.id.toLowerCase()) && !banned.has(u.username.toLowerCase())
+  );
+}
+
+async function readDeletedIds(): Promise<string[]> {
+  const raw = (await persistGet<string[]>(DELETED_USERS_KEY)) ?? [];
+  return Array.isArray(raw) ? raw.filter(Boolean) : [];
+}
+
+async function rememberDeleted(id: string, username: string): Promise<void> {
+  const current = await readDeletedIds();
+  const next = [...new Set([...current, id, username.toLowerCase()])];
+  await persistSet(DELETED_USERS_KEY, next);
+}
+
 async function readUsers(): Promise<StoredUser[]> {
   const stored = await persistGet<StoredUser[]>(USERS_KEY);
+  const deleted = await readDeletedIds();
   const fromCookie = await readUsersDirectoryCookie();
+  const persistCanonical = Boolean(stored && stored.length);
+
+  // Persist is the directory. Cookie/memory must not resurrect deleted people.
   const merged = ensureCeoAccount(
-    mergeUserLists(globalThis.__generaUserCache, stored, fromCookie)
+    dropTombstones(
+      persistCanonical
+        ? mergeUserLists(stored)
+        : mergeUserLists(globalThis.__generaUserCache, stored, fromCookie),
+      deleted
+    )
   );
+
   if (merged.length) {
     globalThis.__generaUserCache = merged;
     const storedMissingPassword = Boolean(
       stored?.some((u) => u.username === DEFAULT_CEO_USERNAME && !hasUsablePassword(u))
     );
-    if (
-      !stored ||
-      stored.length < merged.length ||
-      storedMissingPassword
-    ) {
+    if (!persistCanonical || storedMissingPassword) {
       await persistSet(USERS_KEY, merged).catch(() => undefined);
     }
     await writeUsersDirectoryCookie(merged);
@@ -180,8 +206,8 @@ async function readUsers(): Promise<StoredUser[]> {
   }
   const legacy = migrateLegacyFile();
   if (legacy) {
-    await writeUsers(ensureCeoAccount(legacy));
-    return ensureCeoAccount(legacy);
+    await writeUsers(ensureCeoAccount(dropTombstones(legacy, deleted)));
+    return ensureCeoAccount(dropTombstones(legacy, deleted));
   }
   const ceo = seedCeo();
   await writeUsers([ceo]);
@@ -318,6 +344,7 @@ export async function deleteUser(id: string): Promise<void> {
   if (target.role === "ceo") {
     throw new Error("El usuario CEO no se elimina. Desactívelo solo si hay otro CEO.");
   }
+  await rememberDeleted(target.id, target.username);
   await writeUsers(users.filter((u) => u.id !== id));
 }
 
@@ -362,7 +389,18 @@ export async function syncDirectoryUsers(
   incoming: DirectoryUser[]
 ): Promise<PublicUser[]> {
   const current = await readUsers();
-  const merged = mergeUserLists(current, incoming);
+  const deleted = await readDeletedIds();
+  const banned = new Set(deleted.map((x) => x.toLowerCase()));
+  const fresh = incoming.filter(
+    (u) =>
+      u?.username &&
+      !banned.has(u.id?.toLowerCase?.() || "") &&
+      !banned.has(u.username.toLowerCase())
+  );
+  const known = new Set(current.map((u) => u.username));
+  // Solo recupera usuarios que el servidor aún no tiene. No reescribe active ni revive borrados.
+  const additions = fresh.filter((u) => !known.has(u.username.trim().toLowerCase()));
+  const merged = mergeUserLists(current, additions);
   await writeUsers(merged);
   return merged.map(toPublicUser);
 }

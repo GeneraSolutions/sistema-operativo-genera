@@ -11,19 +11,26 @@ import {
   CONTENT_OBJECTIVE_LABELS,
   CONTENT_STATUS_LABELS,
   CONTENT_STATUS_TONE,
+  WEEKDAY_NAMES,
   addDays,
+  addMonths,
   deleteContent,
   emptyPiece,
   loadContent,
+  localYmd,
   mergeContent,
   mondayOf,
+  monthGrid,
+  monthLabel,
   persistContentCloud,
   pieceFromIdea,
   piecesInWeek,
   replaceContent,
+  startOfMonth,
   upsertContent,
   weekDates,
   weekdayLabel,
+  weekdayLong,
   type ContentFormat,
   type ContentNetwork,
   type ContentObjective,
@@ -35,8 +42,57 @@ import { loadSpecialistManuals } from "@/lib/specialist-manuals";
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
 
+const VIEW_KEY = "genera.contenido.vista";
+type CalendarView = "dia" | "semana" | "mes";
+
+function readView(): CalendarView {
+  if (typeof window === "undefined") return "semana";
+  const raw = window.localStorage.getItem(VIEW_KEY);
+  if (raw === "dia" || raw === "semana" || raw === "mes") return raw;
+  return "semana";
+}
+
+function PieceCard({
+  piece,
+  selected,
+  compact,
+  onSelect,
+}: {
+  piece: ContentPiece;
+  selected: boolean;
+  compact?: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full rounded-xl border px-2.5 py-2 text-left text-sm ${
+        selected
+          ? "border-[#1f6b45] bg-[#e8f6ee]"
+          : "border-[#eee8dc] bg-[#fbfaf6]"
+      }`}
+    >
+      <span
+        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${CONTENT_STATUS_TONE[piece.status]}`}
+      >
+        {CONTENT_STATUS_LABELS[piece.status]}
+      </span>
+      <p className={`mt-1 font-semibold leading-5 ${compact ? "line-clamp-2" : ""}`}>
+        {piece.title || "Sin título"}
+      </p>
+      {compact ? null : (
+        <p className="text-[11px] text-[#6d7c74]">
+          {CONTENT_FORMAT_LABELS[piece.format]} · {CONTENT_NETWORK_LABELS[piece.network]}
+        </p>
+      )}
+    </button>
+  );
+}
+
 export default function ContenidoPage() {
-  const [weekStart, setWeekStart] = useState(() => mondayOf());
+  const [cursor, setCursor] = useState(() => localYmd());
+  const [view, setView] = useState<CalendarView>("semana");
   const [pieces, setPieces] = useState<ContentPiece[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,13 +102,36 @@ export default function ContenidoPage() {
   const [briefOpen, setBriefOpen] = useState(true);
   const [bankOpen, setBankOpen] = useState(false);
 
+  const today = localYmd();
+  const weekStart = mondayOf(cursor);
+  const monthStart = startOfMonth(cursor);
   const week = useMemo(
     () => piecesInWeek(pieces, weekStart),
     [pieces, weekStart]
   );
-  const selected = week.find((p) => p.id === selectedId) ?? null;
+  const monthPieces = useMemo(
+    () => pieces.filter((p) => p.date.startsWith(monthStart.slice(0, 7))),
+    [pieces, monthStart]
+  );
+  const dayPieces = useMemo(
+    () => pieces.filter((p) => p.date === cursor).sort((a, b) => a.title.localeCompare(b.title, "es")),
+    [pieces, cursor]
+  );
+  const selected = pieces.find((p) => p.id === selectedId) ?? null;
   const days = weekDates(weekStart);
-  const pending = week.filter((p) => p.status !== "publicado").length;
+  const grid = monthGrid(cursor);
+  const visible =
+    view === "dia" ? dayPieces : view === "semana" ? week : monthPieces;
+  const pending = visible.filter((p) => p.status !== "publicado").length;
+
+  function setViewPersist(next: CalendarView) {
+    setView(next);
+    try {
+      window.localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      /* quota */
+    }
+  }
 
   function commit(next: ContentPiece[]) {
     const saved = replaceContent(next);
@@ -61,6 +140,7 @@ export default function ContenidoPage() {
   }
 
   useEffect(() => {
+    setView(readView());
     const local = loadContent();
     setPieces(local);
     void fetch("/api/contenido", { cache: "no-store" })
@@ -120,7 +200,10 @@ export default function ContenidoPage() {
           : "Daniela armó la semana. Aprueben y graben."
       );
       const first = incoming[0];
-      if (first) setSelectedId(first.id);
+      if (first) {
+        setSelectedId(first.id);
+        setCursor(first.date);
+      }
     } catch {
       setFlash("No hay conexión con Daniela.");
     } finally {
@@ -140,12 +223,16 @@ export default function ContenidoPage() {
     const idea = CONTENT_BANK.find((i) => i.id === id);
     if (!idea) return;
     const occupied = new Set(week.map((p) => p.date));
-    const date = days.find((d) => !occupied.has(d)) || weekStart;
+    const date =
+      view === "dia"
+        ? cursor
+        : days.find((d) => !occupied.has(d)) || cursor;
     const piece = pieceFromIdea(idea, date, "instagram");
     const next = upsertContent(piece);
     setPieces(next);
     persistContentCloud(next);
     setSelectedId(piece.id);
+    setCursor(date);
   }
 
   function addEmpty(date: string) {
@@ -154,6 +241,7 @@ export default function ContenidoPage() {
     setPieces(next);
     persistContentCloud(next);
     setSelectedId(piece.id);
+    setCursor(date);
   }
 
   function remove(id: string) {
@@ -163,6 +251,29 @@ export default function ContenidoPage() {
     if (selectedId === id) setSelectedId("");
   }
 
+  function goToday() {
+    setCursor(today);
+  }
+
+  function shift() {
+    if (view === "dia") setCursor(addDays(cursor, -1));
+    else if (view === "semana") setCursor(addDays(weekStart, -7));
+    else setCursor(addMonths(monthStart, -1));
+  }
+
+  function shiftNext() {
+    if (view === "dia") setCursor(addDays(cursor, 1));
+    else if (view === "semana") setCursor(addDays(weekStart, 7));
+    else setCursor(addMonths(monthStart, 1));
+  }
+
+  const heading =
+    view === "dia"
+      ? weekdayLong(cursor)
+      : view === "semana"
+        ? `Semana del ${weekdayLabel(weekStart)}`
+        : monthLabel(cursor);
+
   return (
     <AppShell
       title="Contenido"
@@ -171,7 +282,7 @@ export default function ContenidoPage() {
       <p className="os-page-intro mb-4 max-w-3xl text-sm leading-6 text-[#4d5c55]">
         Ustedes filman. Daniela propone la semana. El equipo ve el mismo
         tablero: idea, aprobado, grabado, publicado. Un CTA de WhatsApp por
-        semana.{" "}
+        semana. Elija ver un día, la semana o el mes.{" "}
         <Link href="/inteligencia?e=growth" className="font-medium text-[#1f6b45] underline">
           Preguntas sueltas: Inteligencia → Lic. Daniela Ríos
         </Link>
@@ -179,32 +290,52 @@ export default function ContenidoPage() {
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex rounded-xl border border-[#d8d2c4] bg-white p-1">
+          {(
+            [
+              ["dia", "Día"],
+              ["semana", "Semana"],
+              ["mes", "Mes"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                view === id
+                  ? "bg-[#0f2a1f] text-white"
+                  : "text-[#4d5c55] hover:bg-[#f7f4ee]"
+              }`}
+              onClick={() => setViewPersist(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-2 text-sm"
-          onClick={() => setWeekStart(addDays(weekStart, -7))}
+          onClick={shift}
         >
-          Semana anterior
+          Anterior
         </button>
-        <p className="px-2 text-sm font-semibold">
-          Lunes {weekStart}
-        </p>
+        <p className="px-2 text-sm font-semibold capitalize">{heading}</p>
         <button
           type="button"
           className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-2 text-sm"
-          onClick={() => setWeekStart(addDays(weekStart, 7))}
+          onClick={shiftNext}
         >
-          Semana siguiente
+          Siguiente
         </button>
         <button
           type="button"
           className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-2 text-sm"
-          onClick={() => setWeekStart(mondayOf())}
+          onClick={goToday}
         >
-          Esta semana
+          Hoy
         </button>
         <span className="text-xs text-[#6d7c74]">
-          {week.length} piezas · {pending} pendientes
+          {visible.length} piezas · {pending} pendientes
         </span>
       </div>
 
@@ -242,58 +373,169 @@ export default function ContenidoPage() {
       {flash ? <p className="mb-3 text-sm text-[#1f6b45]">{flash}</p> : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {days.map((date) => {
-            const items = week.filter((p) => p.date === date);
-            return (
-              <section
-                key={date}
-                className="rounded-2xl border border-[#ddd6c8] bg-white p-3"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold tracking-wide text-[#6d7c74] uppercase">
-                    {weekdayLabel(date)}
-                  </p>
-                  <button
-                    type="button"
-                    className="text-xs text-[#1f6b45] underline"
-                    onClick={() => addEmpty(date)}
+        <div>
+          {view === "dia" ? (
+            <section className="rounded-2xl border border-[#ddd6c8] bg-white p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold tracking-wide text-[#6d7c74] uppercase">
+                  {weekdayLong(cursor)}
+                  {cursor === today ? " · hoy" : ""}
+                </p>
+                <button
+                  type="button"
+                  className="text-xs text-[#1f6b45] underline"
+                  onClick={() => addEmpty(cursor)}
+                >
+                  + pieza
+                </button>
+              </div>
+              {dayPieces.length === 0 ? (
+                <p className="mt-4 text-sm text-[#8a7f70]">
+                  Libre. Descanso o grabar tanda.
+                </p>
+              ) : (
+                <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {dayPieces.map((p) => (
+                    <li key={p.id}>
+                      <PieceCard
+                        piece={p}
+                        selected={selectedId === p.id}
+                        onSelect={() => setSelectedId(p.id)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
+
+          {view === "semana" ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+              {days.map((date) => {
+                const items = week.filter((p) => p.date === date);
+                return (
+                  <section
+                    key={date}
+                    className={`rounded-2xl border bg-white p-3 ${
+                      date === today
+                        ? "border-[#1f6b45]"
+                        : "border-[#ddd6c8]"
+                    }`}
                   >
-                    + pieza
-                  </button>
-                </div>
-                {items.length === 0 ? (
-                  <p className="mt-3 text-xs text-[#8a7f70]">Libre. Descanso o grabar tanda.</p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {items.map((p) => (
-                      <li key={p.id}>
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="text-left text-xs font-semibold tracking-wide text-[#6d7c74] uppercase"
+                        onClick={() => {
+                          setCursor(date);
+                          setViewPersist("dia");
+                        }}
+                      >
+                        {weekdayLabel(date)}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs text-[#1f6b45] underline"
+                        onClick={() => addEmpty(date)}
+                      >
+                        + pieza
+                      </button>
+                    </div>
+                    {items.length === 0 ? (
+                      <p className="mt-3 text-xs text-[#8a7f70]">Libre</p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {items.map((p) => (
+                          <li key={p.id}>
+                            <PieceCard
+                              piece={p}
+                              selected={selectedId === p.id}
+                              compact
+                              onSelect={() => {
+                                setSelectedId(p.id);
+                                setCursor(date);
+                              }}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {view === "mes" ? (
+            <div className="overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white p-3">
+              <div className="grid min-w-[640px] grid-cols-7 gap-px bg-[#eee8dc]">
+                {WEEKDAY_NAMES.map((name) => (
+                  <p
+                    key={name}
+                    className="bg-[#f7f4ee] px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]"
+                  >
+                    {name}
+                  </p>
+                ))}
+                {grid.map((date) => {
+                  const items = pieces.filter((p) => p.date === date);
+                  const inMonth = date.startsWith(monthStart.slice(0, 7));
+                  return (
+                    <div
+                      key={date}
+                      className={`min-h-[7.5rem] bg-white p-1.5 text-left align-top ${
+                        date === cursor ? "ring-2 ring-inset ring-[#1f6b45]" : ""
+                      } ${date === today ? "bg-[#e8f6ee]" : ""} ${
+                        inMonth ? "" : "bg-[#fbfaf6] text-[#b0a89c]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
                         <button
                           type="button"
-                          onClick={() => setSelectedId(p.id)}
-                          className={`w-full rounded-xl border px-2.5 py-2 text-left text-sm ${
-                            selectedId === p.id
-                              ? "border-[#1f6b45] bg-[#e8f6ee]"
-                              : "border-[#eee8dc] bg-[#fbfaf6]"
-                          }`}
+                          className="text-xs font-semibold"
+                          onClick={() => setCursor(date)}
                         >
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${CONTENT_STATUS_TONE[p.status]}`}
-                          >
-                            {CONTENT_STATUS_LABELS[p.status]}
-                          </span>
-                          <p className="mt-1 font-semibold leading-5">{p.title || "Sin título"}</p>
-                          <p className="text-[11px] text-[#6d7c74]">
-                            {CONTENT_FORMAT_LABELS[p.format]} · {CONTENT_NETWORK_LABELS[p.network]}
-                          </p>
+                          {date.slice(8)}
                         </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            );
-          })}
+                        <button
+                          type="button"
+                          className="text-[10px] text-[#1f6b45] underline"
+                          onClick={() => addEmpty(date)}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <ul className="mt-1 space-y-1">
+                        {items.slice(0, 3).map((p) => (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              className={`block w-full truncate rounded px-1 py-0.5 text-left text-[10px] leading-4 ${CONTENT_STATUS_TONE[p.status]}`}
+                              onClick={() => {
+                                setSelectedId(p.id);
+                                setCursor(date);
+                              }}
+                            >
+                              {p.title || "Sin título"}
+                            </button>
+                          </li>
+                        ))}
+                        {items.length > 3 ? (
+                          <li className="text-[10px] text-[#6d7c74]">
+                            +{items.length - 3}
+                          </li>
+                        ) : null}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-[#6d7c74]">
+                Pulse un día para enfocarlo. El + suma una pieza. Pulse el título
+                para abrir el brief.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div>
@@ -303,12 +545,28 @@ export default function ContenidoPage() {
               open={briefOpen}
               onToggle={() => setBriefOpen((v) => !v)}
             >
+              <p className="mb-2 text-xs text-[#6d7c74]">
+                {weekdayLong(selected.date)}
+              </p>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium">Título</span>
                 <input
                   className={field}
                   value={selected.title}
                   onChange={(e) => patchSelected({ title: e.target.value })}
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                <span className="mb-1 block font-medium">Fecha</span>
+                <input
+                  className={field}
+                  type="date"
+                  value={selected.date}
+                  onChange={(e) => {
+                    const date = e.target.value;
+                    patchSelected({ date });
+                    if (date) setCursor(date);
+                  }}
                 />
               </label>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -478,7 +736,7 @@ export default function ContenidoPage() {
         >
           <p className="os-page-intro mb-3 text-sm">
             Objeciones y momentos reales de venta. Daniela rota esto. Si ya
-            están en visita, sumen la pieza al día libre.
+            están en visita, sumen la pieza al día enfocado.
           </p>
           <ul className="grid gap-2 sm:grid-cols-2">
             {CONTENT_BANK.map((idea) => (

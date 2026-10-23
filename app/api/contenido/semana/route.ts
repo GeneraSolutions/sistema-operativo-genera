@@ -7,6 +7,7 @@ import { canAccessModule } from "@/lib/auth/roles";
 import {
   CONTENT_BANK,
   CONTENT_PLAYBOOK,
+  addDays,
   emptyPiece,
   mondayOf,
   seedWeekFromBank,
@@ -122,7 +123,7 @@ Responde SOLO JSON:
           status: "idea",
         })
       )
-      .filter((p) => p.date >= weekStart && p.date <= addDaysSafe(weekStart, 6));
+      .filter((p) => p.date >= weekStart && p.date <= addDays(weekStart, 6));
 
     const finalPieces = pieces.length ? pieces : fallback;
     await appendIntelligenceLog(session, {
@@ -144,10 +145,4 @@ Responde SOLO JSON:
       { status: 500 }
     );
   }
-}
-
-function addDaysSafe(iso: string, days: number) {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
 }
