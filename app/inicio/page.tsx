@@ -39,11 +39,13 @@ import { daysUntil, omStatus, plantLabel } from "@/lib/om";
 import {
   CONTENT_STATUS_LABELS,
   loadContent,
+  loadDeletedContentIds,
   mergeContent,
   mondayOf,
   persistContentCloud,
   piecesInWeek,
   replaceContent,
+  saveDeletedContentIds,
 } from "@/lib/content";
 
 const cop = new Intl.NumberFormat("es-CO", {
@@ -123,7 +125,11 @@ export default function InicioPage() {
           setWeekPieces(piecesInWeek(loadContent(), mondayOf()));
           return;
         }
-        const merged = mergeContent(loadContent(), data.pieces);
+        const deleted = saveDeletedContentIds([
+          ...loadDeletedContentIds(),
+          ...(data.deletedIds ?? []),
+        ]);
+        const merged = mergeContent(loadContent(), data.pieces, deleted);
         replaceContent(merged);
         persistContentCloud(merged);
         setWeekPieces(piecesInWeek(merged, mondayOf()));

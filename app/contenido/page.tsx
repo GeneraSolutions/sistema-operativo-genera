@@ -17,8 +17,10 @@ import {
   deleteContent,
   emptyPiece,
   loadContent,
+  loadDeletedContentIds,
   localYmd,
   mergeContent,
+  saveDeletedContentIds,
   mondayOf,
   monthGrid,
   monthLabel,
@@ -147,7 +149,11 @@ export default function ContenidoPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data?.pieces) return;
-        const merged = mergeContent(loadContent(), data.pieces);
+        const deleted = saveDeletedContentIds([
+          ...loadDeletedContentIds(),
+          ...(data.deletedIds ?? []),
+        ]);
+        const merged = mergeContent(loadContent(), data.pieces, deleted);
         replaceContent(merged);
         setPieces(merged);
         persistContentCloud(merged);

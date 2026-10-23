@@ -74,6 +74,7 @@ export const CONTENT_STATUS_TONE: Record<ContentStatus, string> = {
 };
 
 const KEY = "genera.contenido.v1";
+const DELETED_KEY = "genera.contenido.deleted.v1";
 
 export interface ContentIdea {
   id: string;
@@ -643,18 +644,43 @@ export function upsertContent(piece: ContentPiece): ContentPiece[] {
   return replaceContent(next);
 }
 
+export function loadDeletedContentIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DELETED_KEY) || "[]") as string[];
+    return Array.isArray(parsed) ? parsed.filter(Boolean).slice(0, 500) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDeletedContentIds(ids: string[]): string[] {
+  const next = [...new Set(ids.filter(Boolean))].slice(-500);
+  if (typeof window !== "undefined") {
+    localStorage.setItem(DELETED_KEY, JSON.stringify(next));
+  }
+  return next;
+}
+
+export function rememberDeletedContent(id: string): string[] {
+  return saveDeletedContentIds([...loadDeletedContentIds(), id]);
+}
+
 export function deleteContent(id: string): ContentPiece[] {
+  rememberDeletedContent(id);
   return replaceContent(loadContent().filter((p) => p.id !== id));
 }
 
 export function mergeContent(
   local: ContentPiece[],
-  remote: ContentPiece[]
+  remote: ContentPiece[],
+  deletedIds: string[] = []
 ): ContentPiece[] {
+  const banned = new Set(deletedIds.filter(Boolean));
   const byId = new Map<string, ContentPiece>();
   for (const piece of [...remote, ...local]) {
     const clean = sanitizePiece(piece);
-    if (!clean) continue;
+    if (!clean || banned.has(clean.id)) continue;
     const prev = byId.get(clean.id);
     const prevT = Date.parse(prev?.updatedAt || "") || 0;
     const nextT = Date.parse(clean.updatedAt || "") || 0;
@@ -674,6 +700,9 @@ export function persistContentCloud(pieces: ContentPiece[]) {
   void fetch("/api/contenido", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pieces }),
+    body: JSON.stringify({
+      pieces,
+      deletedIds: loadDeletedContentIds(),
+    }),
   }).catch(() => undefined);
 }

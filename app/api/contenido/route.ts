@@ -13,7 +13,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const KEY = "genera:contenido";
+const DELETED_KEY = "genera:contenido:deleted";
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
+
+function asIdList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map((id) => String(id || "").trim()).filter(Boolean))].slice(
+    -500
+  );
+}
 
 async function requireContenido() {
   const session = await getSessionFromCookies();
@@ -30,18 +38,27 @@ async function requireContenido() {
 export async function GET() {
   const gate = await requireContenido();
   if (gate.error) return gate.error;
+  const deletedIds = asIdList(await persistGet<string[]>(DELETED_KEY));
   const stored = (await persistGet<ContentPiece[]>(KEY)) ?? [];
-  const pieces = stored.map((p) => sanitizePiece(p)).filter(Boolean) as ContentPiece[];
-  return NextResponse.json({ pieces }, { headers: NO_STORE });
+  const pieces = mergeContent([], stored, deletedIds);
+  return NextResponse.json({ pieces, deletedIds }, { headers: NO_STORE });
 }
 
 export async function POST(req: NextRequest) {
   const gate = await requireContenido();
   if (gate.error) return gate.error;
-  const body = (await req.json().catch(() => ({}))) as { pieces?: ContentPiece[] };
+  const body = (await req.json().catch(() => ({}))) as {
+    pieces?: ContentPiece[];
+    deletedIds?: string[];
+  };
   const incoming = Array.isArray(body.pieces) ? body.pieces : [];
   const stored = (await persistGet<ContentPiece[]>(KEY)) ?? [];
-  const merged = mergeContent(incoming, stored);
+  const deletedIds = asIdList([
+    ...((await persistGet<string[]>(DELETED_KEY)) ?? []),
+    ...(body.deletedIds ?? []),
+  ]);
+  const merged = mergeContent(incoming, stored, deletedIds);
   await persistSet(KEY, merged);
-  return NextResponse.json({ pieces: merged, ok: true }, { headers: NO_STORE });
+  await persistSet(DELETED_KEY, deletedIds);
+  return NextResponse.json({ pieces: merged, deletedIds, ok: true }, { headers: NO_STORE });
 }
