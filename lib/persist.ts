@@ -1,6 +1,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
-import { get as blobGetFile, put as blobPutFile } from "@vercel/blob";
+import {
+  hasSupabaseStore,
+  storageGetJson,
+  storageJsonPath,
+  storagePutJson,
+  storageRemove,
+} from "@/lib/supabase-storage";
 
 function kvUrl(): string | undefined {
   return process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -14,44 +20,17 @@ export function hasCloudKv(): boolean {
   return Boolean(kvUrl() && kvToken());
 }
 
+/** @deprecated Use hasSupabaseStore. Alias para no romper imports viejos. */
 export function hasBlobStore(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+  return hasSupabaseStore();
 }
 
 export function hasDurableStore(): boolean {
-  return hasCloudKv() || hasBlobStore();
+  return hasSupabaseStore() || hasCloudKv();
 }
 
-function blobPath(key: string) {
-  return `genera-kv/${key.replace(/[^a-zA-Z0-9._-]+/g, "-")}.json`;
-}
-
-function blobAuth() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  return token ? { token } : {};
-}
-
-async function blobGet<T>(key: string): Promise<T | null> {
-  const result = await blobGetFile(blobPath(key), {
-    access: "private",
-    useCache: false,
-    ...blobAuth(),
-  });
-  if (!result || result.statusCode !== 200 || !result.stream) return null;
-  const text = await new Response(result.stream).text();
-  if (!text) return null;
-  return JSON.parse(text) as T;
-}
-
-async function blobSet<T>(key: string, value: T): Promise<void> {
-  await blobPutFile(blobPath(key), JSON.stringify(value), {
-    access: "private",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-    cacheControlMaxAge: 0,
-    ...blobAuth(),
-  });
+function objectPath(key: string) {
+  return storageJsonPath("genera-kv", key);
 }
 
 /** En Vercel el código es de solo lectura; /tmp sí se puede escribir. */
@@ -102,6 +81,13 @@ async function kvCommand(cmd: unknown[]): Promise<unknown> {
 }
 
 export async function persistGet<T>(key: string): Promise<T | null> {
+  if (hasSupabaseStore()) {
+    try {
+      return await storageGetJson<T>(objectPath(key));
+    } catch {
+      return null;
+    }
+  }
   if (hasCloudKv()) {
     const result = await kvCommand(["GET", key]);
     if (result == null) return null;
@@ -114,27 +100,34 @@ export async function persistGet<T>(key: string): Promise<T | null> {
     }
     return result as T;
   }
-  if (hasBlobStore()) {
-    try {
-      return await blobGet<T>(key);
-    } catch {
-      return null;
-    }
-  }
   const map = readFileMap();
   return (map[key] as T) ?? null;
 }
 
 export async function persistSet<T>(key: string, value: T): Promise<void> {
+  if (hasSupabaseStore()) {
+    await storagePutJson(objectPath(key), value);
+    return;
+  }
   if (hasCloudKv()) {
     await kvCommand(["SET", key, JSON.stringify(value)]);
     return;
   }
-  if (hasBlobStore()) {
-    await blobSet(key, value);
+  const map = readFileMap();
+  map[key] = value;
+  writeFileMap(map);
+}
+
+export async function persistDelete(key: string): Promise<void> {
+  if (hasSupabaseStore()) {
+    await storageRemove(objectPath(key));
+    return;
+  }
+  if (hasCloudKv()) {
+    await kvCommand(["DEL", key]);
     return;
   }
   const map = readFileMap();
-  map[key] = value;
+  delete map[key];
   writeFileMap(map);
 }

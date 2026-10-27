@@ -1,15 +1,18 @@
-import { get as blobGet, put as blobPut } from "@vercel/blob";
 import { DEMO_EPC_PROPOSAL } from "@/lib/demo-epc-proposal";
-import { hasDurableStore } from "@/lib/persist";
+import { hasDurableStore, persistGet, persistSet } from "@/lib/persist";
+import {
+  hasSupabaseStore,
+  storageGetJson,
+  storagePutJson,
+} from "@/lib/supabase-storage";
 import type { EpcProposal } from "@/types/proposal";
 
-function blobAuth() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  return token ? { token } : {};
+function proposalPath(id: string) {
+  return `proposals/${id.replace(/[^a-zA-Z0-9._-]+/g, "-")}.json`;
 }
 
-function proposalPath(id: string) {
-  return `proposals/${id}.json`;
+function persistKey(id: string) {
+  return `genera:proposal:${id}`;
 }
 
 function compactProposal(proposal: EpcProposal, dropImage = false): EpcProposal {
@@ -21,47 +24,39 @@ function compactProposal(proposal: EpcProposal, dropImage = false): EpcProposal 
   };
 }
 
-async function readProposalBlob(id: string): Promise<EpcProposal | null> {
-  const result = await blobGet(proposalPath(id), {
-    access: "private",
-    useCache: false,
-    ...blobAuth(),
-  });
-  if (!result || result.statusCode !== 200 || !result.stream) return null;
-  const text = await new Response(result.stream).text();
-  if (!text) return null;
-  const parsed = JSON.parse(text) as EpcProposal;
-  return parsed?.id ? parsed : null;
+async function readProposalFile(id: string): Promise<EpcProposal | null> {
+  if (hasSupabaseStore()) {
+    const stored = await storageGetJson<EpcProposal>(proposalPath(id));
+    if (stored?.id) return stored;
+  }
+  const local = await persistGet<EpcProposal>(persistKey(id));
+  return local?.id ? local : null;
 }
 
-async function writeProposalBlob(proposal: EpcProposal): Promise<void> {
-  await blobPut(proposalPath(proposal.id), JSON.stringify(proposal), {
-    access: "private",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-    cacheControlMaxAge: 0,
-    ...blobAuth(),
-  });
+async function writeProposalFile(proposal: EpcProposal): Promise<void> {
+  await persistSet(persistKey(proposal.id), proposal);
+  if (hasSupabaseStore()) {
+    await storagePutJson(proposalPath(proposal.id), proposal);
+  }
 }
 
 export async function saveProposalServer(proposal: EpcProposal): Promise<void> {
   if (process.env.VERCEL && !hasDurableStore()) {
     throw new Error(
-      "El enlace comercial no se puede publicar: falta almacenamiento duradero en Vercel."
+      "El enlace comercial no se puede publicar: configure Supabase Storage (NEXT_PUBLIC_SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY)."
     );
   }
   let slim = compactProposal(proposal);
   try {
-    await writeProposalBlob(slim);
+    await writeProposalFile(slim);
   } catch {
     slim = compactProposal(proposal, true);
-    await writeProposalBlob(slim);
+    await writeProposalFile(slim);
   }
 
   let stored: EpcProposal | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
-    stored = await readProposalBlob(slim.id);
+    stored = await readProposalFile(slim.id);
     if (stored) break;
     await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
   }
@@ -75,7 +70,7 @@ export async function saveProposalServer(proposal: EpcProposal): Promise<void> {
 export async function getProposalServer(id: string): Promise<EpcProposal | null> {
   if (id === DEMO_EPC_PROPOSAL.id) return DEMO_EPC_PROPOSAL;
   try {
-    return await readProposalBlob(id);
+    return await readProposalFile(id);
   } catch {
     return null;
   }

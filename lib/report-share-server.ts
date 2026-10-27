@@ -1,24 +1,22 @@
-import { get as blobGet, put as blobPut } from "@vercel/blob";
 import {
-  hasBlobStore,
   hasDurableStore,
   persistGet,
   persistSet,
 } from "@/lib/persist";
+import {
+  hasSupabaseStore,
+  storageGetJson,
+  storagePutJson,
+} from "@/lib/supabase-storage";
 import type { TechnicalReport } from "@/lib/technical-reports";
 import { rulingPhotos, type PhotoRuling } from "@/lib/photo-ruling";
 
-function blobAuth() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  return token ? { token } : {};
-}
-
 function reportPath(id: string) {
-  return `informes/${id}.json`;
+  return `informes/${id.replace(/[^a-zA-Z0-9._-]+/g, "-")}.json`;
 }
 
 function rulingPath(id: string) {
-  return `dictamenes/${id}.json`;
+  return `dictamenes/${id.replace(/[^a-zA-Z0-9._-]+/g, "-")}.json`;
 }
 
 function compactReport(report: TechnicalReport, dropPhotos = false): TechnicalReport {
@@ -52,20 +50,10 @@ function persistKey(path: string) {
 async function readJson<T extends { id?: string }>(
   path: string
 ): Promise<T | null> {
-  if (hasBlobStore()) {
+  if (hasSupabaseStore()) {
     try {
-      const result = await blobGet(path, {
-        access: "private",
-        useCache: false,
-        ...blobAuth(),
-      });
-      if (result && result.statusCode === 200 && result.stream) {
-        const text = await new Response(result.stream).text();
-        if (text) {
-          const parsed = JSON.parse(text) as T;
-          if (parsed?.id) return parsed;
-        }
-      }
+      const parsed = await storageGetJson<T>(path);
+      if (parsed?.id) return parsed;
     } catch {
       /* try persist */
     }
@@ -76,15 +64,9 @@ async function readJson<T extends { id?: string }>(
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   await persistSet(persistKey(path), value);
-  if (!hasBlobStore()) return;
-  await blobPut(path, JSON.stringify(value), {
-    access: "private",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-    cacheControlMaxAge: 0,
-    ...blobAuth(),
-  });
+  if (hasSupabaseStore()) {
+    await storagePutJson(path, value);
+  }
 }
 
 async function confirmWrite<T extends { id?: string }>(
@@ -101,7 +83,7 @@ async function confirmWrite<T extends { id?: string }>(
 function requireStore() {
   if (process.env.VERCEL && !hasDurableStore()) {
     throw new Error(
-      "El enlace no se puede publicar: falta almacenamiento duradero en Vercel."
+      "El enlace no se puede publicar: configure Supabase Storage (NEXT_PUBLIC_SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY)."
     );
   }
 }
