@@ -2,8 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  CalendarRange,
+  ClipboardCheck,
+  FileBadge,
+  FileSpreadsheet,
+  HardHat,
+  MapPin,
+  Plus,
+  ShoppingCart,
+  Trash2,
+  Users,
+  Wrench,
+  X,
+  Zap,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { WorkFold } from "@/components/WorkFold";
+import { OsKpi, type OsTone } from "@/components/OsKpi";
 import {
   OBRA_STATUS_LABELS,
   OPEN_OBRA_KEY,
@@ -19,6 +34,8 @@ import {
   type ObraStatus,
   type TramiteStatus,
 } from "@/lib/obra";
+import { daysUntil } from "@/lib/om";
+import { takeNewFlag } from "@/lib/os-command";
 import { loadSavedQuotes, pinActiveQuote } from "@/lib/saved-quotes";
 import {
   OPEN_QUOTE_KEY,
@@ -30,13 +47,34 @@ import { emptyPlant, upsertPlant } from "@/lib/technical-reports";
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
 
-const TONE: Record<ObraStatus, string> = {
-  "por-iniciar": "bg-[#f7f4ee] text-[#6d7c74]",
-  "en-obra": "bg-[#fff4e5] text-[#9a5b00]",
-  tramites: "bg-[#eef4fa] text-[#2a5f8f]",
-  energizado: "bg-[#e8f6ee] text-[#1f6b45]",
-  cerrado: "bg-[#eee8dc] text-[#4d5c55]",
+const STATUSES = Object.keys(OBRA_STATUS_LABELS) as ObraStatus[];
+
+const TRAMITE_TONE: Record<TramiteStatus, OsTone> = {
+  pendiente: "warn",
+  radicado: "info",
+  aprobado: "ok",
+  na: "neutral",
 };
+
+const TRAMITE_SHORT: Record<TramiteStatus, string> = {
+  pendiente: "Pendiente",
+  radicado: "Radicado",
+  aprobado: "Aprobado",
+  na: "N/A",
+};
+
+const COMPRAS_LABELS: Record<ObraJob["compras"], string> = {
+  pendiente: "Compras pendientes",
+  parcial: "Compras parciales",
+  completo: "Compras completas",
+};
+
+const dateFmt = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short" });
+
+function shortDate(iso: string) {
+  const t = Date.parse(`${iso}T12:00:00`);
+  return Number.isFinite(t) ? dateFmt.format(t) : "";
+}
 
 function persistCloud(obras: ObraJob[]) {
   void fetch("/api/archivo", {
@@ -44,6 +82,22 @@ function persistCloud(obras: ObraJob[]) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ obras }),
   }).catch(() => undefined);
+}
+
+function isActive(j: ObraJob) {
+  return j.status !== "energizado" && j.status !== "cerrado";
+}
+
+function isLate(j: ObraJob) {
+  if (!isActive(j) || !j.endTarget) return false;
+  const d = daysUntil(j.endTarget);
+  return d !== null && d < 0;
+}
+
+function pendingTramites(j: ObraJob) {
+  return [j.upme, j.retie, j.operadorRed].filter(
+    (s) => s === "pendiente" || s === "radicado"
+  ).length;
 }
 
 export default function ObraPage() {
@@ -54,11 +108,7 @@ export default function ObraPage() {
   const [flash, setFlash] = useState("");
   const [quotes, setQuotes] = useState<ReturnType<typeof loadSavedQuotes>>([]);
   const [visits, setVisits] = useState<ReturnType<typeof loadSavedVisits>>([]);
-  const [formOpen, setFormOpen] = useState(false);
-
-  useEffect(() => {
-    if (jobs.some((j) => j.id === draft.id)) setFormOpen(true);
-  }, [draft.id, jobs]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     setQuotes(loadSavedQuotes());
@@ -68,8 +118,13 @@ export default function ObraPage() {
     const openId = sessionStorage.getItem(OPEN_OBRA_KEY);
     if (openId) {
       const found = local.find((j) => j.id === openId);
-      if (found) setDraft({ ...emptyObra(), ...found });
+      if (found) {
+        setDraft({ ...emptyObra(), ...found });
+        setDrawerOpen(true);
+      }
       sessionStorage.removeItem(OPEN_OBRA_KEY);
+    } else if (takeNewFlag()) {
+      newJob();
     }
     void fetch("/api/archivo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -81,26 +136,60 @@ export default function ObraPage() {
         const stillOpen = openId
           ? merged.find((j) => j.id === openId)
           : undefined;
-        if (stillOpen) setDraft({ ...emptyObra(), ...stillOpen });
+        if (stillOpen) {
+          setDraft({ ...emptyObra(), ...stillOpen });
+          setDrawerOpen(true);
+        }
       })
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(""), 3200);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
+
   const counts = useMemo(() => {
-    const map = {
-      "por-iniciar": 0,
-      "en-obra": 0,
-      tramites: 0,
-      energizado: 0,
-      cerrado: 0,
-    } as Record<ObraStatus, number>;
+    const map = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<
+      ObraStatus,
+      number
+    >;
     for (const j of jobs) map[j.status] += 1;
     return map;
   }, [jobs]);
 
+  const active = jobs.filter(isActive);
+  const activeKwp = active.reduce((s, j) => s + (Number(j.kwp) || 0), 0);
+  const withTramites = active.filter((j) => pendingTramites(j) > 0).length;
+  const late = active.filter(isLate).length;
+  const avgProgress = active.length
+    ? Math.round(active.reduce((s, j) => s + (Number(j.progress) || 0), 0) / active.length)
+    : 0;
+
   const visible = jobs.filter((j) =>
     filter === "todas" ? true : j.status === filter
   );
+  const isExisting = jobs.some((j) => j.id === draft.id);
+
+  function openJob(j: ObraJob) {
+    setDraft({ ...emptyObra(), ...j });
+    setDrawerOpen(true);
+  }
+
+  function newJob() {
+    setDraft(emptyObra());
+    setDrawerOpen(true);
+  }
 
   function saveDraft() {
     if (!draft.clientName.trim()) {
@@ -113,10 +202,56 @@ export default function ObraPage() {
     setFlash("Obra guardada.");
   }
 
-  function tramiteSelect(
-    key: "upme" | "retie" | "operadorRed",
-    label: string
-  ) {
+  function removeJob(j: ObraJob) {
+    if (!confirm("¿Quitar esta obra?")) return;
+    const next = deleteObra(j.id);
+    setJobs(next);
+    persistCloud(next);
+    void fetch(`/api/archivo?obra=${j.id}`, { method: "DELETE" });
+    setDrawerOpen(false);
+    setFlash("Obra eliminada.");
+  }
+
+  function openQuote(quoteId: string) {
+    pinActiveQuote(quoteId);
+    sessionStorage.setItem(OPEN_QUOTE_KEY, quoteId);
+    window.location.assign(`/cotizador?quote=${encodeURIComponent(quoteId)}`);
+  }
+
+  function openUpme() {
+    if (!draft.clientName.trim()) {
+      setFlash("Indique al menos el cliente.");
+      return;
+    }
+    const next = upsertObra(draft);
+    setJobs(next);
+    persistCloud(next);
+    router.push(`/obra/upme?obra=${encodeURIComponent(draft.id)}`);
+  }
+
+  function passToOm() {
+    const plant = emptyPlant();
+    plant.clientName = draft.clientName;
+    plant.siteName = draft.siteName;
+    plant.city = draft.city;
+    plant.kwp = draft.kwp;
+    plant.ours = true;
+    plant.notes = `Alta desde obra ${obraLabel(draft)}`;
+    const plants = upsertPlant(plant);
+    void fetch("/api/archivo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plants }),
+    }).catch(() => undefined);
+    const next = upsertObra({ ...draft, plantId: plant.id });
+    setJobs(next);
+    persistCloud(next);
+    setDraft((p) => ({ ...p, plantId: plant.id }));
+    setFlash("Planta creada en O&M. Complete el calendario allá.");
+    router.push("/om");
+  }
+
+  function tramiteSelect(key: "upme" | "retie" | "operadorRed", label: string) {
     return (
       <label className="text-sm">
         <span className="mb-1 block font-medium">{label}</span>
@@ -141,174 +276,234 @@ export default function ObraPage() {
   }
 
   return (
-    <AppShell title="Obra" subtitle="Avance · cuadrilla · RETIE / UPME">
-      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-        Una ficha por proyecto ganado: de cotización a energización. Trámites
-        UPME, RETIE y operador de red, compras frente a lo cotizado y enlace a
-        visita, cotizador y O&M.
-      </p>
-      {flash ? (
-        <p className="mb-3 rounded-xl bg-[#e8f6ee] px-4 py-2 text-sm text-[#1f6b45]">
-          {flash}
-        </p>
-      ) : null}
-
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {(Object.keys(OBRA_STATUS_LABELS) as ObraStatus[]).map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setFilter((f) => (f === id ? "todas" : id))}
-            className={`os-stat rounded-2xl border px-4 py-3 text-left ${
-              filter === id ? "border-[#1f6b45]" : "border-[#ddd6c8]"
-            } ${TONE[id]}`}
-          >
-            <p className="text-2xl font-semibold">{counts[id]}</p>
-            <p className="text-[11px] font-semibold uppercase tracking-wide">
-              {OBRA_STATUS_LABELS[id]}
-            </p>
-          </button>
-        ))}
+    <AppShell
+      title="Obra"
+      subtitle="De cotización ganada a energización: avance, cuadrilla y trámites"
+      actions={
+        <button type="button" className="os-btn os-btn-primary" onClick={newJob}>
+          <Plus size={16} />
+          Nueva obra
+        </button>
+      }
+    >
+      <div className="os-kpis">
+        <OsKpi
+          icon={HardHat}
+          tone="info"
+          label="Obras activas"
+          value={active.length}
+          hint={activeKwp > 0 ? `${activeKwp.toLocaleString("es-CO")} kWp en ejecución` : "Sin kWp registrados"}
+        />
+        <OsKpi
+          icon={Zap}
+          tone="ok"
+          label="Avance promedio"
+          value={`${avgProgress}%`}
+          hint={`${counts.energizado} energizadas`}
+        />
+        <OsKpi
+          icon={FileBadge}
+          tone={withTramites > 0 ? "warn" : "neutral"}
+          label="Con trámites abiertos"
+          value={withTramites}
+          hint="UPME, RETIE u operador de red"
+        />
+        <OsKpi
+          icon={CalendarRange}
+          tone={late > 0 ? "danger" : "neutral"}
+          label="Fuera de fecha"
+          value={late}
+          hint={late > 0 ? "Pasaron la meta de entrega" : "Todo dentro de la meta"}
+        />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
-          <div className="flex items-center justify-between gap-3 border-b border-[#eee8dc] px-4 py-3">
-            <h2 className="font-semibold">Tablero de obra</h2>
+      <div className="os-board-bar">
+        <div className="os-chips">
+          <button
+            type="button"
+            className="os-chip"
+            aria-pressed={filter === "todas"}
+            onClick={() => setFilter("todas")}
+          >
+            Todas <span>{jobs.length}</span>
+          </button>
+          {STATUSES.map((id) => (
             <button
+              key={id}
               type="button"
-              className="text-sm font-semibold text-[#1f6b45] underline"
-              onClick={() => setFilter("todas")}
+              className="os-chip"
+              aria-pressed={filter === id}
+              onClick={() => setFilter((f) => (f === id ? "todas" : id))}
             >
-              Ver todas
+              {OBRA_STATUS_LABELS[id]} <span>{counts[id]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {visible.length === 0 ? (
+        <section className="os-work">
+          <div className="os-empty">
+            <span className="os-empty-icon">
+              <HardHat size={20} />
+            </span>
+            <p className="os-empty-title">
+              {jobs.length === 0 ? "Aún no hay obras" : "No hay obras en este filtro"}
+            </p>
+            <p className="os-empty-hint">
+              Las oportunidades ganadas en Pipeline pasan aquí. También puede crear
+              una obra desde una cotización guardada.
+            </p>
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={newJob}>
+              <Plus size={14} />
+              Nueva obra
             </button>
           </div>
-          {visible.length === 0 ? (
-            <p className="px-4 py-5 text-sm text-[#6d7c74]">
-              No hay obras en este filtro.
-              <span className="os-page-intro mt-1 block text-xs">
-                Cree una a la derecha o tómela de una cotización guardada.
-              </span>
-            </p>
-          ) : (
-            <ul className="divide-y divide-[#eee8dc]">
-              {visible.map((j) => (
-                <li key={j.id} className="px-4 py-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold">{obraLabel(j)}</p>
-                      <p className="text-xs text-[#6d7c74]">
-                        {j.kwp ? `${j.kwp} kWp · ` : ""}
-                        Avance {j.progress}% · compras {j.compras}
-                        {j.crew ? ` · ${j.crew}` : ""}
-                      </p>
-                      <p className="text-[11px] text-[#6d7c74]">
-                        UPME {TRAMITE_LABELS[j.upme]} · RETIE{" "}
-                        {TRAMITE_LABELS[j.retie]} · OR{" "}
-                        {TRAMITE_LABELS[j.operadorRed]}
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${TONE[j.status]}`}
-                    >
-                      {OBRA_STATUS_LABELS[j.status]}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#eee8dc]">
-                    <div
-                      className="h-full bg-[#1f6b45]"
-                      style={{ width: `${Math.min(100, j.progress)}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-[#1f6b45] underline"
-                      onClick={() => setDraft({ ...emptyObra(), ...j })}
-                    >
-                      Editar
-                    </button>
-                    {j.quoteId ? (
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() => {
-                          pinActiveQuote(j.quoteId!);
-                          sessionStorage.setItem(OPEN_QUOTE_KEY, j.quoteId!);
-                          window.location.assign(
-                            `/cotizador?quote=${encodeURIComponent(j.quoteId!)}`
-                          );
-                        }}
-                      >
-                        Cotización
-                      </button>
-                    ) : null}
-                    {j.visitId ? (
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() => {
-                          sessionStorage.setItem(OPEN_VISIT_KEY, j.visitId!);
-                          router.push("/visita-tecnica");
-                        }}
-                      >
-                        Visita
-                      </button>
-                    ) : null}
-                    <a
-                      href={`/obra/upme?obra=${encodeURIComponent(j.id)}`}
-                      className="text-xs font-semibold text-[#1f6b45] underline"
-                    >
-                      Expediente UPME
-                    </a>
-                    <a
-                      href="/om"
-                      className="text-xs font-semibold text-[#1f6b45] underline"
-                    >
-                      O&M
-                    </a>
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-[#9b2c2c] underline"
-                      onClick={() => {
-                        if (!confirm("¿Quitar esta obra?")) return;
-                        const next = deleteObra(j.id);
-                        setJobs(next);
-                        persistCloud(next);
-                        void fetch(`/api/archivo?obra=${j.id}`, {
-                          method: "DELETE",
-                        });
-                      }}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
-
-        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
-          <WorkFold
-            title={
-              jobs.some((j) => j.id === draft.id) ? "Editar obra" : "Nueva obra"
-            }
-            open={formOpen}
-            onToggle={() => setFormOpen((v) => !v)}
-            actions={
+      ) : (
+        <div className="os-tiles">
+          {visible.map((j) => {
+            const progress = Math.min(100, Math.max(0, Number(j.progress) || 0));
+            const late = isLate(j);
+            return (
               <button
+                key={j.id}
                 type="button"
-                className="text-xs font-semibold text-[#1f6b45] underline"
-                onClick={() => setDraft(emptyObra())}
+                className="os-tile"
+                data-obra={j.status}
+                onClick={() => openJob(j)}
               >
-                Limpiar
-              </button>
-            }
-          >
+                <div className="os-tile-head">
+                  <div className="min-w-0">
+                    <p className="os-tile-title">{j.clientName || "Sin cliente"}</p>
+                    {j.siteName || j.city ? (
+                      <p className="os-card-sub">
+                        <MapPin size={12} />
+                        {[j.siteName, j.city].filter(Boolean).join(" · ")}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="os-obra-pill" data-obra={j.status}>
+                    {OBRA_STATUS_LABELS[j.status]}
+                  </span>
+                </div>
 
+                <div className="os-progress">
+                  <div className="os-progress-top">
+                    <span>Avance</span>
+                    <strong>{progress}%</strong>
+                  </div>
+                  <div className="os-progress-track">
+                    <span className="os-progress-bar" style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+
+                <div className="os-tramites">
+                  {(
+                    [
+                      ["UPME", j.upme],
+                      ["RETIE", j.retie],
+                      ["OR", j.operadorRed],
+                    ] as const
+                  ).map(([name, s]) => (
+                    <span key={name} className="os-tramite" data-tone={TRAMITE_TONE[s]}>
+                      <span className="os-tramite-name">{name}</span>
+                      <span className="os-tramite-state">{TRAMITE_SHORT[s]}</span>
+                    </span>
+                  ))}
+                </div>
+
+                <div className="os-tile-foot">
+                  {j.kwp ? (
+                    <span className="os-tag">
+                      <Zap size={11} />
+                      {j.kwp} kWp
+                    </span>
+                  ) : null}
+                  <span className="os-tag" data-compras={j.compras}>
+                    <ShoppingCart size={11} />
+                    {COMPRAS_LABELS[j.compras]}
+                  </span>
+                  {j.crew ? (
+                    <span className="os-tag">
+                      <Users size={11} />
+                      {j.crew}
+                    </span>
+                  ) : null}
+                  {j.endTarget ? (
+                    <span className={`os-tag ${late ? "is-late" : ""}`}>
+                      <CalendarRange size={11} />
+                      {late ? "Vencida " : "Meta "}
+                      {shortDate(j.endTarget)}
+                    </span>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {drawerOpen ? (
+        <div className="os-drawer-backdrop" onClick={() => setDrawerOpen(false)} />
+      ) : null}
+      <aside
+        className="os-drawer"
+        data-open={drawerOpen ? "true" : undefined}
+        aria-hidden={!drawerOpen}
+        aria-label={isExisting ? "Editar obra" : "Nueva obra"}
+      >
+        <header className="os-drawer-head">
+          <div className="min-w-0">
+            <p className="os-drawer-kicker">{isExisting ? "Editar obra" : "Nueva obra"}</p>
+            <h2 className="os-drawer-title">{draft.clientName.trim() || "Sin cliente"}</h2>
+            <span className="os-obra-pill" data-obra={draft.status}>
+              {OBRA_STATUS_LABELS[draft.status]}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="os-icon-btn"
+            aria-label="Cerrar"
+            onClick={() => setDrawerOpen(false)}
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="os-drawer-actions">
+          {draft.quoteId ? (
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => openQuote(draft.quoteId!)}>
+              <FileSpreadsheet size={14} />
+              Cotización
+            </button>
+          ) : null}
+          {draft.visitId ? (
+            <button
+              type="button"
+              className="os-btn os-btn-ghost os-btn-sm"
+              onClick={() => {
+                sessionStorage.setItem(OPEN_VISIT_KEY, draft.visitId!);
+                router.push("/visita-tecnica");
+              }}
+            >
+              <ClipboardCheck size={14} />
+              Visita
+            </button>
+          ) : null}
+          <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={openUpme}>
+            <FileBadge size={14} />
+            Expediente UPME
+          </button>
+          <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={passToOm}>
+            <Wrench size={14} />
+            Pasar a O&M
+          </button>
+        </div>
+
+        <div className="os-drawer-body">
           {quotes.length ? (
-            <label className="mt-3 block text-sm">
+            <label className="block text-sm">
               <span className="mb-1 block font-medium">Desde cotización</span>
               <select
                 className={field}
@@ -370,7 +565,8 @@ export default function ObraPage() {
             </label>
           ) : null}
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <p className="os-drawer-section">Proyecto</p>
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm sm:col-span-2">
               <span className="mb-1 block font-medium">Cliente</span>
               <input
@@ -419,12 +615,36 @@ export default function ObraPage() {
                   }))
                 }
               >
-                {(Object.keys(OBRA_STATUS_LABELS) as ObraStatus[]).map((id) => (
+                {STATUSES.map((id) => (
                   <option key={id} value={id}>
                     {OBRA_STATUS_LABELS[id]}
                   </option>
                 ))}
               </select>
+            </label>
+          </div>
+
+          <p className="os-drawer-section">Ejecución</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm sm:col-span-2">
+              <span className="mb-1 flex items-center justify-between font-medium">
+                Avance
+                <strong className="text-[#1f6b45]">{draft.progress}%</strong>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                className="w-full accent-[#1f6b45]"
+                value={draft.progress}
+                onChange={(e) =>
+                  setDraft((p) => ({
+                    ...p,
+                    progress: Math.min(100, Math.max(0, Number(e.target.value) || 0)),
+                  }))
+                }
+              />
             </label>
             <label className="text-sm">
               <span className="mb-1 block font-medium">Inicio</span>
@@ -468,23 +688,7 @@ export default function ObraPage() {
                 placeholder="3 técnicos · residente…"
               />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block font-medium">Avance %</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                className={field}
-                value={draft.progress}
-                onChange={(e) =>
-                  setDraft((p) => ({
-                    ...p,
-                    progress: Math.min(100, Math.max(0, Number(e.target.value) || 0)),
-                  }))
-                }
-              />
-            </label>
-            <label className="text-sm">
+            <label className="text-sm sm:col-span-2">
               <span className="mb-1 block font-medium">Compras vs cotizado</span>
               <select
                 className={field}
@@ -501,6 +705,10 @@ export default function ObraPage() {
                 <option value="completo">Completo</option>
               </select>
             </label>
+          </div>
+
+          <p className="os-drawer-section">Trámites</p>
+          <div className="grid gap-3 sm:grid-cols-3">
             {tramiteSelect("upme", "UPME / Ley 1715")}
             {tramiteSelect("retie", "RETIE")}
             {tramiteSelect("operadorRed", "Operador de red")}
@@ -638,61 +846,34 @@ export default function ObraPage() {
               onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
             />
           </label>
-          <div className="mt-4 flex flex-wrap gap-2">
+        </div>
+
+        <footer className="os-drawer-foot">
+          {isExisting ? (
             <button
               type="button"
-              className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white"
-              onClick={saveDraft}
+              className="os-icon-btn is-danger"
+              aria-label="Quitar obra"
+              title="Quitar obra"
+              onClick={() => removeJob(draft)}
             >
-              Guardar obra
+              <Trash2 size={16} />
             </button>
-            <button
-              type="button"
-              className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
-              onClick={() => {
-                if (!draft.clientName.trim()) {
-                  setFlash("Indique al menos el cliente.");
-                  return;
-                }
-                const next = upsertObra(draft);
-                setJobs(next);
-                persistCloud(next);
-                router.push(`/obra/upme?obra=${encodeURIComponent(draft.id)}`);
-              }}
-            >
-              Expediente UPME
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
-              onClick={() => {
-                const plant = emptyPlant();
-                plant.clientName = draft.clientName;
-                plant.siteName = draft.siteName;
-                plant.city = draft.city;
-                plant.kwp = draft.kwp;
-                plant.ours = true;
-                plant.notes = `Alta desde obra ${obraLabel(draft)}`;
-                const plants = upsertPlant(plant);
-                void fetch("/api/archivo", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ plants }),
-                }).catch(() => undefined);
-                const next = upsertObra({ ...draft, plantId: plant.id });
-                setJobs(next);
-                persistCloud(next);
-                setDraft((p) => ({ ...p, plantId: plant.id }));
-                setFlash("Planta creada en O&M. Complete el calendario allá.");
-                router.push("/om");
-              }}
-            >
-              Pasar a O&M
-            </button>
-          </div>
-          </WorkFold>
-        </section>
-      </div>
+          ) : null}
+          <button type="button" className="os-btn os-btn-ghost" onClick={() => setDrawerOpen(false)}>
+            Cerrar
+          </button>
+          <button type="button" className="os-btn os-btn-primary" onClick={saveDraft}>
+            Guardar obra
+          </button>
+        </footer>
+      </aside>
+
+      {flash ? (
+        <div className="os-toast" role="status">
+          {flash}
+        </div>
+      ) : null}
     </AppShell>
   );
 }

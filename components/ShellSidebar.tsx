@@ -16,6 +16,8 @@ import {
   PackageOpen,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
+  Search,
   Sparkles,
   SquareKanban,
   Users,
@@ -70,11 +72,15 @@ export function ShellSidebar({
   activeHref,
   me,
   onLogout,
+  onSearch,
+  onNew,
 }: {
   nav: ShellNavItem[];
   activeHref: string;
   me: { name: string; roleLabel: string } | null;
   onLogout: () => void;
+  onSearch: () => void;
+  onNew: () => void;
 }) {
   const [mode, setMode] = useState<OsSidebar>("amplio");
   const [open, setOpen] = useState(false);
@@ -115,6 +121,14 @@ export function ShellSidebar({
         <button
           type="button"
           className="os-icon-btn"
+          onClick={onSearch}
+          aria-label="Buscar"
+        >
+          <Search size={19} />
+        </button>
+        <button
+          type="button"
+          className="os-icon-btn"
           onClick={() => setOpen(true)}
           aria-label="Abrir menú"
         >
@@ -148,6 +162,36 @@ export function ShellSidebar({
             aria-label="Cerrar menú"
           >
             <X size={18} />
+          </button>
+        </div>
+
+        <div className="os-side-quick">
+          <button
+            type="button"
+            className="os-side-new"
+            onClick={() => {
+              setOpen(false);
+              onNew();
+            }}
+            data-tip="Nuevo"
+            aria-label="Nuevo"
+          >
+            <Plus size={17} />
+            <span className="os-side-label">Nuevo</span>
+          </button>
+          <button
+            type="button"
+            className="os-side-search"
+            onClick={() => {
+              setOpen(false);
+              onSearch();
+            }}
+            data-tip="Buscar (Ctrl K)"
+            aria-label="Buscar"
+          >
+            <Search size={16} className="os-side-icon" />
+            <span className="os-side-label os-side-search-text">Buscar…</span>
+            <kbd className="os-kbd os-side-label">Ctrl K</kbd>
           </button>
         </div>
 

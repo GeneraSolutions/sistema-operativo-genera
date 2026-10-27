@@ -29,6 +29,7 @@ import {
   loadLeads,
   persistLeadsCloud,
 } from "@/lib/pipeline";
+import { takeNewFlag } from "@/lib/os-command";
 import { EnergyBillPanel } from "@/components/EnergyBillPanel";
 import { emptyEnergyBill } from "@/lib/energy-bill";
 
@@ -45,6 +46,13 @@ export default function VisitaTecnicaPage() {
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (takeNewFlag()) {
+      const fresh = emptySiteVisit();
+      setVisit(fresh);
+      saveStoredSiteVisit({ visit: fresh, linked: false });
+      setHydrated(true);
+      return;
+    }
     const openId = sessionStorage.getItem(OPEN_VISIT_KEY);
     if (openId) {
       sessionStorage.removeItem(OPEN_VISIT_KEY);

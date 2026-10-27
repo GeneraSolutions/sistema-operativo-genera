@@ -2,8 +2,27 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  AlertTriangle,
+  CalendarCheck,
+  CalendarClock,
+  CalendarDays,
+  CalendarX,
+  Camera,
+  CheckCircle2,
+  ClipboardList,
+  Cpu,
+  FileCheck2,
+  LayoutGrid,
+  MapPin,
+  Plus,
+  Stethoscope,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { WorkFold } from "@/components/WorkFold";
+import { OsKpi, type OsTone } from "@/components/OsKpi";
 import {
   OM_CONTRACT_LABELS,
   OM_STATUS_LABELS,
@@ -14,6 +33,7 @@ import {
   plantLabel,
   type OmStatus,
 } from "@/lib/om";
+import { takeNewFlag } from "@/lib/os-command";
 import {
   OPEN_OM_PLANT_KEY,
   OPEN_REPORT_KIND_KEY,
@@ -30,15 +50,36 @@ import {
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
 
-const STATUS_TONE: Record<OmStatus, string> = {
-  vencido: "bg-[#fde8e8] text-[#9b2c2c]",
-  proximo: "bg-[#fff4e5] text-[#9a5b00]",
-  "al-dia": "bg-[#e8f6ee] text-[#1f6b45]",
-  "sin-fecha": "bg-[#f7f4ee] text-[#6d7c74]",
+const STATUS_ORDER: OmStatus[] = ["vencido", "proximo", "al-dia", "sin-fecha"];
+
+const STATUS_TONE: Record<OmStatus, OsTone> = {
+  vencido: "danger",
+  proximo: "warn",
+  "al-dia": "ok",
+  "sin-fecha": "neutral",
 };
 
+const monthFmt = new Intl.DateTimeFormat("es-CO", { month: "long", year: "numeric" });
+const dayFmt = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short" });
+
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function fmtDay(iso?: string) {
+  if (!iso) return "";
+  const t = Date.parse(`${iso}T12:00:00`);
+  return Number.isFinite(t) ? dayFmt.format(t) : iso;
+}
+
+function countdown(d: number | null) {
+  if (d === null) return { big: "—", small: "Sin fecha programada" };
+  if (d === 0) return { big: "Hoy", small: "Mantenimiento programado" };
+  if (d < 0) return { big: `${Math.abs(d)} d`, small: "de retraso" };
+  return { big: `${d} d`, small: "para el próximo" };
 }
 
 function persistCloud(plants: PlantProfile[]) {
@@ -54,12 +95,9 @@ export default function OmPage() {
   const [plants, setPlants] = useState<PlantProfile[]>([]);
   const [draft, setDraft] = useState<PlantProfile>(() => emptyPlant());
   const [filter, setFilter] = useState<"todas" | OmStatus>("todas");
+  const [view, setView] = useState<"cartera" | "calendario">("cartera");
   const [flash, setFlash] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-
-  useEffect(() => {
-    if (plants.some((p) => p.id === draft.id)) setFormOpen(true);
-  }, [draft.id, plants]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     const local = loadPlants();
@@ -67,8 +105,13 @@ export default function OmPage() {
     const openId = sessionStorage.getItem(OPEN_OM_PLANT_KEY);
     if (openId) {
       const found = local.find((p) => p.id === openId);
-      if (found) setDraft({ ...emptyPlant(), ...found });
+      if (found) {
+        setDraft({ ...emptyPlant(), ...found });
+        setDrawerOpen(true);
+      }
       sessionStorage.removeItem(OPEN_OM_PLANT_KEY);
+    } else if (takeNewFlag()) {
+      newPlant();
     }
     void fetch("/api/archivo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -80,10 +123,28 @@ export default function OmPage() {
         const stillOpen = openId
           ? merged.find((p) => p.id === openId)
           : undefined;
-        if (stillOpen) setDraft({ ...emptyPlant(), ...stillOpen });
+        if (stillOpen) {
+          setDraft({ ...emptyPlant(), ...stillOpen });
+          setDrawerOpen(true);
+        }
       })
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(""), 3600);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
 
   const counts = useMemo(() => {
     const list = plants.map(omStatus);
@@ -92,8 +153,10 @@ export default function OmPage() {
       proximo: list.filter((s) => s === "proximo").length,
       "al-dia": list.filter((s) => s === "al-dia").length,
       "sin-fecha": list.filter((s) => s === "sin-fecha").length,
-    };
+    } as Record<OmStatus, number>;
   }, [plants]);
+
+  const totalKwp = plants.reduce((s, p) => s + (Number(p.kwp) || 0), 0);
 
   const visible = plants
     .filter((p) => (filter === "todas" ? true : omStatus(p) === filter))
@@ -106,6 +169,48 @@ export default function OmPage() {
       return da - db;
     });
 
+  const calendar = useMemo(() => {
+    const now = new Date();
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const name = monthFmt.format(d);
+      return {
+        key,
+        label: name.charAt(0).toUpperCase() + name.slice(1),
+        items: [] as PlantProfile[],
+      };
+    });
+    const overdue: PlantProfile[] = [];
+    const byDate = (a: PlantProfile, b: PlantProfile) =>
+      (a.nextMaintenance || "").localeCompare(b.nextMaintenance || "");
+    for (const p of plants) {
+      const next = p.nextMaintenance;
+      if (!next) continue;
+      if (omStatus(p) === "vencido") {
+        overdue.push(p);
+        continue;
+      }
+      const month = months.find((m) => next.startsWith(m.key));
+      month?.items.push(p);
+    }
+    for (const m of months) m.items.sort(byDate);
+    overdue.sort(byDate);
+    return { months, overdue };
+  }, [plants]);
+
+  const isExisting = plants.some((p) => p.id === draft.id);
+
+  function openPlant(p: PlantProfile) {
+    setDraft({ ...emptyPlant(), ...p });
+    setDrawerOpen(true);
+  }
+
+  function newPlant() {
+    setDraft(emptyPlant());
+    setDrawerOpen(true);
+  }
+
   function saveDraft() {
     if (!draft.clientName.trim()) {
       setFlash("Indique al menos el cliente.");
@@ -117,180 +222,321 @@ export default function OmPage() {
     setFlash("Planta guardada en O&M y Archivo.");
   }
 
+  function doneToday(p: PlantProfile) {
+    const date = todayISO();
+    const updated = markMaintenanceDone(p, date);
+    const next = upsertPlant(updated);
+    setPlants(next);
+    persistCloud(next);
+    if (draft.id === p.id) setDraft({ ...emptyPlant(), ...updated });
+    setFlash(
+      `Mantenimiento registrado. Próxima visita ${addMonths(date, p.intervalMonths || 12)}.`
+    );
+  }
+
+  function removePlant(p: PlantProfile) {
+    if (!confirm("¿Quitar esta planta de O&M?")) return;
+    const next = deletePlant(p.id);
+    setPlants(next);
+    persistCloud(next);
+    void fetch(`/api/archivo?plant=${p.id}`, { method: "DELETE" });
+    setDrawerOpen(false);
+    setFlash("Planta eliminada de O&M.");
+  }
+
   function openReport(plant: PlantProfile, kind: "pre-mantenimiento" | "post-mantenimiento") {
     sessionStorage.setItem(OPEN_OM_PLANT_KEY, plant.id);
     sessionStorage.setItem(OPEN_REPORT_KIND_KEY, kind);
     router.push("/informes");
   }
 
-  return (
-    <AppShell title="O&M" subtitle="Plantas · calendario · contratos">
-      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-        Cartera de plantas en operación. Un vencimiento abre el diagnóstico
-        pre-mantenimiento; al cerrar el servicio, el informe post y la próxima
-        fecha. El dictamen fotográfico queda a un clic.
-      </p>
-      {flash ? (
-        <p className="mb-3 rounded-xl bg-[#e8f6ee] px-4 py-2 text-sm text-[#1f6b45]">
-          {flash}
-        </p>
-      ) : null}
+  function calcNext() {
+    if (!draft.lastMaintenance && !draft.nextMaintenance) {
+      const last = todayISO();
+      setDraft((p) => ({
+        ...p,
+        lastMaintenance: last,
+        nextMaintenance: addMonths(last, p.intervalMonths || 12),
+      }));
+      return;
+    }
+    if (draft.lastMaintenance) {
+      setDraft((p) => ({
+        ...p,
+        nextMaintenance: addMonths(
+          p.lastMaintenance || todayISO(),
+          p.intervalMonths || 12
+        ),
+      }));
+    }
+  }
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {(
-          [
-            ["vencido", counts.vencido],
-            ["proximo", counts.proximo],
-            ["al-dia", counts["al-dia"]],
-            ["sin-fecha", counts["sin-fecha"]],
-          ] as const
-        ).map(([id, n]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setFilter((f) => (f === id ? "todas" : id))}
-            className={`os-stat rounded-2xl border px-4 py-3 text-left ${
-              filter === id ? "border-[#1f6b45]" : "border-[#ddd6c8] bg-white"
-            } ${STATUS_TONE[id]}`}
-          >
-            <p className="text-2xl font-semibold">{n}</p>
-            <p className="text-xs font-semibold uppercase tracking-wide">
-              {OM_STATUS_LABELS[id]}
-            </p>
-          </button>
-        ))}
+  return (
+    <AppShell
+      title="O&M"
+      subtitle="Plantas en operación, calendario de mantenimientos y contratos"
+      actions={
+        <button type="button" className="os-btn os-btn-primary" onClick={newPlant}>
+          <Plus size={16} />
+          Nueva planta
+        </button>
+      }
+    >
+      <div className="os-kpis">
+        <OsKpi
+          icon={CalendarX}
+          tone={counts.vencido > 0 ? "danger" : "neutral"}
+          label="Vencidos"
+          value={counts.vencido}
+          hint={counts.vencido > 0 ? "Programar diagnóstico ya" : "Ninguno atrasado"}
+        />
+        <OsKpi
+          icon={CalendarClock}
+          tone={counts.proximo > 0 ? "warn" : "neutral"}
+          label="En los próximos 30 días"
+          value={counts.proximo}
+          hint="Agendar cuadrilla"
+        />
+        <OsKpi
+          icon={CalendarCheck}
+          tone="ok"
+          label="Al día"
+          value={counts["al-dia"]}
+          hint={`${counts["sin-fecha"]} sin fecha programada`}
+        />
+        <OsKpi
+          icon={Zap}
+          tone="info"
+          label="Cartera"
+          value={plants.length}
+          hint={totalKwp > 0 ? `${totalKwp.toLocaleString("es-CO")} kWp en operación` : "Plantas registradas"}
+        />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
-          <div className="flex items-center justify-between gap-3 border-b border-[#eee8dc] px-4 py-3">
-            <h2 className="font-semibold">Cartera</h2>
+      <div className="os-board-bar">
+        <div className="os-seg" role="tablist" aria-label="Vista">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "cartera"}
+            className="os-seg-btn"
+            onClick={() => setView("cartera")}
+          >
+            <LayoutGrid size={15} />
+            Cartera
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "calendario"}
+            className="os-seg-btn"
+            onClick={() => setView("calendario")}
+          >
+            <CalendarDays size={15} />
+            Calendario
+          </button>
+        </div>
+        {view === "cartera" ? (
+          <div className="os-chips">
             <button
               type="button"
-              className="text-sm font-semibold text-[#1f6b45] underline"
+              className="os-chip"
+              aria-pressed={filter === "todas"}
               onClick={() => setFilter("todas")}
             >
-              Ver todas
+              Todas <span>{plants.length}</span>
+            </button>
+            {STATUS_ORDER.map((id) => (
+              <button
+                key={id}
+                type="button"
+                className="os-chip"
+                aria-pressed={filter === id}
+                onClick={() => setFilter((f) => (f === id ? "todas" : id))}
+              >
+                {OM_STATUS_LABELS[id]} <span>{counts[id]}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="os-board-hint">
+            Próximos 12 meses según la fecha de cada planta. Toque una para abrirla.
+          </p>
+        )}
+      </div>
+
+      {view === "calendario" ? (
+        <div className="os-cal">
+          {calendar.overdue.length > 0 ? (
+            <section className="os-cal-month is-overdue">
+              <header className="os-cal-head">
+                <AlertTriangle size={14} />
+                <h2>Vencidos</h2>
+                <span className="os-col-count">{calendar.overdue.length}</span>
+              </header>
+              {calendar.overdue.map((p) => (
+                <button key={p.id} type="button" className="os-cal-item" onClick={() => openPlant(p)}>
+                  <span className="os-cal-date">{fmtDay(p.nextMaintenance)}</span>
+                  <span className="os-cal-name">{plantLabel(p)}</span>
+                </button>
+              ))}
+            </section>
+          ) : null}
+          {calendar.months.map((m) => (
+            <section key={m.key} className="os-cal-month">
+              <header className="os-cal-head">
+                <h2>{m.label}</h2>
+                {m.items.length ? <span className="os-col-count">{m.items.length}</span> : null}
+              </header>
+              {m.items.length === 0 ? (
+                <p className="os-cal-empty">Sin mantenimientos</p>
+              ) : (
+                m.items.map((p) => (
+                  <button key={p.id} type="button" className="os-cal-item" onClick={() => openPlant(p)}>
+                    <span className="os-cal-date">{fmtDay(p.nextMaintenance)}</span>
+                    <span className="os-cal-name">{plantLabel(p)}</span>
+                  </button>
+                ))
+              )}
+            </section>
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
+        <section className="os-work">
+          <div className="os-empty">
+            <span className="os-empty-icon">
+              <ClipboardList size={20} />
+            </span>
+            <p className="os-empty-title">
+              {plants.length === 0 ? "Aún no hay plantas en O&M" : "No hay plantas en este filtro"}
+            </p>
+            <p className="os-empty-hint">
+              Al energizar una obra, pásela a O&M desde Obra. También puede registrar
+              plantas de otros instaladores.
+            </p>
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={newPlant}>
+              <Plus size={14} />
+              Nueva planta
             </button>
           </div>
-          {visible.length === 0 ? (
-            <p className="px-4 py-5 text-sm text-[#6d7c74]">
-              No hay plantas en este filtro.
-              <span className="os-page-intro mt-1 block text-xs">
-                Cargue una a la derecha o reutilice las de Informes.
-              </span>
-            </p>
-          ) : (
-            <ul className="divide-y divide-[#eee8dc]">
-              {visible.map((p) => {
-                const status = omStatus(p);
-                const d = daysUntil(p.nextMaintenance);
-                return (
-                  <li key={p.id} className="px-4 py-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold">{plantLabel(p)}</p>
-                        <p className="text-xs text-[#6d7c74]">
-                          {p.kwp ? `${p.kwp} kWp · ` : ""}
-                          {OM_CONTRACT_LABELS[p.contract || "ninguno"]}
-                          {p.nextMaintenance
-                            ? ` · próximo ${p.nextMaintenance}`
-                            : ""}
-                          {d !== null ? ` · ${d} días` : ""}
-                        </p>
-                      </div>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_TONE[status]}`}
-                      >
-                        {OM_STATUS_LABELS[status]}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() => setDraft({ ...emptyPlant(), ...p })}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() => openReport(p, "pre-mantenimiento")}
-                      >
-                        Diagnóstico
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() => openReport(p, "post-mantenimiento")}
-                      >
-                        Post-mant.
-                      </button>
-                      <a
-                        href="/informes/dictamen"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                      >
-                        Dictamen foto
-                      </a>
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() => {
-                          const date = todayISO();
-                          const next = upsertPlant(markMaintenanceDone(p, date));
-                          setPlants(next);
-                          persistCloud(next);
-                          setFlash(
-                            `Mantenimiento registrado. Próxima visita ${addMonths(date, p.intervalMonths || 12)}.`
-                          );
-                        }}
-                      >
-                        Hecho hoy
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#9b2c2c] underline"
-                        onClick={() => {
-                          if (!confirm("¿Quitar esta planta de O&M?")) return;
-                          const next = deletePlant(p.id);
-                          setPlants(next);
-                          persistCloud(next);
-                          void fetch(`/api/archivo?plant=${p.id}`, {
-                            method: "DELETE",
-                          });
-                        }}
-                      >
-                        Quitar
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
         </section>
+      ) : (
+        <div className="os-tiles">
+          {visible.map((p) => {
+            const status = omStatus(p);
+            const d = daysUntil(p.nextMaintenance);
+            const cd = countdown(d);
+            return (
+              <article key={p.id} className="os-tile os-plant" data-om={status}>
+                <button type="button" className="os-tile-open" onClick={() => openPlant(p)}>
+                  <div className="os-tile-head">
+                    <div className="min-w-0">
+                      <p className="os-tile-title">{p.clientName || "Sin cliente"}</p>
+                      {p.siteName || p.city ? (
+                        <p className="os-card-sub">
+                          <MapPin size={12} />
+                          {[p.siteName, p.city].filter(Boolean).join(" · ")}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span className="os-pill" data-tone={STATUS_TONE[status]}>
+                      {OM_STATUS_LABELS[status]}
+                    </span>
+                  </div>
+                  <div className="os-countdown" data-tone={STATUS_TONE[status]}>
+                    <span className="os-countdown-big">{cd.big}</span>
+                    <span className="os-countdown-small">
+                      {cd.small}
+                      {p.nextMaintenance ? ` · ${fmtDay(p.nextMaintenance)}` : ""}
+                    </span>
+                  </div>
+                  <div className="os-tile-foot">
+                    {p.kwp ? (
+                      <span className="os-tag">
+                        <Zap size={11} />
+                        {p.kwp} kWp
+                      </span>
+                    ) : null}
+                    <span className="os-tag">
+                      <FileCheck2 size={11} />
+                      {OM_CONTRACT_LABELS[p.contract || "ninguno"]}
+                    </span>
+                    {p.inverter ? (
+                      <span className="os-tag">
+                        <Cpu size={11} />
+                        {p.inverter}
+                      </span>
+                    ) : null}
+                    {p.ours ? <span className="os-tag is-money">Genera</span> : null}
+                  </div>
+                </button>
+                <div className="os-tile-actions">
+                  <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => openReport(p, "pre-mantenimiento")}>
+                    <Stethoscope size={14} />
+                    Diagnóstico
+                  </button>
+                  <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => doneToday(p)}>
+                    <CheckCircle2 size={14} />
+                    Hecho hoy
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
-        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
-          <WorkFold
-            title={
-              plants.some((p) => p.id === draft.id)
-                ? "Editar planta"
-                : "Nueva planta"
-            }
-            open={formOpen}
-            onToggle={() => setFormOpen((v) => !v)}
-            actions={
-              <button
-                type="button"
-                className="text-xs font-semibold text-[#1f6b45] underline"
-                onClick={() => setDraft(emptyPlant())}
-              >
-                Limpiar
-              </button>
-            }
+      {drawerOpen ? (
+        <div className="os-drawer-backdrop" onClick={() => setDrawerOpen(false)} />
+      ) : null}
+      <aside
+        className="os-drawer"
+        data-open={drawerOpen ? "true" : undefined}
+        aria-hidden={!drawerOpen}
+        aria-label={isExisting ? "Editar planta" : "Nueva planta"}
+      >
+        <header className="os-drawer-head">
+          <div className="min-w-0">
+            <p className="os-drawer-kicker">{isExisting ? "Editar planta" : "Nueva planta"}</p>
+            <h2 className="os-drawer-title">{draft.clientName.trim() || "Sin cliente"}</h2>
+            <span className="os-pill" data-tone={STATUS_TONE[omStatus(draft)]}>
+              {OM_STATUS_LABELS[omStatus(draft)]}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="os-icon-btn"
+            aria-label="Cerrar"
+            onClick={() => setDrawerOpen(false)}
           >
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <X size={18} />
+          </button>
+        </header>
+
+        {isExisting ? (
+          <div className="os-drawer-actions">
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => openReport(draft, "pre-mantenimiento")}>
+              <Stethoscope size={14} />
+              Diagnóstico
+            </button>
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => openReport(draft, "post-mantenimiento")}>
+              <ClipboardList size={14} />
+              Post-mantenimiento
+            </button>
+            <a href="/informes/dictamen" className="os-btn os-btn-ghost os-btn-sm">
+              <Camera size={14} />
+              Dictamen foto
+            </a>
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => doneToday(draft)}>
+              <CheckCircle2 size={14} />
+              Hecho hoy
+            </button>
+          </div>
+        ) : null}
+
+        <div className="os-drawer-body">
+          <p className="os-drawer-section is-first">Planta</p>
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm sm:col-span-2">
               <span className="mb-1 block font-medium">Cliente</span>
               <input
@@ -357,6 +603,20 @@ export default function OmPage() {
                 }
               />
             </label>
+            <label className="flex items-end gap-2 pb-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={draft.ours}
+                onChange={(e) =>
+                  setDraft((p) => ({ ...p, ours: e.target.checked }))
+                }
+              />
+              Instalada por GENERA
+            </label>
+          </div>
+
+          <p className="os-drawer-section">Contrato y calendario</p>
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
               <span className="mb-1 block font-medium">Contrato</span>
               <select
@@ -391,16 +651,6 @@ export default function OmPage() {
                 }
               />
             </label>
-            <label className="flex items-end gap-2 pb-2 text-sm font-medium">
-              <input
-                type="checkbox"
-                checked={draft.ours}
-                onChange={(e) =>
-                  setDraft((p) => ({ ...p, ours: e.target.checked }))
-                }
-              />
-              Instalada por GENERA
-            </label>
             <label className="text-sm">
               <span className="mb-1 block font-medium">Último mantenimiento</span>
               <input
@@ -423,8 +673,14 @@ export default function OmPage() {
                 }
               />
             </label>
+            <div className="sm:col-span-2">
+              <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={calcNext}>
+                <CalendarClock size={14} />
+                Calcular próxima fecha
+              </button>
+            </div>
           </div>
-          <label className="mt-3 block text-sm">
+          <label className="mt-4 block text-sm">
             <span className="mb-1 block font-medium">Notas</span>
             <textarea
               className={field}
@@ -433,44 +689,34 @@ export default function OmPage() {
               onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
             />
           </label>
-          <div className="mt-4 flex flex-wrap gap-2">
+        </div>
+
+        <footer className="os-drawer-foot">
+          {isExisting ? (
             <button
               type="button"
-              className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white"
-              onClick={saveDraft}
+              className="os-icon-btn is-danger"
+              aria-label="Quitar planta"
+              title="Quitar planta"
+              onClick={() => removePlant(draft)}
             >
-              Guardar planta
+              <Trash2 size={16} />
             </button>
-            <button
-              type="button"
-              className="rounded-xl border border-[#d8d2c4] bg-white px-4 py-2.5 text-sm font-semibold"
-              onClick={() => {
-                if (!draft.lastMaintenance && !draft.nextMaintenance) {
-                  const last = todayISO();
-                  setDraft((p) => ({
-                    ...p,
-                    lastMaintenance: last,
-                    nextMaintenance: addMonths(last, p.intervalMonths || 12),
-                  }));
-                  return;
-                }
-                if (draft.lastMaintenance) {
-                  setDraft((p) => ({
-                    ...p,
-                    nextMaintenance: addMonths(
-                      p.lastMaintenance || todayISO(),
-                      p.intervalMonths || 12
-                    ),
-                  }));
-                }
-              }}
-            >
-              Calcular próxima fecha
-            </button>
-          </div>
-          </WorkFold>
-        </section>
-      </div>
+          ) : null}
+          <button type="button" className="os-btn os-btn-ghost" onClick={() => setDrawerOpen(false)}>
+            Cerrar
+          </button>
+          <button type="button" className="os-btn os-btn-primary" onClick={saveDraft}>
+            Guardar planta
+          </button>
+        </footer>
+      </aside>
+
+      {flash ? (
+        <div className="os-toast" role="status">
+          {flash}
+        </div>
+      ) : null}
     </AppShell>
   );
 }

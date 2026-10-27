@@ -41,6 +41,7 @@ import {
 } from "@/lib/pipeline";
 import { emptyObra, upsertObra } from "@/lib/obra";
 import { daysUntil } from "@/lib/om";
+import { takeNewFlag } from "@/lib/os-command";
 import { loadSavedQuotes, pinActiveQuote } from "@/lib/saved-quotes";
 import {
   OPEN_QUOTE_KEY,
@@ -120,6 +121,8 @@ export default function PipelinePage() {
         setDrawerOpen(true);
       }
       sessionStorage.removeItem(OPEN_LEAD_KEY);
+    } else if (takeNewFlag()) {
+      newLead();
     }
     void fetch("/api/archivo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))

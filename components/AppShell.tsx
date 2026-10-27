@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { OsCommand, type OsCommandMode } from "@/components/OsCommand";
 import { clearPrivateCache } from "@/components/PwaSetup";
 import {
   SHELL_GROUP_LABELS,
@@ -71,15 +72,35 @@ export function AppShell({
       .catch(() => null);
   }, []);
 
-  const nav = NAV.filter((item) => {
-    if (me && isAliadoRole(me.role)) {
-      return item.module === "cotizador";
-    }
-    if (item.always) return true;
-    if (!item.module) return true;
-    if (!me) return item.module !== "equipo";
-    return sessionAllowsModule(item.module, me.role, me.modules);
+  const nav = useMemo(
+    () =>
+      NAV.filter((item) => {
+        if (me && isAliadoRole(me.role)) {
+          return item.module === "cotizador";
+        }
+        if (item.always) return true;
+        if (!item.module) return true;
+        if (!me) return item.module !== "equipo";
+        return sessionAllowsModule(item.module, me.role, me.modules);
+      }),
+    [me]
+  );
+
+  const [cmd, setCmd] = useState<{ open: boolean; mode: OsCommandMode }>({
+    open: false,
+    mode: "buscar",
   });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmd((c) => ({ open: !c.open, mode: "buscar" }));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const activeHref =
     nav
@@ -103,6 +124,16 @@ export function AppShell({
         activeHref={activeHref}
         me={me ? { name: me.name, roleLabel } : null}
         onLogout={() => void logout()}
+        onSearch={() => setCmd({ open: true, mode: "buscar" })}
+        onNew={() => setCmd({ open: true, mode: "nuevo" })}
+      />
+      <OsCommand
+        open={cmd.open}
+        mode={cmd.mode}
+        onClose={() => setCmd((c) => ({ ...c, open: false }))}
+        nav={nav}
+        aliado={Boolean(me && isAliadoRole(me.role))}
+        username={me?.username}
       />
       <main className="os-shell-main">
         <div className="os-page-head">
