@@ -3,6 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import {
+  Calculator,
+  Camera,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  ClipboardCheck,
+  History,
+  Plus,
+  Printer,
+  Save,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { SiteMapPicker } from "@/components/SiteMapPicker";
 import {
@@ -21,7 +33,9 @@ import {
 import {
   OPEN_VISIT_KEY,
   getSavedVisit,
+  loadSavedVisits,
   saveVisitSnapshot,
+  type SavedVisit,
 } from "@/lib/saved-visits";
 import {
   OPEN_LEAD_KEY,
@@ -32,6 +46,12 @@ import {
 import { takeNewFlag } from "@/lib/os-command";
 import { EnergyBillPanel } from "@/components/EnergyBillPanel";
 import { emptyEnergyBill } from "@/lib/energy-bill";
+
+function sortedVisits() {
+  return [...loadSavedVisits()].sort(
+    (a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt)
+  );
+}
 
 const inputClass =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
@@ -44,6 +64,49 @@ export default function VisitaTecnicaPage() {
   const [hydrated, setHydrated] = useState(false);
   const [savedId, setSavedId] = useState<string | undefined>();
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [savedVisits, setSavedVisits] = useState<SavedVisit[]>([]);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const recentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSavedVisits(sortedVisits());
+  }, []);
+
+  useEffect(() => {
+    if (!recentOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!recentRef.current?.contains(e.target as Node)) setRecentOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRecentOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [recentOpen]);
+
+  function openSaved(id: string) {
+    setRecentOpen(false);
+    const archived = getSavedVisit(id);
+    if (!archived) return;
+    setVisit(archived.visit);
+    setLinked(archived.linked);
+    setSavedId(archived.id);
+    saveStoredSiteVisit({ visit: archived.visit, linked: archived.linked });
+    setFlash(`Visita de ${archived.visit.clientName || "cliente sin nombre"} abierta.`);
+    window.setTimeout(() => setFlash(""), 2500);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function focusSection(id: string) {
+    window.dispatchEvent(new CustomEvent(OPEN_SECTION_EVENT, { detail: id }));
+    window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 30);
+  }
 
   useEffect(() => {
     if (takeNewFlag()) {
@@ -105,6 +168,7 @@ export default function VisitaTecnicaPage() {
         id: savedId,
       });
       setSavedId(archived.id);
+      setSavedVisits(sortedVisits());
       const res = await fetch("/api/archivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -178,68 +242,168 @@ export default function VisitaTecnicaPage() {
 
   if (!hydrated) {
     return (
-      <AppShell title="Visitas técnicas" subtitle="Levantamiento fotovoltaico">
+      <AppShell title="Visita técnica" subtitle="Levantamiento de campo · enlace al cotizador">
         <p className="text-sm text-[#6d7c74]">Cargando visita…</p>
       </AppShell>
     );
   }
 
+  const bill = visit.energyBill ?? emptyEnergyBill();
+  const checks = [
+    {
+      section: "v-general",
+      label: "Cliente y técnico",
+      done: Boolean(
+        visit.clientName.trim() && visit.technician.trim() && visit.location.trim()
+      ),
+    },
+    {
+      section: "v-general",
+      label: "Pin en el mapa",
+      done: typeof visit.lat === "number" && typeof visit.lon === "number",
+    },
+    { section: "v-electrico", label: "Tablero", done: Boolean(visit.panelSpace.trim()) },
+    { section: "v-techo", label: "Área útil", done: visit.usefulAreaM2 > 0 },
+    {
+      section: "v-recibo",
+      label: "Recibo",
+      done:
+        bill.consumptionKWh > 0 || bill.average6MonthsKWh > 0 || bill.photos.length > 0,
+    },
+    { section: "v-fotos", label: "Fotos", done: visit.photos.length > 0 },
+  ];
+  const doneCount = checks.filter((c) => c.done).length;
+  const sectionDone = (id: string) =>
+    checks.filter((c) => c.section === id).every((c) => c.done);
+
   return (
     <AppShell
-      title="Visitas Técnicas Genera Solutions"
+      title="Visita técnica"
+      printTitle="Visitas Técnicas Genera Solutions"
       subtitle="Levantamiento de campo · enlace al cotizador"
+      actions={
+        <>
+          <div className="os-menu" ref={recentRef}>
+            <button
+              type="button"
+              className="os-btn os-btn-ghost"
+              aria-expanded={recentOpen}
+              onClick={() => setRecentOpen((v) => !v)}
+            >
+              <History size={16} />
+              Recientes
+              <ChevronDown size={15} />
+            </button>
+            {recentOpen ? (
+              <div className="os-menu-pop" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={() => {
+                    setRecentOpen(false);
+                    newVisit();
+                  }}
+                >
+                  <Plus size={15} />
+                  <span>Nueva visita en blanco</span>
+                </button>
+                <p className="os-menu-label">Visitas guardadas</p>
+                {savedVisits.length === 0 ? (
+                  <p className="os-menu-empty">Aún no hay visitas guardadas.</p>
+                ) : (
+                  savedVisits.slice(0, 8).map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      role="menuitem"
+                      className="os-menu-item"
+                      aria-current={v.id === savedId ? "true" : undefined}
+                      onClick={() => openSaved(v.id)}
+                    >
+                      <ClipboardCheck size={15} />
+                      <span>
+                        {v.visit.clientName || "Sin cliente"}
+                        {v.visit.location ? ` · ${v.visit.location}` : ""}
+                      </span>
+                    </button>
+                  ))
+                )}
+                <Link href="/archivo" className="os-menu-foot">
+                  Ver todo el archivo
+                </Link>
+              </div>
+            ) : null}
+          </div>
+          <button type="button" className="os-btn os-btn-ghost" onClick={exportPdf}>
+            <Printer size={16} />
+            PDF
+          </button>
+          <button type="button" className="os-btn os-btn-ghost" onClick={goQuote}>
+            <Calculator size={16} />
+            Ir a cotizar
+          </button>
+          <button type="button" className="os-btn os-btn-primary" onClick={() => void saveVisit()}>
+            <Save size={16} />
+            Guardar visita
+          </button>
+        </>
+      }
     >
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <div className="os-page-hero">
-          <h2 className="text-2xl font-semibold text-[#12241c]">
-            Levantamiento fotovoltaico
-          </h2>
-          <p className="mt-1 max-w-2xl text-sm text-[#4d5c55]">
-            Registre red, cubierta, recorridos y SST. Al vincular, el cotizador
-            usa metros reales de cable y tubería en lugar del estimado por kWp.
-          </p>
+      <div className="os-visit-bar print:hidden">
+        <div className="os-visit-progress">
+          <div className="os-progress-top">
+            <span>Datos clave del levantamiento</span>
+            <strong>
+              {doneCount} de {checks.length}
+            </strong>
+          </div>
+          <div className="os-progress-track">
+            <span
+              className="os-progress-bar"
+              style={{ width: `${(doneCount / checks.length) * 100}%` }}
+            />
+          </div>
+          <div className="os-visit-checks">
+            {checks.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                className="os-visit-check"
+                data-done={c.done ? "true" : undefined}
+                onClick={() => focusSection(c.section)}
+              >
+                {c.done ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                {c.label}
+              </button>
+            ))}
+          </div>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={linked}
           onClick={() => setLink(!linked)}
-          className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left shadow-sm ${
-            linked
-              ? "border-[#1f6b45]/40 bg-[#1f6b45] text-white"
-              : "border-[#d8d2c4] bg-white text-[#12241c]"
-          }`}
+          className="os-link-switch"
         >
-          <span
-            className={`flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 ${
-              linked ? "bg-white/30" : "bg-[#c4bbb0]"
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow transition ${
-                linked ? "translate-x-5" : "translate-x-0"
-              }`}
-            />
+          <span className="os-switch" aria-hidden>
+            <span />
           </span>
-          <span>
-            <span className="block text-[10px] font-bold tracking-wider uppercase opacity-80">
-              {linked ? "ON" : "OFF"}
+          <span className="min-w-0">
+            <span className="os-link-switch-title">
+              {linked ? "Vinculada al cotizador" : "Sin vincular al cotizador"}
             </span>
-            <span className="block text-sm font-semibold">
-              Vincular al cotizador
+            <span className="os-link-switch-hint">
+              {linked
+                ? "El cotizador usa los metros reales de cable y tubería."
+                : "Al vincular, el cotizador deja el estimado por kWp."}
             </span>
           </span>
         </button>
       </div>
 
-      {flash ? (
-        <p className="mb-4 rounded-xl bg-[#e8f6ee] px-4 py-2 text-sm text-[#1f6b45] print:hidden">
-          {flash}
-        </p>
-      ) : null}
-
       <div className="grid gap-4">
-        <VisitCard title="Datos generales" defaultOpen>
+        <VisitCard id="v-general" title="Datos generales" defaultOpen done={sectionDone("v-general")}>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Cliente / proyecto">
               <input
@@ -300,7 +464,7 @@ export default function VisitaTecnicaPage() {
           </div>
         </VisitCard>
 
-        <VisitCard title="Sistema eléctrico existente">
+        <VisitCard id="v-electrico" title="Sistema eléctrico existente" done={sectionDone("v-electrico")}>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Tipo de red">
               <select
@@ -368,7 +532,7 @@ export default function VisitaTecnicaPage() {
           </div>
         </VisitCard>
 
-        <VisitCard title="Zona de paneles / techo">
+        <VisitCard id="v-techo" title="Zona de paneles / techo" done={sectionDone("v-techo")}>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Tipo de cubierta">
               <select
@@ -552,14 +716,14 @@ export default function VisitaTecnicaPage() {
           </Field>
         </VisitCard>
 
-        <VisitCard title="Recibo de energía">
+        <VisitCard id="v-recibo" title="Recibo de energía" done={sectionDone("v-recibo")}>
           <EnergyBillPanel
             bill={visit.energyBill ?? emptyEnergyBill()}
             onChange={(energyBill) => patch("energyBill", energyBill)}
           />
         </VisitCard>
 
-        <VisitCard title="Registro fotográfico">
+        <VisitCard id="v-fotos" title="Registro fotográfico" done={sectionDone("v-fotos")}>
           <input
             ref={photoInputRef}
             type="file"
@@ -624,72 +788,79 @@ export default function VisitaTecnicaPage() {
         </VisitCard>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-3 print:hidden">
+      <div className="os-mobilebar print:hidden">
         <button
           type="button"
-          onClick={saveVisit}
-          className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm"
+          className="os-btn os-btn-ghost"
+          onClick={() => {
+            focusSection("v-fotos");
+            photoInputRef.current?.click();
+          }}
         >
-          Guardar visita técnica
+          <Camera size={16} />
+          Fotos
         </button>
-        <button
-          type="button"
-          onClick={newVisit}
-          className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#0f2a1f] shadow-sm ring-1 ring-[#d8d2c4]"
-        >
-          Nueva visita
+        <button type="button" className="os-btn os-btn-ghost" onClick={goQuote}>
+          <Calculator size={16} />
+          Cotizar
         </button>
-        <Link
-          href="/archivo"
-          className="rounded-xl px-4 py-2.5 text-sm font-semibold text-[#1f6b45] underline"
-        >
-          Ver archivo
-        </Link>
-        <button
-          type="button"
-          onClick={exportPdf}
-          className="rounded-xl bg-[#1d4ed8] px-4 py-2.5 text-sm font-semibold text-white shadow-sm"
-        >
-          Exportar informe de visita a PDF
+        <button type="button" className="os-btn os-btn-primary" onClick={() => void saveVisit()}>
+          <Save size={16} />
+          Guardar
         </button>
-        <button
-          type="button"
-          onClick={goQuote}
-          className="rounded-xl bg-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-white shadow-sm"
-        >
-          Ir a cotizar con estos datos
-        </button>
-        <Link
-          href="/cotizador"
-          className="rounded-xl px-4 py-2.5 text-sm font-semibold text-[#1f6b45] underline"
-        >
-          Abrir cotizador
-        </Link>
       </div>
+
+      {flash ? (
+        <div className="os-toast print:hidden" role="status">
+          {flash}
+        </div>
+      ) : null}
     </AppShell>
   );
 }
 
+const OPEN_SECTION_EVENT = "genera:visit-section";
+
 function VisitCard({
+  id,
   title,
   defaultOpen = false,
+  done = false,
   children,
 }: {
+  id?: string;
   title: string;
   defaultOpen?: boolean;
+  done?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => {
+    if (!id) return;
+    const onOpen = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === id) setOpen(true);
+    };
+    window.addEventListener(OPEN_SECTION_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_SECTION_EVENT, onOpen);
+  }, [id]);
   return (
-    <section className="os-fold os-panel rounded-2xl border border-[#ddd6c8] bg-white p-4 shadow-sm">
+    <section
+      id={id}
+      className="os-fold os-panel os-visit-card rounded-2xl border border-[#ddd6c8] bg-white p-4 shadow-sm"
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-3 text-left print:hidden"
       >
-        <h3 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
+        <h3 className="flex items-center gap-2 text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
           {title}
+          {done ? (
+            <span className="os-visit-done" title="Sección completa">
+              <CheckCircle2 size={15} />
+            </span>
+          ) : null}
         </h3>
         <span
           aria-hidden

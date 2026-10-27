@@ -1,7 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BadgeCheck,
+  Camera,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ClipboardCheck,
+  FileText,
+  History,
+  Link2,
+  Plus,
+  Printer,
+  Save,
+  Sparkles,
+  Stethoscope,
+  Sun,
+  Trash2,
+  Wrench,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import type { OsTone } from "@/components/OsKpi";
 import { WorkFold } from "@/components/WorkFold";
 import { ReportDocument } from "@/components/informes/ReportDocument";
 import { loadSpecialistManuals } from "@/lib/specialist-manuals";
@@ -22,11 +46,31 @@ import {
   type CheckStatus,
   type PlantProfile,
   type ReportKind,
+  type ReportStatus,
   type TechnicalReport,
 } from "@/lib/technical-reports";
 import { markMaintenanceDone } from "@/lib/om";
 
 const KINDS = Object.keys(REPORT_KIND_LABELS) as ReportKind[];
+
+const KIND_ICONS: Record<ReportKind, LucideIcon> = {
+  "inspeccion-fv": Sun,
+  "inspeccion-electrica": Zap,
+  "pre-mantenimiento": Stethoscope,
+  "post-mantenimiento": ClipboardCheck,
+};
+
+const STATUS_LABEL: Record<ReportStatus, string> = {
+  borrador: "Borrador",
+  revisado: "En revisión",
+  publicado: "Publicado",
+};
+
+const STATUS_TONE: Record<ReportStatus, OsTone> = {
+  borrador: "neutral",
+  revisado: "warn",
+  publicado: "ok",
+};
 const CHECK_OPTS: { id: CheckStatus; label: string }[] = [
   { id: "pendiente", label: "Pend." },
   { id: "ok", label: "OK" },
@@ -47,9 +91,27 @@ export default function InformesPage() {
     checklist: false,
     fotos: false,
     capitulos: false,
-    recientes: false,
+    recientes: true,
     preview: false,
   });
+  const [recentOpen, setRecentOpen] = useState(false);
+  const recentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!recentOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!recentRef.current?.contains(e.target as Node)) setRecentOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRecentOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [recentOpen]);
   const [plants, setPlants] = useState<PlantProfile[]>([]);
   const [saved, setSaved] = useState(() =>
     typeof window === "undefined" ? [] : loadSavedReports()
@@ -92,6 +154,19 @@ export default function InformesPage() {
     }
     setSaved(loadSavedReports());
   }, []);
+
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(""), 3600);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  function removeSaved(id: string) {
+    if (!confirm("¿Quitar este informe del archivo?")) return;
+    deleteSavedReport(id);
+    void fetch(`/api/archivo?report=${id}`, { method: "DELETE" });
+    setSaved(loadSavedReports());
+  }
 
   function patch(next: Partial<TechnicalReport>) {
     setReport((prev) => ({
@@ -242,131 +317,221 @@ export default function InformesPage() {
   }
 
   const preMantenimiento = report.kind === "pre-mantenimiento";
+  const checkTotal = report.checklist.length;
+  const checkAnswered = report.checklist.filter((c) => c.status !== "pendiente").length;
+  const checkFails = report.checklist.filter((c) => c.status === "no").length;
+  const chaptersWritten = report.chapters.filter((c) => c.body.trim()).length;
+  const chaptersApproved = report.chapters.filter((c) => c.approved).length;
+  const fieldDone =
+    Boolean(report.plant.clientName.trim()) &&
+    checkTotal > 0 &&
+    checkAnswered === checkTotal;
+  const draftDone = report.chapters.length > 0 && chaptersApproved === report.chapters.length;
+  const published = report.status === "publicado";
+  const plantHistory = saved.filter(
+    (row) =>
+      row.report.id !== report.id &&
+      ((report.plant.id && row.report.plant.id === report.plant.id) ||
+        (report.plant.clientName.trim() &&
+          row.report.plant.clientName.trim().toLowerCase() ===
+            report.plant.clientName.trim().toLowerCase()))
+  );
 
   return (
     <AppShell
       title="Informes técnicos"
       subtitle="Inspección · O&M · mesa redonda"
+      actions={
+        <>
+          <span className="os-pill os-report-status" data-tone={STATUS_TONE[report.status]}>
+            {STATUS_LABEL[report.status]}
+          </span>
+          <div className="os-menu" ref={recentRef}>
+            <button
+              type="button"
+              className="os-btn os-btn-ghost"
+              aria-expanded={recentOpen}
+              onClick={() => setRecentOpen((v) => !v)}
+            >
+              <History size={16} />
+              Recientes
+              <ChevronDown size={15} />
+            </button>
+            {recentOpen ? (
+              <div className="os-menu-pop" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={() => {
+                    setRecentOpen(false);
+                    setReport(emptyReport(report.kind));
+                    setFlash("Nuevo informe en blanco.");
+                  }}
+                >
+                  <Plus size={15} />
+                  <span>Nuevo informe en blanco</span>
+                </button>
+                <p className="os-menu-label">Informes guardados</p>
+                {saved.length === 0 ? (
+                  <p className="os-menu-empty">Aún no hay informes guardados.</p>
+                ) : (
+                  saved.slice(0, 8).map((row) => (
+                    <div key={row.id} className="os-menu-row">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="os-menu-item"
+                        aria-current={row.report.id === report.id ? "true" : undefined}
+                        onClick={() => {
+                          setRecentOpen(false);
+                          setReport(row.report);
+                        }}
+                      >
+                        <FileText size={15} />
+                        <span>
+                          {row.report.plant.clientName || "Sin cliente"} ·{" "}
+                          {REPORT_KIND_LABELS[row.report.kind]}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="os-icon-btn is-danger is-sm"
+                        aria-label="Quitar informe"
+                        title="Quitar"
+                        onClick={() => removeSaved(row.id)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))
+                )}
+                <a href="/archivo" className="os-menu-foot">
+                  Ver todo el archivo
+                </a>
+              </div>
+            ) : null}
+          </div>
+          <button type="button" className="os-btn os-btn-primary" onClick={saveAll}>
+            <Save size={16} />
+            Guardar
+          </button>
+        </>
+      }
     >
-      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55] print:hidden">
-        Cuatro tipos de informe con checklist de campo, fotos y redacción de la
-        mesa. El ingeniero revisa cada capítulo. PDF o enlace limpio para el
-        cliente. Quedan en Archivo.
-      </p>
-      <a
-        href="/informes/dictamen"
-        className="os-panel print:hidden mb-5 flex items-start justify-between gap-3 rounded-2xl border border-[#1f6b45]/30 bg-[#e8f6ee] px-4 py-3"
-      >
-        <span>
-          <span className="block text-sm font-semibold text-[#0f2a1f]">
-            Dictamen fotográfico RETIE / NTC 2050
-          </span>
-          <span className="os-page-intro mt-0.5 block text-[12px] leading-5 text-[#4d5c55]">
-            Herramienta aparte: una foto, no conformidad propuesta con articulado.
-            No sustituye al organismo de inspección.
-          </span>
-        </span>
-        <span className="shrink-0 text-sm font-semibold text-[#1f6b45]">
-          Abrir →
-        </span>
-      </a>
-
-      {flash ? (
-        <p className="mb-3 rounded-xl bg-[#e8f6ee] px-4 py-2 text-sm text-[#1f6b45] print:hidden">
-          {flash}
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mb-3 rounded-xl bg-[#fde8e8] px-4 py-2 text-sm text-[#9b2c2c] print:hidden">
-          {error}
-        </p>
-      ) : null}
-      {offline ? (
-        <p className="mb-3 text-xs text-[#8a6b2a] print:hidden">
-          Modo demo: configure OPENAI_API_KEY para redacción en vivo.
-        </p>
-      ) : null}
-
-      <div className="print:hidden mb-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white"
-          onClick={() => {
-            setReport(emptyReport(report.kind));
-            setFlash("Nuevo informe en blanco.");
-          }}
-        >
-          Nuevo informe
-        </button>
-        <button
-          type="button"
-          className="rounded-xl border border-[#d8d2c4] bg-white px-4 py-2.5 text-sm font-semibold"
-          onClick={saveAll}
-        >
-          Guardar en Archivo
-        </button>
-        <button
-          type="button"
-          disabled={drafting}
-          className="rounded-xl bg-[#d4b46a] px-4 py-2.5 text-sm font-semibold text-[#12241c] disabled:opacity-50"
-          onClick={() => void redactar()}
-        >
-          {drafting ? "Redactando…" : "Redactar con mesa redonda"}
-        </button>
-        <button
-          type="button"
-          className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
-          onClick={publish}
-        >
-          Publicar
-        </button>
-        <button
-          type="button"
-          className="rounded-xl border border-[#d8d2c4] bg-white px-4 py-2.5 text-sm font-semibold"
-          onClick={() => window.print()}
-        >
-          Imprimir / PDF
-        </button>
-        <button
-          type="button"
-          disabled={sharing}
-          className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45] disabled:opacity-50"
-          onClick={() => void shareLink()}
-        >
-          {sharing ? "Publicando…" : "Compartir enlace"}
-        </button>
-        {preMantenimiento ? (
-          <a
-            href="/cotizador?nueva=1"
-            className="rounded-xl bg-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-white"
-          >
-            Cotizar mantenimiento
-          </a>
-        ) : null}
-      </div>
-
-      <div className="print:hidden mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="os-kinds print:hidden" role="tablist" aria-label="Tipo de informe">
         {KINDS.map((kind) => {
-          const on = report.kind === kind;
+          const Icon = KIND_ICONS[kind];
           return (
             <button
               key={kind}
               type="button"
+              role="tab"
+              aria-selected={report.kind === kind}
               onClick={() => setReport((prev) => retargetKind(prev, kind))}
-              className={`os-kind rounded-2xl border px-4 py-3 text-left ${
-                on
-                  ? "border-[#1f6b45] bg-[#e8f6ee]"
-                  : "border-[#ddd6c8] bg-white"
-              }`}
+              className="os-kind"
             >
-              <p className="text-sm font-semibold">{REPORT_KIND_LABELS[kind]}</p>
-              <p className="os-page-intro mt-1 text-[11px] leading-4 text-[#6d7c74]">
-                {REPORT_KIND_HINTS[kind]}
-              </p>
+              <span className="os-kind-icon">
+                <Icon size={17} />
+              </span>
+              <span className="min-w-0">
+                <span className="os-kind-title">{REPORT_KIND_LABELS[kind]}</span>
+                <span className="os-kind-hint">{REPORT_KIND_HINTS[kind]}</span>
+              </span>
             </button>
           );
         })}
       </div>
+
+      <ol className="os-flow print:hidden">
+        <li className="os-flow-step" data-done={fieldDone ? "true" : undefined}>
+          <span className="os-flow-num">{fieldDone ? <Check size={15} /> : 1}</span>
+          <div className="min-w-0 flex-1">
+            <p className="os-flow-title">Levantar en campo</p>
+            <p className="os-flow-hint">
+              Checklist {checkAnswered} de {checkTotal}
+              {checkFails ? ` · ${checkFails} con falla` : ""} · {report.photos.length} fotos
+            </p>
+          </div>
+        </li>
+        <li className="os-flow-step" data-done={draftDone ? "true" : undefined}>
+          <span className="os-flow-num">{draftDone ? <Check size={15} /> : 2}</span>
+          <div className="min-w-0 flex-1">
+            <p className="os-flow-title">Redactar y aprobar</p>
+            <p className="os-flow-hint">
+              {chaptersWritten === 0
+                ? "La mesa redacta con lo que se levantó"
+                : `${chaptersApproved} de ${report.chapters.length} capítulos aprobados`}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="os-btn os-btn-gold os-btn-sm"
+            disabled={drafting}
+            onClick={() => void redactar()}
+          >
+            <Sparkles size={14} />
+            {drafting ? "Redactando…" : chaptersWritten ? "Redactar de nuevo" : "Redactar"}
+          </button>
+        </li>
+        <li className="os-flow-step" data-done={published ? "true" : undefined}>
+          <span className="os-flow-num">{published ? <Check size={15} /> : 3}</span>
+          <div className="min-w-0 flex-1">
+            <p className="os-flow-title">Publicar y entregar</p>
+            <p className="os-flow-hint">
+              {published ? "Publicado · listo para el cliente" : "PDF o enlace limpio para el cliente"}
+            </p>
+          </div>
+          <div className="os-flow-actions">
+            {published ? null : (
+              <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={publish}>
+                <BadgeCheck size={14} />
+                Publicar
+              </button>
+            )}
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => window.print()}>
+              <Printer size={14} />
+              PDF
+            </button>
+            <button
+              type="button"
+              className="os-btn os-btn-ghost os-btn-sm"
+              disabled={sharing}
+              onClick={() => void shareLink()}
+            >
+              <Link2 size={14} />
+              {sharing ? "Publicando…" : "Enlace"}
+            </button>
+          </div>
+        </li>
+      </ol>
+
+      {error ? (
+        <div className="os-alert print:hidden" data-tone="danger">
+          <AlertTriangle size={16} />
+          <span>{error}</span>
+        </div>
+      ) : null}
+      {offline ? (
+        <div className="os-alert print:hidden" data-tone="warn">
+          <AlertTriangle size={16} />
+          <span>
+            La redacción automática no está disponible en este momento. Se dejó un
+            borrador base: revise y complete cada capítulo a mano.
+          </span>
+        </div>
+      ) : null}
+      {preMantenimiento ? (
+        <div className="os-alert print:hidden" data-tone="info">
+          <Wrench size={16} />
+          <span>
+            Con el diagnóstico listo, cotice el mantenimiento para este cliente.
+          </span>
+          <a href="/cotizador?nueva=1" className="os-btn os-btn-ghost os-btn-sm">
+            Cotizar mantenimiento
+          </a>
+        </div>
+      ) : null}
 
       <div className="print:hidden grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="space-y-4">
@@ -558,11 +723,9 @@ export default function InformesPage() {
                       <button
                         key={opt.id}
                         type="button"
-                        className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${
-                          item.status === opt.id
-                            ? "bg-[#1f6b45] text-white"
-                            : "bg-[#f7f4ee] text-[#4d5c55]"
-                        }`}
+                        className="os-check-opt"
+                        data-opt={opt.id}
+                        aria-pressed={item.status === opt.id}
                         onClick={() =>
                           patch({
                             checklist: report.checklist.map((c) =>
@@ -670,11 +833,15 @@ export default function InformesPage() {
               {report.chapters.map((ch) => (
                 <div
                   key={ch.specialistId}
-                  className="rounded-xl border border-[#eee8dc] p-3"
+                  className="os-chapter rounded-xl border border-[#eee8dc] p-3"
+                  data-approved={ch.approved ? "true" : undefined}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{ch.title}</p>
-                    <label className="flex items-center gap-1 text-[11px]">
+                    <p className="flex items-center gap-1.5 text-sm font-semibold">
+                      {ch.approved ? <CheckCircle2 size={15} className="text-[#1f8a55]" /> : null}
+                      {ch.title}
+                    </p>
+                    <label className="os-chapter-approve flex items-center gap-1 text-[11px]">
                       <input
                         type="checkbox"
                         checked={ch.approved}
@@ -732,43 +899,36 @@ export default function InformesPage() {
 
           <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
             <WorkFold
-              title="Recientes en este equipo"
+              title="Historial de esta planta"
               open={folds.recientes}
               onToggle={() =>
                 setFolds((s) => ({ ...s, recientes: !s.recientes }))
               }
             >
-            {saved.length === 0 ? (
+            {plantHistory.length === 0 ? (
               <p className="mt-2 text-sm text-[#6d7c74]">
-                Aún no hay informes guardados.
+                {report.plant.clientName.trim()
+                  ? "No hay otros informes guardados de esta planta."
+                  : "Elija o escriba la planta para ver sus informes anteriores."}
               </p>
             ) : (
-              <ul className="mt-2 space-y-2 text-sm">
-                {saved.slice(0, 8).map((row) => (
-                  <li
-                    key={row.id}
-                    className="flex items-center justify-between gap-2"
-                  >
+              <ul className="os-history">
+                {plantHistory.slice(0, 8).map((row) => (
+                  <li key={row.id}>
                     <button
                       type="button"
-                      className="text-left font-medium text-[#1f6b45] underline"
+                      className="os-history-item"
                       onClick={() => setReport(row.report)}
                     >
-                      {REPORT_KIND_LABELS[row.report.kind]} ·{" "}
-                      {row.report.plant.clientName || "Sin cliente"}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs text-[#9b2c2c] underline"
-                      onClick={() => {
-                        deleteSavedReport(row.id);
-                        void fetch(`/api/archivo?report=${row.id}`, {
-                          method: "DELETE",
-                        });
-                        setSaved(loadSavedReports());
-                      }}
-                    >
-                      Quitar
+                      <span className="os-history-date">
+                        {row.report.visitDate || row.savedAt.slice(0, 10)}
+                      </span>
+                      <span className="os-history-name">
+                        {REPORT_KIND_LABELS[row.report.kind]}
+                      </span>
+                      <span className="os-pill" data-tone={STATUS_TONE[row.report.status]}>
+                        {STATUS_LABEL[row.report.status]}
+                      </span>
                     </button>
                   </li>
                 ))}
@@ -776,6 +936,20 @@ export default function InformesPage() {
             )}
             </WorkFold>
           </section>
+
+          <a href="/informes/dictamen" className="os-callout print:hidden">
+            <span className="os-kind-icon">
+              <Camera size={17} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="os-kind-title">Dictamen fotográfico RETIE / NTC 2050</span>
+              <span className="os-kind-hint">
+                Una foto, no conformidad propuesta con articulado. No sustituye al
+                organismo de inspección.
+              </span>
+            </span>
+            <ArrowRight size={16} className="os-callout-go" />
+          </a>
         </div>
       </div>
 
@@ -791,6 +965,12 @@ export default function InformesPage() {
           <ReportDocument report={report} />
         </WorkFold>
       </div>
+
+      {flash ? (
+        <div className="os-toast print:hidden" role="status">
+          {flash}
+        </div>
+      ) : null}
     </AppShell>
   );
 }

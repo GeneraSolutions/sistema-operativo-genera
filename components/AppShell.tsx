@@ -44,11 +44,13 @@ const NAV: {
 export function AppShell({
   children,
   title,
+  printTitle,
   subtitle,
   actions,
 }: {
   children: React.ReactNode;
   title: string;
+  printTitle?: string;
   subtitle?: string;
   actions?: React.ReactNode;
 }) {
@@ -147,7 +149,16 @@ export function AppShell({
                 </>
               ) : null}
             </p>
-            <h1 className="os-page-title">{title}</h1>
+            <h1 className="os-page-title">
+              {printTitle ? (
+                <>
+                  <span className="print:hidden">{title}</span>
+                  <span className="hidden print:inline">{printTitle}</span>
+                </>
+              ) : (
+                title
+              )}
+            </h1>
             {subtitle ? <p className="os-page-sub">{subtitle}</p> : null}
           </div>
           {actions ? <div className="os-page-actions print:hidden">{actions}</div> : null}
