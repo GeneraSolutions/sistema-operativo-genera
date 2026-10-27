@@ -32,7 +32,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0f2a1f] px-4">
+    <div className="os-login flex min-h-screen items-center justify-center bg-[#0f2a1f] px-4">
       <div className="os-login-card w-full max-w-md rounded-2xl bg-white p-8 shadow-[0_20px_50px_rgba(0,0,0,0.25)]">
         <div className="mb-4 flex justify-end">
           <OsLookToggle />

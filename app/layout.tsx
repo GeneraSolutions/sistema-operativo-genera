@@ -1,8 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import { PwaSetup } from "@/components/PwaSetup";
 import { OS_LOOK_BOOT } from "@/lib/os-look";
 import { siteUrl } from "@/lib/site";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 const title = "Sistema Operativo Solar | Genera Solutions SAS";
 const description =
@@ -57,7 +64,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" data-look="operativo">
+    <html
+      lang="es"
+      data-look="moderno"
+      data-sidebar="amplio"
+      className={inter.variable}
+      suppressHydrationWarning
+    >
       <body>
         <script dangerouslySetInnerHTML={{ __html: OS_LOOK_BOOT }} />
         {children}

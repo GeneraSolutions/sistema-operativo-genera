@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { BrandLogo } from "@/components/BrandLogo";
-import { OsLookToggle } from "@/components/OsLookToggle";
 import { clearPrivateCache } from "@/components/PwaSetup";
+import {
+  SHELL_GROUP_LABELS,
+  ShellSidebar,
+  type ShellNavGroup,
+} from "@/components/ShellSidebar";
 import {
   ROLE_LABELS,
   isAliadoRole,
@@ -18,22 +21,23 @@ const NAV: {
   href: string;
   label: string;
   hint: string;
+  group: ShellNavGroup;
   module?: AppModule;
   always?: boolean;
 }[] = [
-  { href: "/inicio", label: "Hoy", hint: "Qué está caliente", always: true },
-  { href: "/pipeline", label: "Pipeline", hint: "Leads y cierre", module: "pipeline" },
-  { href: "/cotizador", label: "Cotizador", hint: "Paramétrico", module: "cotizador" },
-  { href: "/cotizador/equipos", label: "Solo equipos", hint: "Hasta 12 ítems", module: "cotizador" },
-  { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", module: "visita" },
-  { href: "/informes", label: "Informes", hint: "Inspección y O&M", module: "informes" },
-  { href: "/om", label: "O&M", hint: "Plantas y calendario", module: "om" },
-  { href: "/obra", label: "Obra", hint: "Avance y trámites", module: "obra" },
-  { href: "/archivo", label: "Archivo", hint: "Guardados", module: "archivo" },
-  { href: "/inventario", label: "Inventario", hint: "Catálogo & TRM", module: "inventario" },
-  { href: "/inteligencia", label: "Inteligencia", hint: "Especialistas AI", module: "inteligencia" },
-  { href: "/contenido", label: "Contenido", hint: "Calendario y briefs", module: "contenido" },
-  { href: "/equipo", label: "Equipo", hint: "Usuarios y cargos", module: "equipo" },
+  { href: "/inicio", label: "Hoy", hint: "Qué está caliente", group: "comercial", always: true },
+  { href: "/pipeline", label: "Pipeline", hint: "Leads y cierre", group: "comercial", module: "pipeline" },
+  { href: "/cotizador", label: "Cotizador", hint: "Paramétrico", group: "comercial", module: "cotizador" },
+  { href: "/cotizador/equipos", label: "Solo equipos", hint: "Hasta 12 ítems", group: "comercial", module: "cotizador" },
+  { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", group: "operacion", module: "visita" },
+  { href: "/informes", label: "Informes", hint: "Inspección y O&M", group: "operacion", module: "informes" },
+  { href: "/om", label: "O&M", hint: "Plantas y calendario", group: "operacion", module: "om" },
+  { href: "/obra", label: "Obra", hint: "Avance y trámites", group: "operacion", module: "obra" },
+  { href: "/archivo", label: "Archivo", hint: "Guardados", group: "recursos", module: "archivo" },
+  { href: "/inventario", label: "Inventario", hint: "Catálogo & TRM", group: "recursos", module: "inventario" },
+  { href: "/inteligencia", label: "Inteligencia", hint: "Especialistas AI", group: "recursos", module: "inteligencia" },
+  { href: "/contenido", label: "Contenido", hint: "Calendario y briefs", group: "recursos", module: "contenido" },
+  { href: "/equipo", label: "Equipo", hint: "Usuarios y cargos", group: "admin", module: "equipo" },
 ];
 
 export function AppShell({
@@ -75,110 +79,50 @@ export function AppShell({
     return sessionAllowsModule(item.module, me.role, me.modules);
   });
 
+  const activeHref =
+    nav
+      .map((n) => n.href)
+      .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
+      .sort((a, b) => b.length - a.length)[0] ?? "";
+  const activeItem = nav.find((n) => n.href === activeHref);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     await clearPrivateCache();
     window.location.href = "/login";
   }
 
+  const roleLabel = me ? me.roleLabel || ROLE_LABELS[me.role] || me.role : "";
+
   return (
     <div className="os-app min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="os-shell-header border-b border-[#1a3d2e] bg-[var(--brand-deep)]">
-        <div className="os-shell-inner mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-[var(--shell-header-py)]">
-          <div className="os-shell-brand min-w-0">
-            <div className="flex min-w-0 items-center gap-3">
-              <BrandLogo height={52} className="os-shell-logo" />
-              <Link href="/inicio" className="group min-w-0">
-                <p className="os-shell-kicker text-[11px] font-semibold tracking-[0.28em] text-[#d4b46a] uppercase">
-                  Genera Solutions SAS
-                </p>
-                <h1 className="os-shell-brand-title mt-0.5 truncate text-xl font-semibold text-white group-hover:text-[#e8d9a8]">
-                  Sistema Operativo Solar
-                </h1>
-              </Link>
-            </div>
-            <p className="os-shell-page mt-1 text-sm text-[#c9d7cf]">
-              {title}
-              {subtitle ? (
-                <span className="text-[#8aa398]"> · {subtitle}</span>
-              ) : null}
-            </p>
-          </div>
-
-          <div className="os-shell-tools flex flex-wrap items-center gap-3">
-            <OsLookToggle />
-            <nav className="os-shell-nav flex flex-wrap gap-1 rounded-xl bg-[#0a1f17] p-1 ring-1 ring-[#1f4636]">
-              {nav.map((item) => {
-                const matches = nav
-                  .map((n) => n.href)
-                  .filter(
-                    (href) =>
-                      pathname === href || pathname.startsWith(`${href}/`)
-                  )
-                  .sort((a, b) => b.length - a.length);
-                const active = (matches[0] ?? "") === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    title={item.hint}
-                    className={`os-nav-link rounded-lg px-3.5 py-2 text-sm transition ${
-                      active
-                        ? "bg-[#1f6b45] font-semibold text-white shadow-sm"
-                        : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
-                    }`}
-                  >
-                    <span className="block leading-tight">{item.label}</span>
-                    <span
-                      className={`os-nav-hint block text-[10px] tracking-wide uppercase ${
-                        active ? "text-[#b8e0cc]" : "text-[#6d8a7c]"
-                      }`}
-                    >
-                      {item.hint}
-                    </span>
-                  </Link>
-                );
-              })}
-            </nav>
-            {me ? (
-              <div className="os-shell-user text-right">
-                <p className="text-sm font-semibold text-white">{me.name}</p>
-                <p className="text-[10px] uppercase tracking-wide text-[#d4b46a]">
-                  {me.roleLabel || ROLE_LABELS[me.role] || me.role}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void logout()}
-                  className="mt-1 text-[11px] text-[#c9d7cf] underline"
-                >
-                  Cerrar sesión
-                </button>
-              </div>
+      <ShellSidebar
+        nav={nav}
+        activeHref={activeHref}
+        me={me ? { name: me.name, roleLabel } : null}
+        onLogout={() => void logout()}
+      />
+      <main className="os-shell-main">
+        <div className="os-page-head">
+          <p className="os-page-crumb">
+            <span>Genera OS</span>
+            {activeItem ? (
+              <>
+                <span aria-hidden>/</span>
+                <span>{SHELL_GROUP_LABELS[activeItem.group]}</span>
+              </>
             ) : null}
-          </div>
-        </div>
-      </header>
-      <main className="os-shell-main mx-auto max-w-7xl px-6 py-[var(--shell-main-py)]">
-        <div className="os-page-bar mb-4 hidden items-end justify-between gap-3 border-b border-[#e4dfd4] pb-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8a6b2a]">
-              Mesa de trabajo
-            </p>
-            <h2 className="truncate text-lg font-semibold text-[#12241c]">{title}</h2>
-            {subtitle ? (
-              <p className="os-page-bar-sub mt-0.5 truncate text-sm text-[#6d7c74]">
-                {subtitle}
-              </p>
-            ) : null}
-          </div>
+          </p>
+          <h1 className="os-page-title">{title}</h1>
+          {subtitle ? <p className="os-page-sub">{subtitle}</p> : null}
         </div>
         {pathname.startsWith("/cotizador") ? (
-          <div className="mb-5 flex flex-wrap gap-1 rounded-xl bg-[#0f2a1f] p-1 print:hidden">
+          <div className="os-subtabs mb-5 flex flex-wrap gap-1 rounded-xl bg-[#0f2a1f] p-1 print:hidden">
             <Link
               href="/cotizador"
-              className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+              className={`os-subtab rounded-lg px-4 py-2 text-sm font-semibold ${
                 pathname === "/cotizador"
-                  ? "bg-[#1f6b45] text-white"
+                  ? "is-active bg-[#1f6b45] text-white"
                   : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
               }`}
             >
@@ -186,9 +130,9 @@ export function AppShell({
             </Link>
             <Link
               href="/cotizador/equipos"
-              className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+              className={`os-subtab rounded-lg px-4 py-2 text-sm font-semibold ${
                 pathname.startsWith("/cotizador/equipos")
-                  ? "bg-[#1f6b45] text-white"
+                  ? "is-active bg-[#1f6b45] text-white"
                   : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
               }`}
             >
