@@ -16,6 +16,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { copCompact } from "@/lib/format-cop";
+import { OsKpi as Kpi, type OsTone as Tone } from "@/components/OsKpi";
 import {
   sessionAllowsModule,
   type AppModule,
@@ -68,13 +70,6 @@ const cop = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 0,
 });
 
-const copShort = new Intl.NumberFormat("es-CO", {
-  style: "currency",
-  currency: "COP",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
 const longDate = new Intl.DateTimeFormat("es-CO", {
   weekday: "long",
   day: "numeric",
@@ -88,8 +83,6 @@ const FUNNEL_STAGES: LeadStage[] = [
   "cotizado",
   "negociacion",
 ];
-
-type Tone = "warn" | "info" | "danger" | "ok" | "neutral";
 
 function todayISO() {
   const d = new Date();
@@ -124,36 +117,6 @@ function obraNeedsAttention(job: ObraJob) {
     pendingTramite(job.upme) ||
     pendingTramite(job.retie) ||
     pendingTramite(job.operadorRed)
-  );
-}
-
-function Kpi({
-  href,
-  icon: Icon,
-  tone,
-  value,
-  label,
-  hint,
-}: {
-  href: string;
-  icon: LucideIcon;
-  tone: Tone;
-  value: string | number;
-  label: string;
-  hint?: string;
-}) {
-  return (
-    <Link href={href} className="os-kpi" data-tone={tone}>
-      <span className="os-kpi-icon">
-        <Icon size={18} strokeWidth={2} />
-      </span>
-      <span className="os-kpi-body">
-        <span className="os-kpi-label">{label}</span>
-        <span className="os-kpi-value">{value}</span>
-        {hint ? <span className="os-kpi-hint">{hint}</span> : null}
-      </span>
-      <ArrowRight className="os-kpi-go" size={16} />
-    </Link>
   );
 }
 
@@ -418,7 +381,7 @@ export default function InicioPage() {
             icon={TrendingUp}
             tone="ok"
             label="Pipeline abierto"
-            value={copShort.format(openValue)}
+            value={copCompact(openValue)}
             hint={`${openLeads.length} ${openLeads.length === 1 ? "oportunidad" : "oportunidades"}`}
           />
         ) : null}
@@ -469,7 +432,7 @@ export default function InicioPage() {
                 <dd>
                   {funnel.won}
                   {funnel.wonValue > 0 ? (
-                    <small>{copShort.format(funnel.wonValue)}</small>
+                    <small>{copCompact(funnel.wonValue)}</small>
                   ) : null}
                 </dd>
               </div>

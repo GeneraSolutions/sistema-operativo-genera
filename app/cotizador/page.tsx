@@ -12,7 +12,21 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ArrowLeft, ArrowRight, Check, LayoutList, Save } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Copy,
+  FileText,
+  History,
+  LayoutList,
+  PackageX,
+  Save,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { WorkFold } from "@/components/WorkFold";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -319,6 +333,24 @@ function CotizadorInner() {
   });
   const [quoteStep, setQuoteStep] = useState<QuoteStep | null>(1);
   const stepsRef = useRef<HTMLDivElement>(null);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const recentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!recentOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!recentRef.current?.contains(e.target as Node)) setRecentOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRecentOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [recentOpen]);
   const [paramExtra, setParamExtra] = useState({
     ideam: false,
     imagen: false,
@@ -1438,142 +1470,165 @@ function CotizadorInner() {
   return (
     <AppShell
       title="Cotizador paramétrico"
-      subtitle="3 kWp → 5.000 kWp · Propuesta comercial en segundos"
+      subtitle={
+        aliado
+          ? "Equipos a su costo de compra. Genera Solutions SAS entra solo con la instalación."
+          : "3 kWp → 5.000 kWp · Propuesta comercial en segundos"
+      }
+      actions={
+        <>
+          {visibleQuotes.length > 0 ? (
+            <div className="os-menu" ref={recentRef}>
+              <button
+                type="button"
+                className="os-btn os-btn-ghost"
+                aria-expanded={recentOpen}
+                onClick={() => setRecentOpen((v) => !v)}
+              >
+                <History size={16} />
+                Recientes
+                <ChevronDown size={15} />
+              </button>
+              {recentOpen ? (
+                <div className="os-menu-pop" role="menu">
+                  <p className="os-menu-label">
+                    {aliado ? "Sus cotizaciones" : "Cotizaciones guardadas"}
+                  </p>
+                  {visibleQuotes.slice(0, 8).map((q) => (
+                    <div key={q.id} className="os-menu-row">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="os-menu-item"
+                        onClick={() => {
+                          pinActiveQuote(q.id);
+                          sessionStorage.setItem(OPEN_QUOTE_KEY, q.id);
+                          window.location.assign(
+                            `/cotizador?quote=${encodeURIComponent(q.id)}`
+                          );
+                        }}
+                      >
+                        <FileText size={15} />
+                        <span>{q.name}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="os-icon-btn is-danger is-sm"
+                        aria-label={`Eliminar ${q.name}`}
+                        title="Eliminar"
+                        onClick={() => {
+                          if (!confirm(`¿Eliminar la cotización guardada "${q.name}"?`)) return;
+                          deleteSavedQuote(q.id);
+                          setSavedQuotes(loadSavedQuotes());
+                          if (aliado) {
+                            void fetch(
+                              `/api/archivo?quote=${encodeURIComponent(q.id)}`,
+                              { method: "DELETE" }
+                            );
+                          }
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {aliado ? null : (
+                    <a href="/archivo" className="os-menu-foot">
+                      Ver todo el archivo
+                    </a>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {visibleQuotes[0] ? (
+            <button
+              type="button"
+              className="os-btn os-btn-ghost"
+              title={`Duplicar ${visibleQuotes[0].name}`}
+              onClick={() => {
+                const copy = snapshotCurrent(`Copia · ${visibleQuotes[0].name}`);
+                copy.clientName = `${copy.clientName} (copia)`;
+                copy.commercialProposalId = undefined;
+                persistQuote(copy);
+                loadQuote(copy);
+              }}
+            >
+              <Copy size={16} />
+              Duplicar última
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="os-btn os-btn-primary"
+            onClick={() => persistQuote(snapshotCurrent())}
+          >
+            <Save size={16} />
+            Guardar cotización
+          </button>
+        </>
+      }
     >
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div className="os-page-hero">
-          <h2 className="text-2xl font-semibold">Motor de cotización ultra-rápido</h2>
-          <p className="mt-1 text-sm text-[#4d5c55]">
-            Dimensiona CAPEX desde inventario, aplica Ley 1715 y personaliza la
-            propuesta con interruptores.{" "}
-            {aliado ? (
-              <span>
-                Equipos a su costo de compra. Genera entra solo con la instalación.
+      {kits.length > 0 || !aliado ? (
+        <section className="os-kits print:hidden">
+          <div className="os-kits-head">
+            <span className="os-kits-label">
+              <Sparkles size={15} />
+              Empezar desde una plantilla
+            </span>
+            {aliado ? null : (
+              <span className="os-kits-links">
+                <Link href="/inventario">Catálogo</Link>
+                <Link href="/visita-tecnica">Visita técnica</Link>
               </span>
-            ) : (
-              <>
-            <Link href="/inventario" className="font-medium text-[#1f6b45] underline">
-              Gestionar catálogo
-            </Link>
-            {" · "}
-            <Link href="/visita-tecnica" className="font-medium text-[#1f6b45] underline">
-              Visita técnica
-            </Link>
-              </>
             )}
-          </p>
-        </div>
-      </div>
-      <div className="mb-4 flex flex-wrap gap-2 print:hidden">
-        {kits.map((kit) => (
-          <button
-            key={kit.id}
-            type="button"
-            onClick={() => applyKit(kit)}
-            className="rounded-full bg-[#0f2a1f] px-3 py-1.5 text-left text-xs text-white hover:bg-[#163d2c]"
-            title={kit.hint}
-          >
-            <span className="font-semibold">{kit.name}</span>
-            <span className="os-kit-hint mt-0.5 block text-[10px] text-[#b8e0cc]">{kit.hint}</span>
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => persistQuote(snapshotCurrent())}
-          className="rounded-full bg-[#d4b46a] px-3 py-1.5 text-xs font-semibold text-[#12241c]"
-        >
-          Guardar cotización
-        </button>
-        {visibleQuotes[0] ? (
-          <button
-            type="button"
-            onClick={() => {
-              const copy = snapshotCurrent(`Copia · ${visibleQuotes[0].name}`);
-              copy.clientName = `${copy.clientName} (copia)`;
-              copy.commercialProposalId = undefined;
-              persistQuote(copy);
-              loadQuote(copy);
-            }}
-            className="rounded-full ring-1 ring-[#d8d2c4] px-3 py-1.5 text-xs font-semibold"
-          >
-            Duplicar última
-          </button>
-        ) : null}
-        {aliado ? null : (
-        <a
-          href="/archivo"
-          className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#1f6b45] underline"
-        >
-          Ver archivo
-        </a>
-        )}
-      </div>
-      {saveFlash ? (
-        <p className="mb-3 text-sm text-[#1f6b45] print:hidden">{saveFlash}</p>
-      ) : null}
-      {!aliado && marginRate < 12 ? (
-        <p className="mb-3 rounded-xl bg-[#fff4e5] px-4 py-2 text-sm text-[#9a5b00] print:hidden">
-          Alerta de utilidad neta: {numFmt.format(marginRate)}% sobre venta (objetivo
-          ≥ 12% después de ICA y renta). Ajuste márgenes, ingeniería o precio de
-          cuadrilla.
-        </p>
-      ) : null}
-      {stockWarnings.length > 0 ? (
-        <div className="mb-3 rounded-xl bg-[#fde8e8] px-4 py-2 text-sm text-[#9b2c2c] print:hidden">
-          {stockWarnings.map((w) => (
-            <p key={w}>{w}</p>
-          ))}
-        </div>
-      ) : null}
-      {visibleQuotes.length > 0 ? (
-        <div className="mb-4 print:hidden">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#8a6b2a]">
-            Cotizaciones guardadas
-            {aliado ? (
-              " · solo las suyas"
-            ) : (
-              <>
-                {" · "}
-                <a href="/archivo" className="normal-case tracking-normal underline">
-                  ver todas
-                </a>
-              </>
-            )}
-          </p>
-          <div className="mt-1 flex flex-wrap gap-2">
-            {visibleQuotes.slice(0, 6).map((q) => (
-              <span key={q.id} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs ring-1 ring-[#d8d2c4]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    pinActiveQuote(q.id);
-                    sessionStorage.setItem(OPEN_QUOTE_KEY, q.id);
-                    window.location.assign(
-                      `/cotizador?quote=${encodeURIComponent(q.id)}`
-                    );
-                  }}
-                >
-                  {q.name}
-                </button>
-                <button
-                  type="button"
-                  className="text-[#9b2c2c]"
-                  onClick={() => {
-                    deleteSavedQuote(q.id);
-                    setSavedQuotes(loadSavedQuotes());
-                    if (aliado) {
-                      void fetch(
-                        `/api/archivo?quote=${encodeURIComponent(q.id)}`,
-                        { method: "DELETE" }
-                      );
-                    }
-                  }}
-                >
-                  ×
-                </button>
-              </span>
+          </div>
+          <div className="os-kits-list">
+            {kits.map((kit) => (
+              <button
+                key={kit.id}
+                type="button"
+                className="os-kit"
+                onClick={() => applyKit(kit)}
+                title={kit.hint}
+              >
+                <span className="os-kit-name">{kit.name}</span>
+                <span className="os-kit-hint">{kit.hint}</span>
+              </button>
             ))}
           </div>
+        </section>
+      ) : null}
+      {!aliado && marginRate < 12 ? (
+        <div className="os-alert print:hidden" data-tone="warn" role="status">
+          <AlertTriangle size={18} />
+          <div>
+            <p className="os-alert-title">
+              Utilidad neta baja: {numFmt.format(marginRate)}% sobre venta
+            </p>
+            <p className="os-alert-text">
+              El objetivo es 12% o más después de ICA y renta. Ajuste márgenes,
+              ingeniería o precio de cuadrilla en el paso Costos y pago.
+            </p>
+          </div>
+        </div>
+      ) : null}
+      {stockWarnings.length > 0 ? (
+        <div className="os-alert print:hidden" data-tone="danger" role="status">
+          <PackageX size={18} />
+          <div>
+            <p className="os-alert-title">Inventario insuficiente</p>
+            {stockWarnings.map((w) => (
+              <p key={w} className="os-alert-text">
+                {w}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {saveFlash ? (
+        <div className="os-toast print:hidden" role="status">
+          {saveFlash}
         </div>
       ) : null}
 

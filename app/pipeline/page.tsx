@@ -2,8 +2,25 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  CalendarClock,
+  ClipboardCheck,
+  FileSpreadsheet,
+  HardHat,
+  KanbanSquare,
+  List,
+  MapPin,
+  PhoneCall,
+  Plus,
+  Trash2,
+  TrendingUp,
+  Trophy,
+  X,
+  Zap,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { WorkFold } from "@/components/WorkFold";
+import { copCompact } from "@/lib/format-cop";
+import { OsKpi } from "@/components/OsKpi";
 import {
   LEAD_SOURCE_LABELS,
   LEAD_STAGE_LABELS,
@@ -23,6 +40,7 @@ import {
   type LeadStage,
 } from "@/lib/pipeline";
 import { emptyObra, upsertObra } from "@/lib/obra";
+import { daysUntil } from "@/lib/om";
 import { loadSavedQuotes, pinActiveQuote } from "@/lib/saved-quotes";
 import {
   OPEN_QUOTE_KEY,
@@ -33,16 +51,6 @@ import {
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
 
-const TONE: Record<LeadStage, string> = {
-  lead: "bg-[#f7f4ee] text-[#6d7c74]",
-  calificado: "bg-[#eef4fa] text-[#2a5f8f]",
-  visita: "bg-[#e8f0fb] text-[#1f4f8a]",
-  cotizado: "bg-[#fff4e5] text-[#9a5b00]",
-  negociacion: "bg-[#f3eef8] text-[#5b3d7a]",
-  ganado: "bg-[#e8f6ee] text-[#1f6b45]",
-  perdido: "bg-[#f8ecec] text-[#9b2c2c]",
-};
-
 const cop = new Intl.NumberFormat("es-CO", {
   style: "currency",
   currency: "COP",
@@ -51,23 +59,53 @@ const cop = new Intl.NumberFormat("es-CO", {
 
 const STAGES = Object.keys(LEAD_STAGE_LABELS) as LeadStage[];
 
+const BOARD_STAGES: LeadStage[] = [
+  "lead",
+  "calificado",
+  "visita",
+  "cotizado",
+  "negociacion",
+  "ganado",
+  "perdido",
+];
+
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "");
+}
+
+function dueLabel(iso: string) {
+  const d = daysUntil(iso);
+  if (d === null) return null;
+  if (d === 0) return { text: "Hoy", tone: "warn" as const };
+  if (d === 1) return { text: "Mañana", tone: "neutral" as const };
+  if (d < 0) return { text: `Hace ${Math.abs(d)} d`, tone: "danger" as const };
+  return { text: `En ${d} d`, tone: "neutral" as const };
+}
+
+function isOpen(l: CommercialLead) {
+  return l.stage !== "ganado" && l.stage !== "perdido";
 }
 
 export default function PipelinePage() {
   const router = useRouter();
   const [leads, setLeads] = useState<CommercialLead[]>([]);
   const [draft, setDraft] = useState<CommercialLead>(() => emptyLead());
+  const [view, setView] = useState<"tablero" | "lista">("tablero");
   const [filter, setFilter] = useState<"todas" | LeadStage>("todas");
   const [flash, setFlash] = useState("");
   const [quotes, setQuotes] = useState<ReturnType<typeof loadSavedQuotes>>([]);
   const [visits, setVisits] = useState<ReturnType<typeof loadSavedVisits>>([]);
-  const [formOpen, setFormOpen] = useState(false);
-
-  useEffect(() => {
-    if (leads.some((l) => l.id === draft.id)) setFormOpen(true);
-  }, [draft.id, leads]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overStage, setOverStage] = useState<LeadStage | null>(null);
 
   useEffect(() => {
     setQuotes(loadSavedQuotes());
@@ -77,7 +115,10 @@ export default function PipelinePage() {
     const openId = sessionStorage.getItem(OPEN_LEAD_KEY);
     if (openId) {
       const found = local.find((l) => l.id === openId);
-      if (found) setDraft({ ...emptyLead(), ...found });
+      if (found) {
+        setDraft({ ...emptyLead(), ...found });
+        setDrawerOpen(true);
+      }
       sessionStorage.removeItem(OPEN_LEAD_KEY);
     }
     void fetch("/api/archivo", { cache: "no-store" })
@@ -90,10 +131,28 @@ export default function PipelinePage() {
         const stillOpen = openId
           ? merged.find((l) => l.id === openId)
           : undefined;
-        if (stillOpen) setDraft({ ...emptyLead(), ...stillOpen });
+        if (stillOpen) {
+          setDraft({ ...emptyLead(), ...stillOpen });
+          setDrawerOpen(true);
+        }
       })
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(""), 3200);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
 
   const counts = useMemo(() => {
     const map = Object.fromEntries(STAGES.map((s) => [s, 0])) as Record<
@@ -104,21 +163,32 @@ export default function PipelinePage() {
     return map;
   }, [leads]);
 
-  const openValue = leads
-    .filter((l) => l.stage !== "ganado" && l.stage !== "perdido")
-    .reduce((sum, l) => sum + (Number(l.estimatedValue) || 0), 0);
-
-  const dueToday = leads.filter(
-    (l) =>
-      l.nextActionDate &&
-      l.nextActionDate <= todayISO() &&
-      l.stage !== "ganado" &&
-      l.stage !== "perdido"
+  const openLeads = leads.filter(isOpen);
+  const openValue = openLeads.reduce(
+    (sum, l) => sum + (Number(l.estimatedValue) || 0),
+    0
+  );
+  const today = todayISO();
+  const dueToday = openLeads.filter(
+    (l) => l.nextActionDate && l.nextActionDate <= today
   ).length;
+  const closed = counts.ganado + counts.perdido;
+  const winRate = closed > 0 ? Math.round((counts.ganado / closed) * 100) : null;
 
   const visible = leads.filter((l) =>
     filter === "todas" ? true : l.stage === filter
   );
+  const isExisting = leads.some((l) => l.id === draft.id);
+
+  function openLead(l: CommercialLead) {
+    setDraft({ ...emptyLead(), ...l });
+    setDrawerOpen(true);
+  }
+
+  function newLead(stage: LeadStage = "lead") {
+    setDraft({ ...emptyLead(), stage });
+    setDrawerOpen(true);
+  }
 
   function saveDraft() {
     if (!draft.clientName.trim()) {
@@ -131,6 +201,31 @@ export default function PipelinePage() {
     setFlash("Oportunidad guardada.");
   }
 
+  function moveLead(id: string, stage: LeadStage) {
+    const lead = leads.find((l) => l.id === id);
+    if (!lead || lead.stage === stage) return;
+    const next = upsertLead({ ...lead, stage });
+    setLeads(next);
+    persistLeadsCloud(next);
+    if (stage === "perdido") {
+      setDraft({ ...emptyLead(), ...lead, stage });
+      setDrawerOpen(true);
+      setFlash("Marcada como perdida. Indique el motivo.");
+    } else {
+      setFlash(`${lead.clientName || "Oportunidad"} → ${LEAD_STAGE_LABELS[stage]}`);
+    }
+  }
+
+  function removeLead(l: CommercialLead) {
+    if (!confirm("¿Quitar esta oportunidad?")) return;
+    const next = deleteLead(l.id);
+    setLeads(next);
+    persistLeadsCloud(next);
+    void fetch(`/api/archivo?lead=${l.id}`, { method: "DELETE" });
+    if (draft.id === l.id) setDrawerOpen(false);
+    setFlash("Oportunidad eliminada.");
+  }
+
   function openQuoteFromLead(lead: CommercialLead) {
     pinOpenLead(lead.id);
     const params = new URLSearchParams();
@@ -140,6 +235,12 @@ export default function PipelinePage() {
     const kwp = Number(lead.kwp);
     if (Number.isFinite(kwp) && kwp >= 3) params.set("kwp", String(kwp));
     router.push(`/cotizador?${params.toString()}`);
+  }
+
+  function openSavedQuote(quoteId: string) {
+    pinActiveQuote(quoteId);
+    sessionStorage.setItem(OPEN_QUOTE_KEY, quoteId);
+    window.location.assign(`/cotizador?quote=${encodeURIComponent(quoteId)}`);
   }
 
   function openVisitFromLead(lead: CommercialLead) {
@@ -179,247 +280,354 @@ export default function PipelinePage() {
   }
 
   return (
-    <AppShell title="Pipeline comercial" subtitle="Leads · cotización · cierre">
-      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-        Antes de cotizar: contactos, visita y negociación. Al ganar, pasa a
-        Obra; la cotización y la visita quedan ligadas a la misma ficha.
-      </p>
-      {flash ? (
-        <p className="mb-3 rounded-xl bg-[#e8f6ee] px-4 py-2 text-sm text-[#1f6b45]">
-          {flash}
-        </p>
-      ) : null}
-
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
-          <p className="text-2xl font-semibold text-[#0f2a1f]">{leads.length}</p>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-            Oportunidades
-          </p>
-        </div>
-        <div className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
-          <p className="text-2xl font-semibold text-[#0f2a1f]">
-            {cop.format(openValue)}
-          </p>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-            Valor abierto
-          </p>
-        </div>
-        <div className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
-          <p className="text-2xl font-semibold text-[#0f2a1f]">{dueToday}</p>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-            Seguimiento vencido
-          </p>
-        </div>
-        <div className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3">
-          <p className="text-2xl font-semibold text-[#1f6b45]">
-            {counts.ganado}
-          </p>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-            Ganados
-          </p>
-        </div>
+    <AppShell
+      title="Pipeline comercial"
+      subtitle="Leads, visitas, cotización y cierre en un solo tablero"
+      actions={
+        <button type="button" className="os-btn os-btn-primary" onClick={() => newLead()}>
+          <Plus size={16} />
+          Nueva oportunidad
+        </button>
+      }
+    >
+      <div className="os-kpis">
+        <OsKpi
+          icon={TrendingUp}
+          tone="ok"
+          label="Valor abierto"
+          value={copCompact(openValue)}
+          hint={cop.format(openValue)}
+        />
+        <OsKpi
+          icon={KanbanSquare}
+          tone="info"
+          label="Oportunidades abiertas"
+          value={openLeads.length}
+          hint={`${leads.length} en total`}
+        />
+        <OsKpi
+          icon={PhoneCall}
+          tone={dueToday > 0 ? "warn" : "neutral"}
+          label="Seguimiento vencido"
+          value={dueToday}
+          hint={dueToday > 0 ? "Llamar o mover hoy" : "Todo al día"}
+        />
+        <OsKpi
+          icon={Trophy}
+          tone="ok"
+          label="Ganadas"
+          value={counts.ganado}
+          hint={winRate === null ? "Sin cierres aún" : `Tasa de cierre ${winRate}%`}
+        />
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-2 lg:grid-cols-7">
-        {STAGES.map((id) => (
+      <div className="os-board-bar">
+        <div className="os-seg" role="tablist" aria-label="Vista">
           <button
-            key={id}
             type="button"
-            onClick={() => setFilter((f) => (f === id ? "todas" : id))}
-            className={`os-stat rounded-2xl border px-3 py-3 text-left ${
-              filter === id ? "border-[#1f6b45]" : "border-[#ddd6c8]"
-            } ${TONE[id]}`}
+            role="tab"
+            aria-selected={view === "tablero"}
+            className="os-seg-btn"
+            onClick={() => setView("tablero")}
           >
-            <p className="text-xl font-semibold">{counts[id]}</p>
-            <p className="text-[11px] font-semibold uppercase tracking-wide">
-              {LEAD_STAGE_LABELS[id]}
-            </p>
+            <KanbanSquare size={15} />
+            Tablero
           </button>
-        ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "lista"}
+            className="os-seg-btn"
+            onClick={() => setView("lista")}
+          >
+            <List size={15} />
+            Lista
+          </button>
+        </div>
+        {view === "tablero" ? (
+          <p className="os-board-hint">
+            Arrastre una tarjeta para cambiarla de etapa. Tóquela para ver o editar.
+          </p>
+        ) : (
+          <div className="os-chips">
+            <button
+              type="button"
+              className="os-chip"
+              aria-pressed={filter === "todas"}
+              onClick={() => setFilter("todas")}
+            >
+              Todas <span>{leads.length}</span>
+            </button>
+            {STAGES.map((id) => (
+              <button
+                key={id}
+                type="button"
+                className="os-chip"
+                data-stage={id}
+                aria-pressed={filter === id}
+                onClick={() => setFilter((f) => (f === id ? "todas" : id))}
+              >
+                {LEAD_STAGE_LABELS[id]} <span>{counts[id]}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="mb-6 overflow-x-auto">
-        <div className="flex min-w-[980px] gap-3">
-          {STAGES.filter((s) => s !== "perdido").map((stage) => {
+      {view === "tablero" ? (
+        <div className="os-board">
+          {BOARD_STAGES.map((stage) => {
             const col = leads.filter((l) => l.stage === stage);
+            const value = col.reduce((s, l) => s + (Number(l.estimatedValue) || 0), 0);
             return (
-              <div
+              <section
                 key={stage}
-                className="w-[160px] shrink-0 rounded-2xl border border-[#eee8dc] bg-[#fbfaf6] p-2"
+                className="os-col"
+                data-stage={stage}
+                data-over={overStage === stage && dragId ? "true" : undefined}
+                onDragOver={(e) => {
+                  if (!dragId) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (overStage !== stage) setOverStage(stage);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setOverStage((s) => (s === stage ? null : s));
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const id = e.dataTransfer.getData("text/plain") || dragId;
+                  setOverStage(null);
+                  setDragId(null);
+                  if (id) moveLead(id, stage);
+                }}
               >
-                <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-                  {LEAD_STAGE_LABELS[stage]}
-                </p>
-                {col.length === 0 ? (
-                  <p className="px-1 text-xs text-[#8aa398]">—</p>
-                ) : (
-                  col.map((l) => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      onClick={() => setDraft({ ...emptyLead(), ...l })}
-                      className="mb-2 w-full rounded-xl border border-[#ddd6c8] bg-white px-2 py-2 text-left hover:border-[#1f6b45]"
-                    >
-                      <p className="truncate text-xs font-semibold">
-                        {l.clientName || "Sin cliente"}
-                      </p>
-                      <p className="truncate text-[11px] text-[#6d7c74]">
-                        {l.kwp ? `${l.kwp} kWp` : l.city || l.owner || "—"}
-                      </p>
+                <header className="os-col-head">
+                  <span className="os-col-dot" />
+                  <h2 className="os-col-title">{LEAD_STAGE_LABELS[stage]}</h2>
+                  <span className="os-col-count">{col.length}</span>
+                  {value > 0 ? (
+                    <span className="os-col-value">{copCompact(value)}</span>
+                  ) : null}
+                </header>
+                <div className="os-col-body">
+                  {col.map((l) => {
+                    const due = isOpen(l) && l.nextActionDate ? dueLabel(l.nextActionDate) : null;
+                    return (
+                      <article
+                        key={l.id}
+                        className="os-card"
+                        draggable
+                        data-dragging={dragId === l.id ? "true" : undefined}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", l.id);
+                          e.dataTransfer.effectAllowed = "move";
+                          setDragId(l.id);
+                        }}
+                        onDragEnd={() => {
+                          setDragId(null);
+                          setOverStage(null);
+                        }}
+                        onClick={() => openLead(l)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openLead(l);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Abrir ${leadLabel(l)}`}
+                      >
+                        <p className="os-card-title">{l.clientName || "Sin cliente"}</p>
+                        {l.siteName || l.city ? (
+                          <p className="os-card-sub">
+                            <MapPin size={12} />
+                            {[l.siteName, l.city].filter(Boolean).join(" · ")}
+                          </p>
+                        ) : null}
+                        <div className="os-card-tags">
+                          {l.kwp ? (
+                            <span className="os-tag">
+                              <Zap size={11} />
+                              {l.kwp} kWp
+                            </span>
+                          ) : null}
+                          {l.estimatedValue ? (
+                            <span className="os-tag is-money">
+                              {copCompact(l.estimatedValue)}
+                            </span>
+                          ) : null}
+                          {l.quoteId ? (
+                            <span className="os-tag" title={l.quoteName || "Cotización ligada"}>
+                              <FileSpreadsheet size={11} />
+                              Cotización
+                            </span>
+                          ) : null}
+                          {l.visitId ? (
+                            <span className="os-tag" title="Visita ligada">
+                              <ClipboardCheck size={11} />
+                              Visita
+                            </span>
+                          ) : null}
+                        </div>
+                        {l.nextAction || due || l.owner ? (
+                          <footer className="os-card-foot">
+                            <span className="os-card-next">
+                              {l.nextAction || (stage === "perdido" && l.lostReason
+                                ? LOST_REASON_LABELS[l.lostReason] ?? l.lostReason
+                                : "")}
+                            </span>
+                            {due ? (
+                              <span className="os-pill" data-tone={due.tone}>
+                                <CalendarClock size={11} />
+                                {due.text}
+                              </span>
+                            ) : null}
+                            {l.owner ? (
+                              <span className="os-avatar" title={l.owner}>
+                                {initials(l.owner).toUpperCase()}
+                              </span>
+                            ) : null}
+                          </footer>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                  {stage === "lead" ? (
+                    <button type="button" className="os-col-add" onClick={() => newLead("lead")}>
+                      <Plus size={14} />
+                      Agregar oportunidad
                     </button>
-                  ))
-                )}
-              </div>
+                  ) : col.length === 0 ? (
+                    <p className="os-col-empty">Suelte aquí</p>
+                  ) : null}
+                </div>
+              </section>
             );
           })}
         </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
-          <div className="flex items-center justify-between gap-3 border-b border-[#eee8dc] px-4 py-3">
-            <h2 className="font-semibold">Oportunidades</h2>
-            <button
-              type="button"
-              className="text-sm font-semibold text-[#1f6b45] underline"
-              onClick={() => setFilter("todas")}
-            >
-              Ver todas
-            </button>
-          </div>
+      ) : (
+        <section className="os-work">
           {visible.length === 0 ? (
-            <p className="px-4 py-5 text-sm text-[#6d7c74]">
-              No hay fichas en este filtro.
-              <span className="os-page-intro mt-1 block text-xs">
-                Cree una a la derecha.
+            <div className="os-empty">
+              <span className="os-empty-icon">
+                <KanbanSquare size={20} />
               </span>
-            </p>
+              <p className="os-empty-title">No hay oportunidades en este filtro</p>
+              <p className="os-empty-hint">
+                Cree una nueva o cambie el filtro de etapa.
+              </p>
+              <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => newLead()}>
+                <Plus size={14} />
+                Nueva oportunidad
+              </button>
+            </div>
           ) : (
-            <ul className="divide-y divide-[#eee8dc]">
-              {visible.map((l) => (
-                <li key={l.id} className="px-4 py-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold">{leadLabel(l)}</p>
-                      <p className="text-xs text-[#6d7c74]">
-                        {l.kwp ? `${l.kwp} kWp · ` : ""}
-                        {l.estimatedValue
-                          ? `${cop.format(l.estimatedValue)} · `
-                          : ""}
-                        {LEAD_SOURCE_LABELS[l.source]}
-                        {l.owner ? ` · ${l.owner}` : ""}
-                      </p>
-                      {l.nextAction ? (
-                        <p className="text-[11px] text-[#6d7c74]">
-                          Siguiente: {l.nextAction}
-                          {l.nextActionDate ? ` · ${l.nextActionDate}` : ""}
-                        </p>
+            <ul className="os-work-list">
+              {visible.map((l) => {
+                const due = isOpen(l) && l.nextActionDate ? dueLabel(l.nextActionDate) : null;
+                return (
+                  <li key={l.id}>
+                    <button type="button" className="os-work-row os-lead-row" onClick={() => openLead(l)}>
+                      <span className="os-avatar is-lg">
+                        {initials(l.clientName || "?").toUpperCase()}
+                      </span>
+                      <span className="os-work-row-text">
+                        <span className="os-work-row-title">{leadLabel(l)}</span>
+                        <span className="os-work-row-meta">
+                          {[
+                            l.kwp ? `${l.kwp} kWp` : "",
+                            l.estimatedValue ? cop.format(l.estimatedValue) : "",
+                            LEAD_SOURCE_LABELS[l.source],
+                            l.owner,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </span>
+                      {due ? (
+                        <span className="os-pill" data-tone={due.tone}>
+                          {due.text}
+                        </span>
                       ) : null}
-                    </div>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${TONE[l.stage]}`}
-                    >
-                      {LEAD_STAGE_LABELS[l.stage]}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-[#1f6b45] underline"
-                      onClick={() => setDraft({ ...emptyLead(), ...l })}
-                    >
-                      Editar
+                      <span className="os-stage-pill" data-stage={l.stage}>
+                        {LEAD_STAGE_LABELS[l.stage]}
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-[#1f6b45] underline"
-                      onClick={() => openQuoteFromLead(l)}
-                    >
-                      Cotizar
-                    </button>
-                    {l.quoteId ? (
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() => {
-                          pinActiveQuote(l.quoteId!);
-                          sessionStorage.setItem(OPEN_QUOTE_KEY, l.quoteId!);
-                          window.location.assign(
-                            `/cotizador?quote=${encodeURIComponent(l.quoteId!)}`
-                          );
-                        }}
-                      >
-                        Ver cotización
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-[#1f6b45] underline"
-                      onClick={() => openVisitFromLead(l)}
-                    >
-                      Visita
-                    </button>
-                    {l.stage !== "ganado" ? (
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() => passToObra(l)}
-                      >
-                        Pasar a obra
-                      </button>
-                    ) : (
-                      <a
-                        href="/obra"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                      >
-                        Obra
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-[#9b2c2c] underline"
-                      onClick={() => {
-                        if (!confirm("¿Quitar esta oportunidad?")) return;
-                        const next = deleteLead(l.id);
-                        setLeads(next);
-                        persistLeadsCloud(next);
-                        void fetch(`/api/archivo?lead=${l.id}`, {
-                          method: "DELETE",
-                        });
-                      }}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
+      )}
 
-        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
-          <WorkFold
-            title={
-              leads.some((l) => l.id === draft.id)
-                ? "Editar oportunidad"
-                : "Nueva oportunidad"
-            }
-            open={formOpen}
-            onToggle={() => setFormOpen((v) => !v)}
-            actions={
-              <button
-                type="button"
-                className="text-xs font-semibold text-[#1f6b45] underline"
-                onClick={() => setDraft(emptyLead())}
-              >
-                Limpiar
-              </button>
-            }
+      {drawerOpen ? (
+        <div className="os-drawer-backdrop" onClick={() => setDrawerOpen(false)} />
+      ) : null}
+      <aside
+        className="os-drawer"
+        data-open={drawerOpen ? "true" : undefined}
+        aria-hidden={!drawerOpen}
+        aria-label={isExisting ? "Editar oportunidad" : "Nueva oportunidad"}
+      >
+        <header className="os-drawer-head">
+          <div className="min-w-0">
+            <p className="os-drawer-kicker">
+              {isExisting ? "Editar oportunidad" : "Nueva oportunidad"}
+            </p>
+            <h2 className="os-drawer-title">
+              {draft.clientName.trim() || "Sin cliente"}
+            </h2>
+            <span className="os-stage-pill" data-stage={draft.stage}>
+              {LEAD_STAGE_LABELS[draft.stage]}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="os-icon-btn"
+            aria-label="Cerrar"
+            onClick={() => setDrawerOpen(false)}
           >
+            <X size={18} />
+          </button>
+        </header>
 
+        {isExisting ? (
+          <div className="os-drawer-actions">
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => openQuoteFromLead(draft)}>
+              <FileSpreadsheet size={14} />
+              Cotizar
+            </button>
+            {draft.quoteId ? (
+              <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => openSavedQuote(draft.quoteId!)}>
+                Ver cotización
+              </button>
+            ) : null}
+            <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => openVisitFromLead(draft)}>
+              <ClipboardCheck size={14} />
+              Visita
+            </button>
+            {draft.stage !== "ganado" ? (
+              <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={() => passToObra(draft)}>
+                <HardHat size={14} />
+                Pasar a obra
+              </button>
+            ) : (
+              <a href="/obra" className="os-btn os-btn-ghost os-btn-sm">
+                <HardHat size={14} />
+                Ver obra
+              </a>
+            )}
+          </div>
+        ) : null}
+
+        <div className="os-drawer-body">
           {quotes.length ? (
-            <label className="mt-3 block text-sm">
+            <label className="block text-sm">
               <span className="mb-1 block font-medium">Cotización ligada</span>
               <select
                 className={field}
@@ -669,32 +877,38 @@ export default function PipelinePage() {
               onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
             />
           </label>
-          <div className="mt-4 flex flex-wrap gap-2">
+        </div>
+
+        <footer className="os-drawer-foot">
+          {isExisting ? (
             <button
               type="button"
-              className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white"
-              onClick={saveDraft}
+              className="os-icon-btn is-danger"
+              aria-label="Quitar oportunidad"
+              title="Quitar oportunidad"
+              onClick={() => removeLead(draft)}
             >
-              Guardar
+              <Trash2 size={16} />
             </button>
-            <button
-              type="button"
-              className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
-              onClick={() => openQuoteFromLead(draft)}
-            >
-              Cotizar
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-[#1f6b45] px-4 py-2.5 text-sm font-semibold text-[#1f6b45]"
-              onClick={() => passToObra(draft)}
-            >
-              Pasar a obra
-            </button>
-          </div>
-          </WorkFold>
-        </section>
-      </div>
+          ) : null}
+          <button
+            type="button"
+            className="os-btn os-btn-ghost"
+            onClick={() => setDrawerOpen(false)}
+          >
+            Cerrar
+          </button>
+          <button type="button" className="os-btn os-btn-primary" onClick={saveDraft}>
+            Guardar
+          </button>
+        </footer>
+      </aside>
+
+      {flash ? (
+        <div className="os-toast" role="status">
+          {flash}
+        </div>
+      ) : null}
     </AppShell>
   );
 }
