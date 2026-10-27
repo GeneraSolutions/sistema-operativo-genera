@@ -1032,6 +1032,10 @@ html:is([data-look="moderno"], [data-look="operativo"]) .os-login-card {
   .os-kpis {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .os-kpis[data-n="3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .os-kpi {
@@ -1049,10 +1053,21 @@ html:is([data-look="moderno"], [data-look="operativo"]) .os-login-card {
   transition: transform 0.22s var(--ease), box-shadow 0.22s var(--ease), border-color 0.2s;
 }
 
+button.os-kpi {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
 .os-kpi:not(.is-static):hover {
   transform: translateY(-2px);
   border-color: rgba(31, 107, 69, 0.28);
   box-shadow: var(--card-shadow-hover);
+}
+
+.os-kpi.is-on {
+  border-color: rgba(31, 107, 69, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(31, 107, 69, 0.35);
 }
 
 .os-kpi[data-tone="warn"] { --tone: #a86400; --tone-bg: rgba(212, 150, 40, 0.14); }
@@ -1305,6 +1320,80 @@ html:is([data-look="moderno"], [data-look="operativo"]) .os-login-card {
 
 .os-work-list > li + li {
   border-top: 1px solid var(--line-soft);
+}
+
+.os-file-panel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--card-shadow);
+}
+
+.os-file {
+  display: flex;
+  align-items: stretch;
+}
+
+.os-file-open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.os-file .os-icon-btn {
+  align-self: center;
+  margin-right: 0.65rem;
+}
+
+.os-file-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #1f6b45;
+  background: #e5f2ea;
+}
+
+.os-file-search {
+  display: flex;
+  flex: 1;
+  min-width: min(100%, 280px);
+  align-items: center;
+  gap: 0.55rem;
+  height: 40px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: #6b7a72;
+  background: #fff;
+}
+
+.os-file-search:focus-within {
+  border-color: rgba(31, 107, 69, 0.45);
+}
+
+.os-file-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  font-size: 14px;
+  color: #0b1d14;
+  background: transparent;
+}
+
+.os-file-search input::placeholder {
+  color: #a3aea8;
+}
+
+html[data-look="operativo"] .os-file-panel {
+  border-radius: 10px;
+}
+
+html[data-look="operativo"] .os-kpi.is-on {
+  box-shadow: inset 0 0 0 1px #1f6b45;
 }
 
 .os-work-row {

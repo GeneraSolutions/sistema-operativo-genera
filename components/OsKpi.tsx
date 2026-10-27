@@ -5,6 +5,8 @@ export type OsTone = "warn" | "info" | "danger" | "ok" | "neutral";
 
 export function OsKpi({
   href,
+  onClick,
+  active,
   icon: Icon,
   tone,
   value,
@@ -12,12 +14,15 @@ export function OsKpi({
   hint,
 }: {
   href?: string;
+  onClick?: () => void;
+  active?: boolean;
   icon: LucideIcon;
   tone: OsTone;
   value: string | number;
   label: string;
   hint?: string;
 }) {
+  const className = `os-kpi${href || onClick ? "" : " is-static"}${active ? " is-on" : ""}`;
   const body = (
     <>
       <span className="os-kpi-icon">
@@ -30,15 +35,28 @@ export function OsKpi({
       </span>
     </>
   );
+  if (onClick && !href) {
+    return (
+      <button
+        type="button"
+        className={className}
+        data-tone={tone}
+        aria-pressed={active}
+        onClick={onClick}
+      >
+        {body}
+      </button>
+    );
+  }
   if (!href) {
     return (
-      <div className="os-kpi is-static" data-tone={tone}>
+      <div className={className} data-tone={tone}>
         {body}
       </div>
     );
   }
   return (
-    <Link href={href} className="os-kpi" data-tone={tone}>
+    <Link href={href} className={className} data-tone={tone}>
       {body}
       <ArrowRight className="os-kpi-go" size={16} />
     </Link>
