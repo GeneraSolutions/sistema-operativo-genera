@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { PwaSetup } from "@/components/PwaSetup";
 import { OS_LOOK_BOOT } from "@/lib/os-look";
 import { siteUrl } from "@/lib/site";
 import "./globals.css";
@@ -12,6 +13,13 @@ export const metadata: Metadata = {
   title,
   description,
   applicationName: "Sistema Operativo Solar",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Genera OS",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: { telephone: false },
   openGraph: {
     title,
     description,
@@ -29,8 +37,18 @@ export const metadata: Metadata = {
       { url: "/favicon.ico", sizes: "32x32" },
       { url: "/icon.png", type: "image/png", sizes: "512x512" },
     ],
-    apple: [{ url: "/apple-icon.png", type: "image/png", sizes: "512x512" }],
+    apple: [
+      { url: "/icons/apple-touch-icon.png", type: "image/png", sizes: "180x180" },
+      { url: "/apple-icon.png", type: "image/png", sizes: "512x512" },
+    ],
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0f2a1f",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -43,6 +61,7 @@ export default function RootLayout({
       <body>
         <script dangerouslySetInnerHTML={{ __html: OS_LOOK_BOOT }} />
         {children}
+        <PwaSetup />
       </body>
     </html>
   );

@@ -21,6 +21,8 @@ function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/api/dictamenes/") && !pathname.startsWith("/api/dictamenes/publicar"))
     return true;
   if (pathname === "/favicon.ico") return true;
+  if (pathname === "/manifest.json" || pathname === "/sw.js") return true;
+  if (pathname === "/offline.html") return true;
   if (/\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|map)$/i.test(pathname)) {
     return true;
   }

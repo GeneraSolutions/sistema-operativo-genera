@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Sistema Operativo Solar · Genera Solutions SAS",
+  "short_name": "Genera OS",
+  "description": "Cotizador, obra, contenido e inteligencia de ingeniería solar de Genera Solutions SAS.",
+  "lang": "es-CO",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#0f2a1f",
+  "theme_color": "#0f2a1f",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Cotizador", "url": "/cotizador", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Contenido", "url": "/contenido", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Inicio", "url": "/inicio", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

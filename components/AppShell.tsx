@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { OsLookToggle } from "@/components/OsLookToggle";
+import { clearPrivateCache } from "@/components/PwaSetup";
 import {
   ROLE_LABELS,
   isAliadoRole,
@@ -76,6 +77,7 @@ export function AppShell({
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
+    await clearPrivateCache();
     window.location.href = "/login";
   }
 
