@@ -1,19 +1,22 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AppShell } from "@/components/AppShell";
-import { WorkFold } from "@/components/WorkFold";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  MOUNT_LABELS,
-  slugCategory,
-  type EquipmentCategory,
-  type InventoryItem,
-  type StructureMountType,
-  type TrmConfig,
-} from "@/types/inventory";
+  AlertTriangle,
+  Boxes,
+  ChevronDown,
+  DollarSign,
+  History,
+  PackageMinus,
+  PackageSearch,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
+import { AppShell } from "@/components/AppShell";
+import { OsKpi } from "@/components/OsKpi";
 import { saveDatasheetFile } from "@/lib/datasheets";
-import { getPriceHistory, recordPrice } from "@/lib/price-history";
-import { saleUnitCOP } from "@/lib/pricing";
 import {
   allCategoryIds,
   categoryLabel,
@@ -27,6 +30,20 @@ import {
   saveTrm,
   usdToCop,
 } from "@/lib/inventory";
+import { normalizeSearch } from "@/lib/os-command";
+import { getPriceHistory, recordPrice } from "@/lib/price-history";
+import { saleUnitCOP } from "@/lib/pricing";
+import {
+  MOUNT_LABELS,
+  slugCategory,
+  type EquipmentCategory,
+  type InventoryItem,
+  type StructureMountType,
+  type TrmConfig,
+} from "@/types/inventory";
+
+const field =
+  "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
 
 const copFmt = new Intl.NumberFormat("es-CO", {
   style: "currency",
@@ -39,6 +56,13 @@ const usdFmt = new Intl.NumberFormat("en-US", {
   currency: "USD",
   maximumFractionDigits: 2,
 });
+
+const whenFmt = new Intl.DateTimeFormat("es-CO", {
+  day: "numeric",
+  month: "short",
+});
+
+const LOW_STOCK = 5;
 
 const emptyForm = {
   category: "panel" as EquipmentCategory,
@@ -60,29 +84,51 @@ const emptyForm = {
   datasheetUrl: "",
 };
 
+function parseCopInput(raw: string): number {
+  const compact = raw.replace(/\s/g, "").replace(/[.$]/g, "").replace(",", ".");
+  return Number(compact);
+}
+
+function stockTone(stock: number | undefined): "ok" | "warn" | "danger" | "neutral" {
+  if (stock == null) return "neutral";
+  if (stock <= 0) return "danger";
+  if (stock <= LOW_STOCK) return "warn";
+  return "ok";
+}
+
+function stockLabel(stock: number | undefined) {
+  if (stock == null) return "Sin dato";
+  if (stock <= 0) return "Sin stock";
+  return `${stock} und`;
+}
+
+function capacityText(item: InventoryItem) {
+  if (item.capacity == null) return "";
+  const unit =
+    item.unit === "módulo" && item.category === "panel" ? "Wp" : item.unit;
+  return `${item.capacity} ${unit}`.trim();
+}
+
+function hay(parts: Array<string | number | undefined | null>) {
+  return normalizeSearch(parts.filter(Boolean).join(" "));
+}
+
 export default function InventarioPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [trm, setTrm] = useState<TrmConfig>({ trm: 4125, source: "", updatedAt: "" });
   const [trmInput, setTrmInput] = useState("4125");
   const [filter, setFilter] = useState<EquipmentCategory | "all">("all");
+  const [stockFilter, setStockFilter] = useState<"all" | "zero" | "low">("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [priceEditMode, setPriceEditMode] = useState<"COP" | "USD">("COP");
-  const [savedFlash, setSavedFlash] = useState("");
+  const [flash, setFlash] = useState("");
   const [query, setQuery] = useState("");
-  const [openCats, setOpenCats] = useState<Partial<Record<string, boolean>>>(
-    {}
-  );
-  const [customCats, setCustomCats] = useState<{ id: string; label: string }[]>(
-    []
-  );
+  const [customCats, setCustomCats] = useState<{ id: string; label: string }[]>([]);
   const [newGroupName, setNewGroupName] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-  const [trmOpen, setTrmOpen] = useState(false);
-
-  useEffect(() => {
-    if (editingId) setFormOpen(true);
-  }, [editingId]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const CATEGORIES = allCategoryIds(customCats);
 
@@ -95,35 +141,78 @@ export default function InventarioPage() {
     setCustomCats(loadCustomCategories());
   }, []);
 
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(""), 2800);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDrawer();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
+
+  const tokens = normalizeSearch(query).split(/\s+/).filter(Boolean);
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return items.filter((i) => {
-      if (filter !== "all" && i.category !== filter) return false;
-      if (!q) return true;
-      return `${i.name} ${i.brand} ${i.model}`.toLowerCase().includes(q);
-    });
-  }, [items, filter, query]);
+    return items
+      .filter((i) => {
+        if (filter !== "all" && i.category !== filter) return false;
+        if (stockFilter === "zero" && i.stock !== 0) return false;
+        if (
+          stockFilter === "low" &&
+          !(i.stock != null && i.stock > 0 && i.stock <= LOW_STOCK)
+        ) {
+          return false;
+        }
+        if (!tokens.length) return true;
+        return tokens.every((t) =>
+          hay([i.name, i.brand, i.model, categoryLabel(i.category, customCats)]).includes(t)
+        );
+      })
+      .sort((a, b) => {
+        const cat = categoryLabel(a.category, customCats).localeCompare(
+          categoryLabel(b.category, customCats),
+          "es"
+        );
+        if (cat !== 0) return cat;
+        return a.name.localeCompare(b.name, "es");
+      });
+  }, [items, filter, stockFilter, query, customCats]);
 
-  const grouped = useMemo(
-    () =>
-      CATEGORIES.map((category) => ({
-        category,
-        items: filtered.filter((i) => i.category === category),
-      })).filter((g) => (filter === "all" ? true : g.category === filter)),
-    [filtered, filter, customCats]
-  );
+  const counts = useMemo(() => {
+    const active = items.filter((i) => i.active).length;
+    const zero = items.filter((i) => i.stock === 0).length;
+    const low = items.filter(
+      (i) => i.stock != null && i.stock > 0 && i.stock <= LOW_STOCK
+    ).length;
+    return { active, zero, low, total: items.length };
+  }, [items]);
 
-  function isCatOpen(category: EquipmentCategory) {
-    if (filter !== "all") return true;
-    if (query.trim()) return true;
-    return Boolean(openCats[category]);
-  }
-
-  function persist(next: InventoryItem[]) {
+  function persist(next: InventoryItem[], message = "Catálogo guardado") {
     setItems(next);
     saveInventory(next);
-    setSavedFlash("Catálogo guardado");
-    window.setTimeout(() => setSavedFlash(""), 1800);
+    setFlash(message);
   }
 
   function handleTrmSave() {
@@ -141,7 +230,7 @@ export default function InventarioPage() {
       priceUSD: copToUsd(item.priceCOP, value),
       updatedAt: new Date().toISOString(),
     }));
-    persist(converted);
+    persist(converted, "TRM aplicada. Los COP no cambiaron.");
   }
 
   function onPriceChange(field: "COP" | "USD", raw: string) {
@@ -151,18 +240,14 @@ export default function InventarioPage() {
       setForm((f) => ({
         ...f,
         priceCOP: raw,
-        priceUSD: Number.isFinite(cop)
-          ? String(copToUsd(cop, trm.trm))
-          : f.priceUSD,
+        priceUSD: Number.isFinite(cop) ? String(copToUsd(cop, trm.trm)) : f.priceUSD,
       }));
     } else {
       const usd = Number(raw.replace(/\s/g, "").replace(",", "."));
       setForm((f) => ({
         ...f,
         priceUSD: raw,
-        priceCOP: Number.isFinite(usd)
-          ? String(usdToCop(usd, trm.trm))
-          : f.priceCOP,
+        priceCOP: Number.isFinite(usd) ? String(usdToCop(usd, trm.trm)) : f.priceCOP,
       }));
     }
   }
@@ -181,14 +266,12 @@ export default function InventarioPage() {
               updatedAt: new Date().toISOString(),
             }
           : i
-      )
+      ),
+      "Precio actualizado"
     );
-    setSavedFlash("Precio actualizado");
   }
 
   function startEdit(item: InventoryItem) {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    setOpenCats((s) => ({ ...s, [item.category]: true }));
     setEditingId(item.id);
     setForm({
       category: item.category,
@@ -209,6 +292,11 @@ export default function InventarioPage() {
       leadTimeDays: item.leadTimeDays != null ? String(item.leadTimeDays) : "",
       datasheetUrl: item.datasheetUrl ?? "",
     });
+    setDrawerOpen(true);
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
   }
 
   function resetForm() {
@@ -216,11 +304,17 @@ export default function InventarioPage() {
     setForm(emptyForm);
   }
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  function newItem() {
+    resetForm();
+    setDrawerOpen(true);
+  }
+
+  function handleSubmit(e?: FormEvent) {
+    e?.preventDefault();
     const priceCOP = Number(form.priceCOP);
     const priceUSD = Number(form.priceUSD);
     if (!form.name.trim() || !Number.isFinite(priceCOP) || !Number.isFinite(priceUSD)) {
+      setFlash("Indique nombre y un costo válido.");
       return;
     }
 
@@ -261,23 +355,21 @@ export default function InventarioPage() {
     } else {
       next = [payload, ...next];
     }
-    persist(next);
-    resetForm();
+    persist(next, editingId ? "Equipo actualizado" : "Equipo agregado al catálogo");
+    setEditingId(payload.id);
   }
 
   function setAsDefault(id: string) {
     const target = items.find((i) => i.id === id);
     if (!target) return;
-    const next = items.map((i) => ({
-      ...i,
-      isDefault:
-        i.id === id
-          ? true
-          : i.category === target.category
-            ? false
-            : i.isDefault,
-    }));
-    persist(next);
+    persist(
+      items.map((i) => ({
+        ...i,
+        isDefault:
+          i.id === id ? true : i.category === target.category ? false : i.isDefault,
+      })),
+      "Default del cotizador actualizado"
+    );
   }
 
   function toggleActive(id: string) {
@@ -289,270 +381,527 @@ export default function InventarioPage() {
   }
 
   function removeItem(id: string) {
-    persist(items.filter((i) => i.id !== id));
-    if (editingId === id) resetForm();
+    if (!confirm("¿Quitar este equipo del catálogo?")) return;
+    persist(items.filter((i) => i.id !== id), "Equipo eliminado");
+    if (editingId === id) {
+      resetForm();
+      setDrawerOpen(false);
+    }
   }
 
+  function addGroup() {
+    const label = newGroupName.trim();
+    if (!label) return;
+    const id = slugCategory(label);
+    if (CATEGORIES.includes(id)) {
+      setForm((f) => ({ ...f, category: id as EquipmentCategory }));
+      setNewGroupName("");
+      return;
+    }
+    const next = [...customCats, { id, label }];
+    setCustomCats(next);
+    saveCustomCategories(next);
+    setForm((f) => ({ ...f, category: id as EquipmentCategory }));
+    setNewGroupName("");
+    setFlash("Grupo creado");
+  }
+
+  const editing = items.find((i) => i.id === editingId);
+  const history = editingId ? getPriceHistory(editingId) : [];
+  const salePreview =
+    Number(form.priceCOP) > 0
+      ? Math.round(Number(form.priceCOP) * (1 + (Number(form.marginPercent) || 0) / 100))
+      : 0;
+
+  const trmDate = trm.updatedAt ? whenFmt.format(Date.parse(trm.updatedAt)) : "";
+
   return (
-    <AppShell title="Catálogo y precios" subtitle="Equipos · TRM · Defaults del cotizador">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="os-page-hero">
-          <h2 className="text-2xl font-semibold">Inventario de equipos</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-[#4d5c55]">
-            Puede cambiar el precio COP de cada equipo en la lista (se guarda al
-            salir del campo o al pulsar Enter). El cotizador usa esos valores de
-            inmediato. La TRM solo actualiza el equivalente en USD; no pisa sus COP.
-          </p>
-        </div>
-          <button
-            type="button"
-            className="mt-3 text-sm font-medium text-[#1f6b45] underline"
-            onClick={() => {
-              persist(restoreOfficialCatalog());
-              setSavedFlash("Lista oficial restaurada");
-            }}
-          >
-            Restaurar lista oficial de precios Genera
+    <AppShell
+      title="Inventario"
+      subtitle={`TRM ${copFmt.format(trm.trm)} / USD${trmDate ? ` · ${trmDate}` : ""}`}
+      actions={
+        <>
+          <div className="os-menu" ref={menuRef}>
+            <button
+              type="button"
+              className="os-btn os-btn-ghost"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              Más
+              <ChevronDown size={15} />
+            </button>
+            {menuOpen ? (
+              <div className="os-menu-pop" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    persist(restoreOfficialCatalog(), "Lista oficial restaurada");
+                  }}
+                >
+                  <History size={15} />
+                  <span>Restaurar lista oficial Genera</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <button type="button" className="os-btn os-btn-primary" onClick={newItem}>
+            <Plus size={16} />
+            Nuevo equipo
           </button>
-        {savedFlash ? (
-          <span className="rounded-full bg-[#1f6b45]/15 px-3 py-1 text-xs font-semibold text-[#1f6b45]">
-            {savedFlash}
-          </span>
-        ) : null}
+        </>
+      }
+    >
+      <div className="os-kpis">
+        <OsKpi
+          icon={Boxes}
+          tone="ok"
+          label="Activos"
+          value={counts.active}
+          hint={`${counts.total} en catálogo`}
+          active={stockFilter === "all" && filter === "all"}
+          onClick={() => {
+            setStockFilter("all");
+            setFilter("all");
+          }}
+        />
+        <OsKpi
+          icon={PackageMinus}
+          tone={counts.zero > 0 ? "danger" : "neutral"}
+          label="Sin stock"
+          value={counts.zero}
+          hint="Cero unidades"
+          active={stockFilter === "zero"}
+          onClick={() => setStockFilter((s) => (s === "zero" ? "all" : "zero"))}
+        />
+        <OsKpi
+          icon={AlertTriangle}
+          tone={counts.low > 0 ? "warn" : "neutral"}
+          label="Stock bajo"
+          value={counts.low}
+          hint={`Hasta ${LOW_STOCK} unidades`}
+          active={stockFilter === "low"}
+          onClick={() => setStockFilter((s) => (s === "low" ? "all" : "low"))}
+        />
+        <OsKpi
+          icon={DollarSign}
+          tone="info"
+          label="TRM"
+          value={copFmt.format(trm.trm).replace(/\s/g, " ")}
+          hint={trm.source || "COP por 1 USD"}
+        />
       </div>
 
-      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
-        <WorkFold
-          title={`TRM · ${copFmt.format(trm.trm)} / USD`}
-          open={trmOpen}
-          onToggle={() => setTrmOpen((v) => !v)}
-        >
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-        <div>
-          <p className="os-page-intro text-xs text-[#6d7c74]">
-            Al aplicar TRM se recalcula el USD a partir del COP (el peso colombiano
-            es la fuente de verdad).
+      <div className="os-trm">
+        <div className="min-w-0">
+          <p className="os-trm-title">Tipo de cambio</p>
+          <p className="os-trm-hint">
+            Al aplicar, se recalcula el USD desde el COP. El peso no se pisa.
             {trm.source ? ` · ${trm.source}` : ""}
           </p>
         </div>
-        <div className="flex items-end gap-2">
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-[#4d5c55]">
-              Nueva TRM (COP/USD)
-            </span>
-            <input
-              className="w-40 rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 outline-none ring-[#1f6b45] focus:ring-2"
-              value={trmInput}
-              onChange={(e) => setTrmInput(e.target.value)}
-              inputMode="decimal"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={handleTrmSave}
-            className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#163d2c]"
-          >
-            Aplicar TRM
+        <label className="os-trm-field">
+          <span>Nueva TRM (COP/USD)</span>
+          <input
+            value={trmInput}
+            onChange={(e) => setTrmInput(e.target.value)}
+            inputMode="decimal"
+          />
+        </label>
+        <button type="button" className="os-btn os-btn-primary" onClick={handleTrmSave}>
+          Aplicar TRM
+        </button>
+      </div>
+
+      <div className="os-board-bar">
+        <label className="os-file-search">
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nombre, marca o modelo…"
+            aria-label="Buscar en inventario"
+          />
+        </label>
+      </div>
+
+      <div className="os-chips os-inv-chips">
+        <button
+          type="button"
+          className="os-chip"
+          aria-pressed={filter === "all"}
+          onClick={() => setFilter("all")}
+        >
+          Todos <span>{items.length}</span>
+        </button>
+        {CATEGORIES.map((c) => {
+          const n = items.filter((i) => i.category === c).length;
+          return (
+            <button
+              key={c}
+              type="button"
+              className="os-chip"
+              aria-pressed={filter === c}
+              onClick={() => setFilter((f) => (f === c ? "all" : c))}
+            >
+              {categoryLabel(c, customCats)} <span>{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="os-inv-split">
+        {filtered.length === 0 ? (
+          <section className="os-work os-file-panel">
+            <div className="os-empty">
+              <span className="os-empty-icon">
+                <PackageSearch size={20} />
+              </span>
+              <p className="os-empty-title">No hay equipos en este filtro</p>
+              <p className="os-empty-hint">
+                Cambie la categoría o el stock, o cree un equipo nuevo.
+              </p>
+              <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={newItem}>
+                <Plus size={14} />
+                Nuevo equipo
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="os-work os-file-panel os-inv-sheet">
+            <div className="os-inv-sheet-bar">
+              <p>
+                {filtered.length === 1 ? "1 equipo" : `${filtered.length} equipos`}
+                {filter !== "all" ? ` · ${categoryLabel(filter, customCats)}` : ""}
+              </p>
+            </div>
+            <div className="os-inv-table-wrap">
+              <table className="os-inv-table">
+                <thead>
+                  <tr>
+                    <th>Equipo</th>
+                    <th className="num">Costo</th>
+                    <th className="num">Venta</th>
+                    <th>Stock</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((item) => {
+                    const on = drawerOpen && editingId === item.id;
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`${item.active ? "" : "is-off"}${on ? " is-on" : ""}`}
+                        aria-selected={on}
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className="os-inv-row-open"
+                            onClick={() => startEdit(item)}
+                          >
+                            <span className="os-work-row-title">{item.name}</span>
+                            <span className="os-work-row-meta">
+                              {[
+                                categoryLabel(item.category, customCats),
+                                item.brand,
+                                item.model,
+                                capacityText(item),
+                                item.mountType ? MOUNT_LABELS[item.mountType] : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </button>
+                          {item.isDefault ? (
+                            <span className="os-pill" data-tone="ok">
+                              Default
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="num">
+                          <InlinePrice
+                            priceCOP={item.priceCOP}
+                            priceUSD={item.priceUSD}
+                            onCommit={(raw) => updatePriceCOP(item.id, raw)}
+                          />
+                        </td>
+                        <td className="num">
+                          <p className="os-inv-sale">
+                            {copFmt.format(saleUnitCOP(item))}
+                            {item.applyIva ? " + IVA" : ""}
+                          </p>
+                        </td>
+                        <td>
+                          <span className="os-pill" data-tone={stockTone(item.stock)}>
+                            {stockLabel(item.stock)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {drawerOpen ? (
+          <div className="os-drawer-backdrop" onClick={closeDrawer} />
+        ) : null}
+        <aside
+          className="os-drawer os-inv-pane"
+          data-open={drawerOpen ? "true" : undefined}
+          aria-hidden={!drawerOpen}
+          aria-label={
+            drawerOpen
+              ? editingId
+                ? "Editar equipo"
+                : "Nuevo equipo"
+              : "Ficha del equipo"
+          }
+        >
+        <div className="os-empty os-inv-pane-empty">
+          <span className="os-empty-icon">
+            <PackageSearch size={20} />
+          </span>
+          <p className="os-empty-title">Ficha del equipo</p>
+          <p className="os-empty-hint">
+            Seleccione una fila para ver margen, IVA y ficha. El costo se cambia en la tabla.
+          </p>
+          <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={newItem}>
+            <Plus size={14} />
+            Nuevo equipo
           </button>
         </div>
-        </div>
-        </WorkFold>
-      </section>
+        <header className="os-drawer-head">
+          <div className="min-w-0">
+            <p className="os-drawer-kicker">{editingId ? "Editar equipo" : "Nuevo equipo"}</p>
+            <h2 className="os-drawer-title">{form.name.trim() || "Sin nombre"}</h2>
+          </div>
+          <button type="button" className="os-icon-btn" aria-label="Cerrar" onClick={closeDrawer}>
+            <X size={18} />
+          </button>
+        </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)]">
-        <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5 shadow-[0_12px_40px_rgba(18,36,28,0.06)]">
-          <WorkFold
-            title={editingId ? "Editar equipo" : "Nuevo equipo"}
-            open={formOpen}
-            onToggle={() => setFormOpen((v) => !v)}
-          >
-          <div className="flex flex-wrap items-end gap-2 rounded-xl bg-[#f7f4ee] p-3">
-            <label className="min-w-[180px] flex-1 text-sm">
+        {editingId ? (
+          <div className="os-drawer-actions">
+            {editing && !editing.isDefault ? (
+              <button
+                type="button"
+                className="os-btn os-btn-ghost os-btn-sm"
+                onClick={() => setAsDefault(editingId)}
+              >
+                Usar por defecto
+              </button>
+            ) : (
+              <span className="os-pill" data-tone="ok">
+                Default cotizador
+              </span>
+            )}
+            <button
+              type="button"
+              className="os-btn os-btn-ghost os-btn-sm"
+              onClick={() => toggleActive(editingId)}
+            >
+              {editing?.active ? "Desactivar" : "Activar"}
+            </button>
+          </div>
+        ) : null}
+
+        <form className="os-drawer-body" onSubmit={handleSubmit}>
+          <p className="os-drawer-section">Grupo</p>
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <label className="min-w-[160px] flex-1 text-sm">
               <span className="mb-1 block font-medium">Nuevo grupo</span>
               <input
-                className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2"
+                className={field}
                 placeholder="Ej. Iluminación LED"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
               />
             </label>
-            <button
-              type="button"
-              className="rounded-xl bg-[#0f3d2e] px-3 py-2 text-sm font-semibold text-white"
-              onClick={() => {
-                const label = newGroupName.trim();
-                if (!label) return;
-                const id = slugCategory(label);
-                if (CATEGORIES.includes(id)) {
-                  setForm((f) => ({ ...f, category: id as EquipmentCategory }));
-                  setNewGroupName("");
-                  return;
-                }
-                const next = [...customCats, { id, label }];
-                setCustomCats(next);
-                saveCustomCategories(next);
-                setForm((f) => ({ ...f, category: id as EquipmentCategory }));
-                setOpenCats((s) => ({ ...s, [id]: true }));
-                setNewGroupName("");
-                setSavedFlash("Grupo creado");
-              }}
-            >
-              Agregar grupo
+            <button type="button" className="os-btn os-btn-ghost" onClick={addGroup}>
+              Agregar
             </button>
           </div>
-          <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium">Categoría</span>
-              <select
-                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                value={form.category}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    category: e.target.value as EquipmentCategory,
-                  }))
-                }
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {categoryLabel(c, customCats)}
-                  </option>
-                ))}
-              </select>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium">Categoría</span>
+            <select
+              className={field}
+              value={form.category}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  category: e.target.value as EquipmentCategory,
+                }))
+              }
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {categoryLabel(c, customCats)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <p className="os-drawer-section">Equipo</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm sm:col-span-2">
+              <span className="mb-1 block font-medium">Nombre</span>
+              <input
+                className={field}
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                required
+              />
             </label>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Nombre</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  required
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Marca</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.brand}
-                  onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Modelo</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.model}
-                  onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Unidad</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.unit}
-                  onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Costo COP</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.priceCOP}
-                  onChange={(e) => onPriceChange("COP", e.target.value)}
-                  inputMode="decimal"
-                  required
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Precio USD</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.priceUSD}
-                  onChange={(e) => onPriceChange("USD", e.target.value)}
-                  inputMode="decimal"
-                  required
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Capacidad (Wp / kW / kWh)</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.capacity}
-                  onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))}
-                  inputMode="decimal"
-                />
-              </label>
-              {form.category === "structure" ? (
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">Tipo de montaje</span>
-                  <select
-                    className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                    value={form.mountType}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        mountType: e.target.value as StructureMountType,
-                      }))
-                    }
-                  >
-                    {(Object.keys(MOUNT_LABELS) as StructureMountType[]).map((m) => (
-                      <option key={m} value={m}>
-                        {MOUNT_LABELS[m]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <div />
-              )}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Stock (und)</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.stock}
-                  onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
-                  inputMode="numeric"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Lead time (días)</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.leadTimeDays}
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Marca</span>
+              <input
+                className={field}
+                value={form.brand}
+                onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Modelo</span>
+              <input
+                className={field}
+                value={form.model}
+                onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Unidad</span>
+              <input
+                className={field}
+                value={form.unit}
+                onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Capacidad (Wp / kW / kWh)</span>
+              <input
+                className={field}
+                value={form.capacity}
+                onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))}
+                inputMode="decimal"
+              />
+            </label>
+            {form.category === "structure" ? (
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Tipo de montaje</span>
+                <select
+                  className={field}
+                  value={form.mountType}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, leadTimeDays: e.target.value }))
+                    setForm((f) => ({
+                      ...f,
+                      mountType: e.target.value as StructureMountType,
+                    }))
                   }
-                  inputMode="numeric"
-                />
+                >
+                  {(Object.keys(MOUNT_LABELS) as StructureMountType[]).map((m) => (
+                    <option key={m} value={m}>
+                      {MOUNT_LABELS[m]}
+                    </option>
+                  ))}
+                </select>
               </label>
-            </div>
-            <label className="block text-sm">
+            ) : null}
+          </div>
+
+          <p className="os-drawer-section">Costo y venta</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Costo COP</span>
+              <input
+                className={field}
+                value={form.priceCOP}
+                onChange={(e) => onPriceChange("COP", e.target.value)}
+                inputMode="decimal"
+                required
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Precio USD</span>
+              <input
+                className={field}
+                value={form.priceUSD}
+                onChange={(e) => onPriceChange("USD", e.target.value)}
+                inputMode="decimal"
+                required
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Ganancia %</span>
+              <input
+                className={field}
+                value={form.marginPercent}
+                onChange={(e) => setForm((f) => ({ ...f, marginPercent: e.target.value }))}
+                inputMode="decimal"
+              />
+            </label>
+            <label className="flex items-end gap-2 pb-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={form.applyIva}
+                onChange={(e) => setForm((f) => ({ ...f, applyIva: e.target.checked }))}
+              />
+              Aplica IVA 19%
+            </label>
+          </div>
+          {salePreview > 0 ? (
+            <p className="mt-2 text-sm text-[#4d5c55]">
+              Precio de venta: <strong>{copFmt.format(salePreview)}</strong>
+              {priceEditMode === "USD" ? " · editando desde USD" : ""}
+            </p>
+          ) : null}
+          {history.length > 1 ? (
+            <p className="mt-2 text-xs text-[#8a7f70]">
+              Historial:{" "}
+              {history
+                .slice(-4)
+                .map((h) => copFmt.format(h.priceCOP))
+                .join(" → ")}
+            </p>
+          ) : null}
+
+          <p className="os-drawer-section">Bodega</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Stock (und)</span>
+              <input
+                className={field}
+                value={form.stock}
+                onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                inputMode="numeric"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Lead time (días)</span>
+              <input
+                className={field}
+                value={form.leadTimeDays}
+                onChange={(e) => setForm((f) => ({ ...f, leadTimeDays: e.target.value }))}
+                inputMode="numeric"
+              />
+            </label>
+            <label className="text-sm sm:col-span-2">
               <span className="mb-1 block font-medium">URL ficha técnica</span>
               <input
-                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                className={field}
                 placeholder="https://…pdf o cargue un archivo abajo"
                 value={form.datasheetUrl}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, datasheetUrl: e.target.value }))
-                }
+                onChange={(e) => setForm((f) => ({ ...f, datasheetUrl: e.target.value }))}
               />
             </label>
             {editingId ? (
-              <label className="block text-sm">
+              <label className="text-sm sm:col-span-2">
                 <span className="mb-1 block font-medium">PDF ficha técnica</span>
                 <input
                   type="file"
@@ -562,345 +911,72 @@ export default function InventarioPage() {
                     const file = e.target.files?.[0];
                     if (!file || !editingId) return;
                     await saveDatasheetFile(editingId, file);
-                    setSavedFlash("Ficha técnica guardada");
+                    setFlash("Ficha técnica guardada");
                   }}
                 />
               </label>
             ) : (
-              <p className="text-xs text-[#6d7c74]">
+              <p className="text-xs text-[#6d7c74] sm:col-span-2">
                 Guarde el equipo primero para adjuntar el PDF de la ficha.
               </p>
             )}
-            <label className="block text-sm">
+            <label className="text-sm sm:col-span-2">
               <span className="mb-1 block font-medium">Notas internas</span>
               <textarea
-                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
+                className={field}
                 rows={2}
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               />
             </label>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Ganancia %</span>
-                <input
-                  className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                  value={form.marginPercent}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, marginPercent: e.target.value }))
-                  }
-                  inputMode="decimal"
-                />
-              </label>
-              <label className="flex items-end gap-2 pb-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.applyIva}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, applyIva: e.target.checked }))
-                  }
-                />
-                Aplica IVA 19%
-              </label>
-            </div>
-            {Number(form.priceCOP) > 0 ? (
-              <p className="text-sm text-[#4d5c55]">
-                Precio de venta:{" "}
-                <strong>
-                  {copFmt.format(
-                    Math.round(
-                      Number(form.priceCOP) *
-                        (1 + (Number(form.marginPercent) || 0) / 100)
-                    )
-                  )}
-                </strong>
-              </p>
-            ) : null}
-
-            <div className="flex flex-wrap gap-4 text-sm">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={form.isDefault}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, isDefault: e.target.checked }))
-                  }
-                />
-                Usar por defecto en cotizador
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={form.active}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, active: e.target.checked }))
-                  }
-                />
-                Activo
-              </label>
-            </div>
-
-            <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                className="flex-1 rounded-xl bg-[#d4b46a] px-4 py-3 text-sm font-semibold text-[#12241c] hover:bg-[#c7a45a]"
-              >
-                {editingId ? "Actualizar" : "Agregar al catálogo"}
-              </button>
-              {editingId ? (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="rounded-xl border border-[#d8d2c4] px-4 py-3 text-sm font-medium"
-                >
-                  Cancelar
-                </button>
-              ) : null}
-            </div>
-          </form>
-          </WorkFold>
-        </section>
-
-        <section className="space-y-4">
-          <input
-            className="w-full rounded-xl border border-[#d8d2c4] bg-white px-3 py-2.5 text-sm outline-none ring-[#1f6b45] focus:ring-2"
-            placeholder="Buscar por nombre, marca o modelo…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <div className="flex flex-wrap gap-1.5">
-            <FilterChip
-              active={filter === "all"}
-              onClick={() => setFilter("all")}
-              label="Todos"
-            />
-            {CATEGORIES.map((c) => (
-              <FilterChip
-                key={c}
-                active={filter === c}
-                onClick={() => setFilter(c as EquipmentCategory)}
-                label={categoryLabel(c, customCats)}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.isDefault}
+                onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))}
               />
-            ))}
+              Usar por defecto en cotizador
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+              />
+              Activo
+            </label>
           </div>
+        </form>
 
-          <div className="space-y-2">
-            {grouped.map((group) => {
-              const open = isCatOpen(group.category);
-              return (
-                <section
-                  key={group.category}
-                  className="os-panel overflow-hidden rounded-2xl border border-[#ddd6c8] bg-white"
-                >
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    onClick={() =>
-                      setOpenCats((s) => ({
-                        ...s,
-                        [group.category]: !isCatOpen(group.category),
-                      }))
-                    }
-                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                  >
-                    <div>
-                      <h3 className="text-base font-semibold">
-                        {categoryLabel(group.category, customCats)}
-                      </h3>
-                      <p className="text-xs text-[#6d7c74]">
-                        {group.items.length} equipo
-                        {group.items.length === 1 ? "" : "s"}
-                        {!open && group.items[0]
-                          ? ` · ${group.items[0].brand}`
-                          : ""}
-                      </p>
-                    </div>
-                    <span
-                      aria-hidden
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fbfaf6] text-lg font-semibold text-[#1f6b45]"
-                    >
-                      {open ? "−" : "+"}
-                    </span>
-                  </button>
-                  {open ? (
-                    <div className="space-y-3 border-t border-[#eee8dc] px-3 py-3">
-                      {group.items.length === 0 ? (
-                        <p className="px-1 py-4 text-center text-sm text-[#6d7c74]">
-                          No hay equipos en esta categoría.
-                        </p>
-                      ) : (
-                        group.items.map((item) => (
-                          <article
-                            key={item.id}
-                            className={`rounded-xl border bg-[#fbfaf6] p-4 shadow-sm transition ${
-                              item.active
-                                ? "border-[#ddd6c8]"
-                                : "border-dashed border-[#c9bfad] opacity-70"
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="text-[10px] font-semibold tracking-[0.18em] text-[#8a6b2a] uppercase">
-                                  {item.mountType
-                                    ? MOUNT_LABELS[item.mountType]
-                                    : categoryLabel(item.category, customCats)}
-                                </p>
-                                <h4 className="mt-0.5 text-base font-semibold">
-                                  {item.name}
-                                </h4>
-                                <p className="text-sm text-[#4d5c55]">
-                                  {item.brand} {item.model}
-                                  {item.capacity != null
-                                    ? ` · ${item.capacity} ${
-                                        item.unit === "módulo" &&
-                                        item.category === "panel"
-                                          ? "Wp"
-                                          : ""
-                                      }`
-                                    : ""}
-                                </p>
-                              </div>
-                              <div className="flex flex-wrap items-end justify-end gap-3">
-                                <InlinePrice
-                                  priceCOP={item.priceCOP}
-                                  priceUSD={item.priceUSD}
-                                  onCommit={(raw) =>
-                                    updatePriceCOP(item.id, raw)
-                                  }
-                                />
-                                <label className="min-w-[88px] text-right text-sm">
-                                  <span className="block text-[10px] font-semibold tracking-wide text-[#8a6b2a] uppercase">
-                                    Ganancia %
-                                  </span>
-                                  <input
-                                    className="mt-0.5 w-full rounded-lg border border-[#d8d2c4] bg-white px-2 py-1.5 text-right font-semibold outline-none ring-[#1f6b45] focus:ring-2"
-                                    defaultValue={item.marginPercent ?? 0}
-                                    key={`${item.id}-m-${item.marginPercent}`}
-                                    inputMode="decimal"
-                                    onBlur={(e) => {
-                                      const m = Number(
-                                        e.target.value.replace(",", ".")
-                                      );
-                                      if (!Number.isFinite(m)) return;
-                                      persist(
-                                        items.map((i) =>
-                                          i.id === item.id
-                                            ? {
-                                                ...i,
-                                                marginPercent: m,
-                                                updatedAt:
-                                                  new Date().toISOString(),
-                                              }
-                                            : i
-                                        )
-                                      );
-                                    }}
-                                  />
-                                </label>
-                                <label className="flex items-center gap-1 pb-2 text-[11px] text-[#4d5c55]">
-                                  <input
-                                    type="checkbox"
-                                    checked={item.applyIva}
-                                    onChange={(e) =>
-                                      persist(
-                                        items.map((i) =>
-                                          i.id === item.id
-                                            ? {
-                                                ...i,
-                                                applyIva: e.target.checked,
-                                                updatedAt:
-                                                  new Date().toISOString(),
-                                              }
-                                            : i
-                                        )
-                                      )
-                                    }
-                                  />
-                                  IVA
-                                </label>
-                              </div>
-                              <p className="mt-1 w-full text-right text-xs text-[#1f6b45]">
-                                Venta {copFmt.format(saleUnitCOP(item))}
-                                {item.applyIva ? " + IVA" : " sin IVA"}
-                                {item.stock != null
-                                  ? ` · Stock ${item.stock}`
-                                  : ""}
-                                {item.leadTimeDays
-                                  ? ` · ${item.leadTimeDays} días`
-                                  : ""}
-                              </p>
-                              {getPriceHistory(item.id).length > 1 ? (
-                                <p className="mt-1 w-full text-right text-[10px] text-[#8a7f70]">
-                                  Historial:{" "}
-                                  {getPriceHistory(item.id)
-                                    .slice(-4)
-                                    .map((h) => copFmt.format(h.priceCOP))
-                                    .join(" → ")}
-                                </p>
-                              ) : null}
-                            </div>
-
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              {item.isDefault ? (
-                                <span className="rounded-full bg-[#1f6b45] px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase">
-                                  Default cotizador
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setAsDefault(item.id)}
-                                  className="rounded-full bg-[#f0ebe3] px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-[#4d5c55] uppercase hover:bg-[#1f6b45] hover:text-white"
-                                >
-                                  Usar por defecto
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => toggleActive(item.id)}
-                                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ring-1 ring-[#d8d2c4]"
-                              >
-                                {item.active ? "Desactivar" : "Activar"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => startEdit(item)}
-                                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ring-1 ring-[#d8d2c4]"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeItem(item.id)}
-                                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-[#9b2c2c] uppercase ring-1 ring-[#e8cfcf]"
-                              >
-                                Eliminar
-                              </button>
-                            </div>
-                          </article>
-                        ))
-                      )}
-                    </div>
-                  ) : null}
-                </section>
-              );
-            })}
-            {filtered.length === 0 && filter !== "all" ? (
-              <p className="rounded-2xl border border-dashed border-[#c9bfad] p-8 text-center text-sm text-[#6d7c74]">
-                No hay equipos en esta categoría.
-              </p>
-            ) : null}
-          </div>
-        </section>
+        <footer className="os-drawer-foot">
+          {editingId ? (
+            <button
+              type="button"
+              className="os-icon-btn is-danger"
+              aria-label="Eliminar equipo"
+              title="Eliminar"
+              onClick={() => removeItem(editingId)}
+            >
+              <Trash2 size={16} />
+            </button>
+          ) : null}
+          <button type="button" className="os-btn os-btn-ghost" onClick={closeDrawer}>
+            Cerrar
+          </button>
+          <button type="submit" className="os-btn os-btn-primary" onClick={handleSubmit}>
+            {editingId ? "Guardar equipo" : "Agregar al catálogo"}
+          </button>
+        </footer>
+        </aside>
       </div>
+
+      {flash ? (
+        <div className="os-toast" role="status">
+          {flash}
+        </div>
+      ) : null}
     </AppShell>
   );
-}
-
-function parseCopInput(raw: string): number {
-  const compact = raw.replace(/\s/g, "").replace(/[.$]/g, "").replace(",", ".");
-  const n = Number(compact);
-  return n;
 }
 
 function InlinePrice({
@@ -918,47 +994,18 @@ function InlinePrice({
   }, [priceCOP]);
 
   return (
-    <div className="min-w-[160px] text-right">
-      <label className="block text-[10px] font-semibold tracking-wide text-[#8a6b2a] uppercase">
-        Precio COP
-      </label>
+    <label className="os-inv-cost">
+      <span>Costo COP</span>
       <input
-        className="mt-0.5 w-full rounded-lg border border-[#d8d2c4] bg-[#fbfaf6] px-2 py-1.5 text-right text-base font-semibold outline-none ring-[#1f6b45] focus:ring-2"
         value={draft}
         inputMode="numeric"
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => onCommit(draft)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.currentTarget.blur();
-          }
+          if (e.key === "Enter") e.currentTarget.blur();
         }}
       />
-      <p className="mt-0.5 text-xs text-[#6d7c74]">{usdFmt.format(priceUSD)}</p>
-    </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-        active
-          ? "bg-[#0f2a1f] text-white"
-          : "bg-white text-[#4d5c55] ring-1 ring-[#d8d2c4] hover:bg-[#f7f4ee]"
-      }`}
-    >
-      {label}
-    </button>
+      <em>{usdFmt.format(priceUSD)}</em>
+    </label>
   );
 }
