@@ -44,10 +44,12 @@ export function AppShell({
   children,
   title,
   subtitle,
+  actions,
 }: {
   children: React.ReactNode;
   title: string;
   subtitle?: string;
+  actions?: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [me, setMe] = useState<{
@@ -104,17 +106,20 @@ export function AppShell({
       />
       <main className="os-shell-main">
         <div className="os-page-head">
-          <p className="os-page-crumb">
-            <span>Genera OS</span>
-            {activeItem ? (
-              <>
-                <span aria-hidden>/</span>
-                <span>{SHELL_GROUP_LABELS[activeItem.group]}</span>
-              </>
-            ) : null}
-          </p>
-          <h1 className="os-page-title">{title}</h1>
-          {subtitle ? <p className="os-page-sub">{subtitle}</p> : null}
+          <div className="os-page-head-text">
+            <p className="os-page-crumb">
+              <span>Genera OS</span>
+              {activeItem ? (
+                <>
+                  <span aria-hidden>/</span>
+                  <span>{SHELL_GROUP_LABELS[activeItem.group]}</span>
+                </>
+              ) : null}
+            </p>
+            <h1 className="os-page-title">{title}</h1>
+            {subtitle ? <p className="os-page-sub">{subtitle}</p> : null}
+          </div>
+          {actions ? <div className="os-page-actions print:hidden">{actions}</div> : null}
         </div>
         {pathname.startsWith("/cotizador") ? (
           <div className="os-subtabs mb-5 flex flex-wrap gap-1 rounded-xl bg-[#0f2a1f] p-1 print:hidden">

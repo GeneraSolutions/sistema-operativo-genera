@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { ArrowLeft, ArrowRight, Check, LayoutList, Save } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { WorkFold } from "@/components/WorkFold";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -307,6 +317,8 @@ function CotizadorInner() {
     bonos: false,
     recibo: false,
   });
+  const [quoteStep, setQuoteStep] = useState<QuoteStep | null>(1);
+  const stepsRef = useRef<HTMLDivElement>(null);
   const [paramExtra, setParamExtra] = useState({
     ideam: false,
     imagen: false,
@@ -819,6 +831,19 @@ function CotizadorInner() {
           ? "Gran C&I / Mini-granja"
           : "Granja Solar";
 
+  function goToStep(step: QuoteStep | null) {
+    setQuoteStep(step);
+    if (step !== null) {
+      const keys = QUOTE_STEPS.find((s) => s.id === step)?.folds ?? [];
+      setOpenFolds((s) => {
+        const next = { ...s };
+        for (const k of keys) next[k] = true;
+        return next;
+      });
+    }
+    stepsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function updateToggle<K extends keyof ProposalToggles>(key: K, value: boolean) {
     setToggles((t) => ({ ...t, [key]: value }));
   }
@@ -1264,6 +1289,13 @@ function CotizadorInner() {
   }
 
   const marginRate = quote.pl?.netMarginPercent ?? 0;
+  const clientPrice = aliado ? quote.totalCapexCOP : quote.pl.totalClientCOP;
+  const stepSummaries: Record<QuoteStep, string> = {
+    1: `${clientName.trim() || "Sin cliente"} · ${clientCity}`,
+    2: `${numFmt.format(systemKwp)} kWp · ${quote.lines.length} ítems`,
+    3: aliado ? "Forma de pago" : `Utilidad neta ${numFmt.format(marginRate)}%`,
+    4: "Garantías, bonos y entregables",
+  };
   const suggestedEngineering = Math.round(quote.pl.saleEquipmentCOP * 0.12);
   const stockWarnings = quote.lines
     .map((line) => {
@@ -1431,12 +1463,6 @@ function CotizadorInner() {
             )}
           </p>
         </div>
-        <div className="rounded-xl bg-[#0f2a1f] px-4 py-2 text-right text-white">
-          <p className="text-[10px] tracking-[0.2em] text-[#d4b46a] uppercase">
-            Escala
-          </p>
-          <p className="text-sm font-semibold">{scaleLabel}</p>
-        </div>
       </div>
       <div className="mb-4 flex flex-wrap gap-2 print:hidden">
         {kits.map((kit) => (
@@ -1551,12 +1577,18 @@ function CotizadorInner() {
         </div>
       ) : null}
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+      <div ref={stepsRef} className="os-steps-anchor">
+        <QuoteStepper active={quoteStep} summaries={stepSummaries} onGo={goToStep} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         {/* LEFT: inputs */}
-        <div className="space-y-3">
+        <QuoteStepContext.Provider value={quoteStep}>
+        <div className="min-w-0 space-y-3">
           <QuoteFold
             title="Parámetros del proyecto"
             summary={`${numFmt.format(systemKwp)} kWp · ${clientCity} · vigencia ${validUntilDays} d`}
+            step={1}
             open={openFolds.params}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, params: !s.params }))
@@ -2110,6 +2142,7 @@ function CotizadorInner() {
                 ? `${consumptionForQuote(energyBill).toLocaleString("es-CO")} kWh/mes · $${tariffForQuote(energyBill).toLocaleString("es-CO")}/kWh`
                 : "Foto del recibo · lectura automática"
             }
+            step={1}
             open={openFolds.recibo}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, recibo: !s.recibo }))
@@ -2136,6 +2169,7 @@ function CotizadorInner() {
                     ? `Financiado ${financedPercent}% · ${financedMonths} meses`
                     : `PPA ${ppaYears} años · $${ppaPricePerKWh}/kWh`
             }
+            step={3}
             open={openFolds.pago}
             onToggle={() => setOpenFolds((s) => ({ ...s, pago: !s.pago }))}
           >
@@ -2326,6 +2360,7 @@ function CotizadorInner() {
           <QuoteFold
             title="Equipos y cantidades"
             summary={`${qty.panels} paneles · ${qty.inverters} inversor(es)`}
+            step={2}
             open={openFolds.equipos}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, equipos: !s.equipos }))
@@ -2691,6 +2726,7 @@ function CotizadorInner() {
           <QuoteFold
             title="Instalación Genera"
             summary={`${copFmt.format(engineeringCostCOP)} · ${installBand?.label ?? ""}`}
+            step={2}
             open={openFolds.ingenieria}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, ingenieria: !s.ingenieria }))
@@ -2822,6 +2858,7 @@ function CotizadorInner() {
           <QuoteFold
             title="Ingeniería y cuadrilla"
             summary={`${quote.addons.filter((a) => a.enabled).length} partidas · ${technicians} técnicos`}
+            step={2}
             open={openFolds.ingenieria}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, ingenieria: !s.ingenieria }))
@@ -3066,6 +3103,7 @@ function CotizadorInner() {
           <QuoteFold
             title="Impuestos Colombia (interno)"
             summary={`ICA ${taxConfig.icaComercioPerMil}‰ / ${taxConfig.icaServiciosPerMil}‰ · renta ${taxConfig.rentaPercent}%`}
+            step={3}
             open={openFolds.impuestos}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, impuestos: !s.impuestos }))
@@ -3202,6 +3240,7 @@ function CotizadorInner() {
             title="Costeo y utilidad"
             kicker="Solo interno · no va al cliente"
             summary={`Neto ${copFmt.format(quote.pl.netProfitCOP)} · cliente ${copFmt.format(quote.pl.totalClientCOP)}`}
+            step={3}
             open={openFolds.costeo}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, costeo: !s.costeo }))
@@ -3473,6 +3512,7 @@ function CotizadorInner() {
           <QuoteFold
             title="Garantías del sistema"
             summary={warrantySummary(warranties, includeBattery)}
+            step={4}
             open={openFolds.garantias}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, garantias: !s.garantias }))
@@ -3618,6 +3658,7 @@ function CotizadorInner() {
           <QuoteFold
             title="Bonos y compromisos Genera Solutions SAS"
             summary={`${bonusIds.length} de ${GENERA_BONUSES.length} encendidos`}
+            step={4}
             open={openFolds.bonos}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, bonos: !s.bonos }))
@@ -3701,6 +3742,7 @@ function CotizadorInner() {
           <QuoteFold
             title="Panel de control · Propuesta"
             summary="TIR, ROI, Ley 1715 y gráficos para el cliente"
+            step={4}
             open={openFolds.propuesta}
             onToggle={() =>
               setOpenFolds((s) => ({ ...s, propuesta: !s.propuesta }))
@@ -3775,10 +3817,39 @@ function CotizadorInner() {
               ))}
             </div>
           </QuoteFold>
+          <QuoteStepNav
+            active={quoteStep}
+            onGo={goToStep}
+            onSave={() => persistQuote(snapshotCurrent())}
+          />
         </div>
+        </QuoteStepContext.Provider>
 
         {/* RIGHT: misma propuesta estilo Vercel, en vivo */}
         <div className="os-quote-preview space-y-4">
+          <dl className="os-quote-sum print:hidden">
+            <div>
+              <dt>Sistema</dt>
+              <dd>{numFmt.format(systemKwp)} kWp</dd>
+              <span>{scaleLabel}</span>
+            </div>
+            <div>
+              <dt>Precio al cliente</dt>
+              <dd>{copFmt.format(clientPrice)}</dd>
+              <span>
+                {systemKwp > 0
+                  ? `${copFmt.format(Math.round(clientPrice / systemKwp))} / kWp`
+                  : "—"}
+              </span>
+            </div>
+            {aliado ? null : (
+              <div data-tone={marginRate < 12 ? "warn" : "ok"}>
+                <dt>Utilidad neta</dt>
+                <dd>{numFmt.format(marginRate)}%</dd>
+                <span>{copFmt.format(quote.pl.netProfitCOP)}</span>
+              </div>
+            )}
+          </dl>
           <p className="os-page-intro print:hidden text-sm text-[#4d5c55]">
             Esta es la misma cotización que enviabas antes (estilo oscuro EPC). Lo que
             cambias a la izquierda se refleja aquí. El enlace comercial abre esta
@@ -3907,10 +3978,119 @@ function CotizadorInner() {
   );
 }
 
+type QuoteStep = 1 | 2 | 3 | 4;
+type FoldKey =
+  | "params"
+  | "equipos"
+  | "ingenieria"
+  | "impuestos"
+  | "pago"
+  | "costeo"
+  | "propuesta"
+  | "garantias"
+  | "bonos"
+  | "recibo";
+
+const QUOTE_STEPS: { id: QuoteStep; label: string; folds: FoldKey[] }[] = [
+  { id: 1, label: "Cliente y consumo", folds: ["params", "recibo"] },
+  { id: 2, label: "Equipos e instalación", folds: ["equipos", "ingenieria"] },
+  { id: 3, label: "Costos y pago", folds: ["impuestos", "costeo", "pago"] },
+  { id: 4, label: "Propuesta", folds: ["garantias", "bonos", "propuesta"] },
+];
+
+const QuoteStepContext = createContext<QuoteStep | null>(null);
+
+function QuoteStepper({
+  active,
+  summaries,
+  onGo,
+}: {
+  active: QuoteStep | null;
+  summaries: Record<QuoteStep, string>;
+  onGo: (step: QuoteStep | null) => void;
+}) {
+  return (
+    <div className="os-steps print:hidden">
+      <ol className="os-steps-list">
+        {QUOTE_STEPS.map((s) => {
+          const state =
+            active === null ? "all" : s.id === active ? "current" : s.id < active ? "done" : "todo";
+          return (
+            <li key={s.id}>
+              <button
+                type="button"
+                className="os-step"
+                data-state={state}
+                aria-current={state === "current" ? "step" : undefined}
+                onClick={() => onGo(s.id)}
+              >
+                <span className="os-step-num">
+                  {state === "done" ? <Check size={14} strokeWidth={3} /> : s.id}
+                </span>
+                <span className="os-step-text">
+                  <span className="os-step-label">{s.label}</span>
+                  <span className="os-step-sum">{summaries[s.id]}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <button
+        type="button"
+        className="os-steps-all"
+        aria-pressed={active === null}
+        onClick={() => onGo(active === null ? 1 : null)}
+      >
+        <LayoutList size={15} />
+        {active === null ? "Ver por pasos" : "Ver todo"}
+      </button>
+    </div>
+  );
+}
+
+function QuoteStepNav({
+  active,
+  onGo,
+  onSave,
+}: {
+  active: QuoteStep | null;
+  onGo: (step: QuoteStep) => void;
+  onSave: () => void;
+}) {
+  if (active === null) return null;
+  const prev = QUOTE_STEPS.find((s) => s.id === active - 1);
+  const next = QUOTE_STEPS.find((s) => s.id === active + 1);
+  return (
+    <div className="os-step-nav print:hidden">
+      {prev ? (
+        <button type="button" className="os-btn os-btn-ghost" onClick={() => onGo(prev.id)}>
+          <ArrowLeft size={16} />
+          {prev.label}
+        </button>
+      ) : (
+        <span />
+      )}
+      {next ? (
+        <button type="button" className="os-btn os-btn-primary" onClick={() => onGo(next.id)}>
+          Siguiente: {next.label}
+          <ArrowRight size={16} />
+        </button>
+      ) : (
+        <button type="button" className="os-btn os-btn-primary" onClick={onSave}>
+          <Save size={16} />
+          Guardar cotización
+        </button>
+      )}
+    </div>
+  );
+}
+
 function QuoteFold({
   title,
   summary,
   kicker,
+  step,
   open,
   onToggle,
   dark,
@@ -3920,19 +4100,22 @@ function QuoteFold({
   title: string;
   summary?: string;
   kicker?: string;
+  step?: QuoteStep;
   open: boolean;
   onToggle: () => void;
   dark?: boolean;
   printHidden?: boolean;
   children: ReactNode;
 }) {
+  const activeStep = useContext(QuoteStepContext);
+  const offStep = activeStep !== null && step !== undefined && step !== activeStep;
   return (
     <section
       className={`os-fold rounded-2xl border p-4 ${
         dark
           ? "os-fold-dark border-[#1a3d2e] bg-[#0f2a1f] text-white"
           : "border-[#ddd6c8] bg-white"
-      } ${printHidden ? "print:hidden" : ""}`}
+      } ${printHidden ? "print:hidden" : ""} ${offStep ? "os-fold-off" : ""}`}
     >
       <button
         type="button"

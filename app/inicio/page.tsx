@@ -2,6 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowRight,
+  CalendarClock,
+  ClipboardCheck,
+  FileSpreadsheet,
+  HardHat,
+  Megaphone,
+  PhoneCall,
+  Plus,
+  TrendingUp,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import {
   sessionAllowsModule,
@@ -16,6 +29,7 @@ import {
   pinOpenLead,
   replaceLeads,
   type CommercialLead,
+  type LeadStage,
 } from "@/lib/pipeline";
 import {
   OBRA_STATUS_LABELS,
@@ -54,8 +68,49 @@ const cop = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 0,
 });
 
+const copShort = new Intl.NumberFormat("es-CO", {
+  style: "currency",
+  currency: "COP",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+const longDate = new Intl.DateTimeFormat("es-CO", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+
+const FUNNEL_STAGES: LeadStage[] = [
+  "lead",
+  "calificado",
+  "visita",
+  "cotizado",
+  "negociacion",
+];
+
+type Tone = "warn" | "info" | "danger" | "ok" | "neutral";
+
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Buenos días";
+  if (h < 19) return "Buenas tardes";
+  return "Buenas noches";
+}
+
+function relativeDays(d: number | null) {
+  if (d === null) return "Sin fecha";
+  if (d === 0) return "Hoy";
+  if (d === 1) return "Mañana";
+  if (d === -1) return "Ayer";
+  return d < 0 ? `Hace ${Math.abs(d)} días` : `En ${d} días`;
 }
 
 function pendingTramite(s: TramiteStatus) {
@@ -72,6 +127,112 @@ function obraNeedsAttention(job: ObraJob) {
   );
 }
 
+function Kpi({
+  href,
+  icon: Icon,
+  tone,
+  value,
+  label,
+  hint,
+}: {
+  href: string;
+  icon: LucideIcon;
+  tone: Tone;
+  value: string | number;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <Link href={href} className="os-kpi" data-tone={tone}>
+      <span className="os-kpi-icon">
+        <Icon size={18} strokeWidth={2} />
+      </span>
+      <span className="os-kpi-body">
+        <span className="os-kpi-label">{label}</span>
+        <span className="os-kpi-value">{value}</span>
+        {hint ? <span className="os-kpi-hint">{hint}</span> : null}
+      </span>
+      <ArrowRight className="os-kpi-go" size={16} />
+    </Link>
+  );
+}
+
+function WorkPanel({
+  icon: Icon,
+  title,
+  href,
+  count,
+  empty,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  href: string;
+  count: number;
+  empty: { title: string; hint: string; cta: string; ctaHref: string };
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="os-work">
+      <header className="os-work-head">
+        <span className="os-work-icon">
+          <Icon size={16} />
+        </span>
+        <h2 className="os-work-title">{title}</h2>
+        {count > 0 ? <span className="os-work-count">{count}</span> : null}
+        <Link href={href} className="os-work-link">
+          Ver todo
+          <ArrowRight size={14} />
+        </Link>
+      </header>
+      {count === 0 ? (
+        <div className="os-empty">
+          <span className="os-empty-icon">
+            <Icon size={20} />
+          </span>
+          <p className="os-empty-title">{empty.title}</p>
+          <p className="os-empty-hint">{empty.hint}</p>
+          <Link href={empty.ctaHref} className="os-btn os-btn-ghost os-btn-sm">
+            {empty.cta}
+          </Link>
+        </div>
+      ) : (
+        <ul className="os-work-list">{children}</ul>
+      )}
+    </section>
+  );
+}
+
+function WorkRow({
+  href,
+  onClick,
+  title,
+  meta,
+  pill,
+  tone,
+}: {
+  href: string;
+  onClick?: () => void;
+  title: string;
+  meta: string;
+  pill: string;
+  tone: Tone;
+}) {
+  return (
+    <li>
+      <Link href={href} onClick={onClick} className="os-work-row">
+        <span className="os-work-row-text">
+          <span className="os-work-row-title">{title}</span>
+          <span className="os-work-row-meta">{meta}</span>
+        </span>
+        <span className="os-pill" data-tone={tone}>
+          {pill}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
 export default function InicioPage() {
   const [leads, setLeads] = useState<CommercialLead[]>([]);
   const [jobs, setJobs] = useState<ObraJob[]>([]);
@@ -80,15 +241,24 @@ export default function InicioPage() {
     piecesInWeek(loadContent(), mondayOf())
   );
   const [me, setMe] = useState<{
+    name: string;
     role: Role;
     modules?: string[];
   } | null>(null);
+  const [now, setNow] = useState<{ hello: string; date: string } | null>(null);
 
   useEffect(() => {
+    setNow({ hello: greeting(), date: longDate.format(new Date()) });
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.user) setMe({ role: data.user.role, modules: data.user.modules });
+        if (data?.user) {
+          setMe({
+            name: data.user.name ?? "",
+            role: data.user.role,
+            modules: data.user.modules,
+          });
+        }
       })
       .catch(() => null);
   }, []);
@@ -160,14 +330,38 @@ export default function InicioPage() {
     [leads, today]
   );
 
-  const openValue = leads
-    .filter((l) => l.stage !== "ganado" && l.stage !== "perdido")
-    .reduce((sum, l) => sum + (Number(l.estimatedValue) || 0), 0);
-
-  const hotJobs = useMemo(
-    () => jobs.filter(obraNeedsAttention),
-    [jobs]
+  const openLeads = leads.filter(
+    (l) => l.stage !== "ganado" && l.stage !== "perdido"
   );
+  const openValue = openLeads.reduce(
+    (sum, l) => sum + (Number(l.estimatedValue) || 0),
+    0
+  );
+
+  const funnel = useMemo(() => {
+    const rows = FUNNEL_STAGES.map((stage) => {
+      const inStage = leads.filter((l) => l.stage === stage);
+      return {
+        stage,
+        count: inStage.length,
+        value: inStage.reduce((s, l) => s + (Number(l.estimatedValue) || 0), 0),
+      };
+    });
+    const max = Math.max(1, ...rows.map((r) => r.count));
+    const won = leads.filter((l) => l.stage === "ganado");
+    const lost = leads.filter((l) => l.stage === "perdido").length;
+    const closed = won.length + lost;
+    return {
+      rows,
+      max,
+      won: won.length,
+      wonValue: won.reduce((s, l) => s + (Number(l.estimatedValue) || 0), 0),
+      lost,
+      winRate: closed > 0 ? Math.round((won.length / closed) * 100) : null,
+    };
+  }, [leads]);
+
+  const hotJobs = useMemo(() => jobs.filter(obraNeedsAttention), [jobs]);
 
   const hotPlants = useMemo(
     () =>
@@ -188,271 +382,277 @@ export default function InicioPage() {
 
   const omVencido = plants.filter((p) => omStatus(p) === "vencido").length;
   const omProximo = plants.filter((p) => omStatus(p) === "proximo").length;
+  const firstName = me?.name.trim().split(/\s+/)[0] ?? "";
+
+  const actions = (
+    <>
+      {can("pipeline") ? (
+        <Link href="/pipeline" className="os-btn os-btn-ghost">
+          <Plus size={16} />
+          Nuevo lead
+        </Link>
+      ) : null}
+      {can("cotizador") ? (
+        <Link href="/cotizador?nueva=1" className="os-btn os-btn-primary">
+          <FileSpreadsheet size={16} />
+          Nueva cotización
+        </Link>
+      ) : null}
+    </>
+  );
 
   return (
-    <AppShell title="Hoy" subtitle="Qué está caliente">
-      <p className="os-page-intro mb-5 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-        Esto no es un plan semanal: son las fichas que ya piden un paso.
-        Toque una y el OS abre Pipeline, Obra u O&M.
-      </p>
-
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <AppShell
+      title={now ? `${now.hello}${firstName ? `, ${firstName}` : ""}` : "Hoy"}
+      subtitle={
+        now
+          ? `${now.date.charAt(0).toUpperCase()}${now.date.slice(1)} · lo que pide un paso hoy`
+          : "Lo que pide un paso hoy"
+      }
+      actions={actions}
+    >
+      <div className="os-kpis">
         {can("pipeline") ? (
-          <Link
+          <Kpi
             href="/pipeline"
-            className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
-          >
-            <p className="text-2xl font-semibold text-[#9a5b00]">{dueLeads.length}</p>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-              Seguimientos vencidos
-            </p>
-            <p className="mt-1 text-xs text-[#6d7c74]">
-              Abierto {cop.format(openValue)}
-            </p>
-          </Link>
+            icon={TrendingUp}
+            tone="ok"
+            label="Pipeline abierto"
+            value={copShort.format(openValue)}
+            hint={`${openLeads.length} ${openLeads.length === 1 ? "oportunidad" : "oportunidades"}`}
+          />
+        ) : null}
+        {can("pipeline") ? (
+          <Kpi
+            href="/pipeline"
+            icon={PhoneCall}
+            tone={dueLeads.length > 0 ? "warn" : "neutral"}
+            label="Seguimientos vencidos"
+            value={dueLeads.length}
+            hint={dueLeads.length > 0 ? "Llamar o mover hoy" : "Todo al día"}
+          />
         ) : null}
         {can("obra") ? (
-          <Link
+          <Kpi
             href="/obra"
-            className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
-          >
-            <p className="text-2xl font-semibold text-[#2a5f8f]">{hotJobs.length}</p>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-              Obras con trámite
-            </p>
-          </Link>
+            icon={HardHat}
+            tone={hotJobs.length > 0 ? "info" : "neutral"}
+            label="Obras con trámite"
+            value={hotJobs.length}
+            hint="UPME, RETIE u OR"
+          />
         ) : null}
         {can("om") ? (
-          <Link
+          <Kpi
             href="/om"
-            className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
-          >
-            <p className="text-2xl font-semibold text-[#9b2c2c]">{omVencido}</p>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-              O&M vencido
-            </p>
-          </Link>
-        ) : null}
-        {can("om") ? (
-          <Link
-            href="/om"
-            className="os-stat rounded-2xl border border-[#ddd6c8] bg-white px-4 py-3 hover:border-[#1f6b45]"
-          >
-            <p className="text-2xl font-semibold text-[#9a5b00]">{omProximo}</p>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]">
-              O&M en 30 días
-            </p>
-          </Link>
+            icon={Wrench}
+            tone={omVencido > 0 ? "danger" : omProximo > 0 ? "warn" : "neutral"}
+            label="O&M vencidos"
+            value={omVencido}
+            hint={`${omProximo} más en 30 días`}
+          />
         ) : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {can("pipeline") ? (
-          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
-            <div className="flex items-center justify-between gap-2 border-b border-[#eee8dc] px-4 py-3">
-              <h2 className="font-semibold">Pipeline · llamar o mover</h2>
-              <Link href="/pipeline" className="text-xs font-semibold text-[#1f6b45] underline">
-                Abrir
+      {can("pipeline") ? (
+        <section className="os-funnel">
+          <header className="os-funnel-head">
+            <div>
+              <h2 className="os-funnel-title">Embudo comercial</h2>
+              <p className="os-funnel-sub">
+                Oportunidades por etapa y valor estimado
+              </p>
+            </div>
+            <dl className="os-funnel-stats">
+              <div>
+                <dt>Ganadas</dt>
+                <dd>
+                  {funnel.won}
+                  {funnel.wonValue > 0 ? (
+                    <small>{copShort.format(funnel.wonValue)}</small>
+                  ) : null}
+                </dd>
+              </div>
+              <div>
+                <dt>Perdidas</dt>
+                <dd>{funnel.lost}</dd>
+              </div>
+              <div>
+                <dt>Tasa de cierre</dt>
+                <dd>{funnel.winRate === null ? "—" : `${funnel.winRate}%`}</dd>
+              </div>
+            </dl>
+          </header>
+          {openLeads.length === 0 ? (
+            <div className="os-empty os-empty-inline">
+              <p className="os-empty-title">Aún no hay oportunidades abiertas</p>
+              <p className="os-empty-hint">
+                Cada lead que registre en Pipeline aparece aquí según su etapa.
+              </p>
+              <Link href="/pipeline" className="os-btn os-btn-ghost os-btn-sm">
+                <Plus size={14} />
+                Registrar primer lead
               </Link>
             </div>
-            {dueLeads.length === 0 ? (
-              <p className="px-4 py-5 text-sm text-[#6d7c74]">
-                Nada vencido.
-                <span className="os-page-intro mt-1 block text-xs">
-                  Ponga fecha de seguimiento en Pipeline.
-                </span>
-              </p>
-            ) : (
-              <ul className="divide-y divide-[#eee8dc]">
-                {dueLeads.slice(0, 8).map((l) => (
-                  <li key={l.id}>
-                    <Link
-                      href="/pipeline"
-                      onClick={() => pinOpenLead(l.id)}
-                      className="block px-4 py-3 hover:bg-[#fbfaf6]"
-                    >
-                      <p className="font-semibold">{leadLabel(l)}</p>
-                      <p className="text-xs text-[#6d7c74]">
-                        {LEAD_STAGE_LABELS[l.stage]}
-                        {l.nextAction ? ` · ${l.nextAction}` : ""}
-                        {` · ${l.nextActionDate}`}
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          ) : (
+            <ol className="os-funnel-rows">
+              {funnel.rows.map((r) => (
+                <li key={r.stage} className="os-funnel-row">
+                  <span className="os-funnel-stage">
+                    {LEAD_STAGE_LABELS[r.stage]}
+                  </span>
+                  <span className="os-funnel-track">
+                    <span
+                      className="os-funnel-bar"
+                      style={{ width: `${Math.max(r.count > 0 ? 6 : 0, (r.count / funnel.max) * 100)}%` }}
+                    />
+                  </span>
+                  <span className="os-funnel-count">{r.count}</span>
+                  <span className="os-funnel-value">
+                    {r.value > 0 ? cop.format(r.value) : "—"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      ) : null}
+
+      <div className="os-work-grid">
+        {can("pipeline") ? (
+          <WorkPanel
+            icon={PhoneCall}
+            title="Seguimientos"
+            href="/pipeline"
+            count={dueLeads.length}
+            empty={{
+              title: "Nada vencido",
+              hint: "Ponga fecha de seguimiento a cada lead para verlo aquí cuando toque.",
+              cta: "Abrir Pipeline",
+              ctaHref: "/pipeline",
+            }}
+          >
+            {dueLeads.slice(0, 6).map((l) => {
+              const d = daysUntil(l.nextActionDate);
+              return (
+                <WorkRow
+                  key={l.id}
+                  href="/pipeline"
+                  onClick={() => pinOpenLead(l.id)}
+                  title={leadLabel(l)}
+                  meta={`${LEAD_STAGE_LABELS[l.stage]}${l.nextAction ? ` · ${l.nextAction}` : ""}`}
+                  pill={relativeDays(d)}
+                  tone={d !== null && d < 0 ? "danger" : "warn"}
+                />
+              );
+            })}
+          </WorkPanel>
         ) : null}
 
         {can("obra") ? (
-          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
-            <div className="flex items-center justify-between gap-2 border-b border-[#eee8dc] px-4 py-3">
-              <h2 className="font-semibold">Obra · UPME / RETIE / OR</h2>
-              <Link href="/obra" className="text-xs font-semibold text-[#1f6b45] underline">
-                Abrir
-              </Link>
-            </div>
-            {hotJobs.length === 0 ? (
-              <p className="px-4 py-5 text-sm text-[#6d7c74]">
-                Sin trámites pendientes.
-                <span className="os-page-intro mt-1 block text-xs">
-                  Las obras ganadas desde Pipeline aparecen aquí.
-                </span>
-              </p>
-            ) : (
-              <ul className="divide-y divide-[#eee8dc]">
-                {hotJobs.slice(0, 8).map((j) => (
-                  <li key={j.id}>
-                    <Link
-                      href="/obra"
-                      onClick={() => sessionStorage.setItem(OPEN_OBRA_KEY, j.id)}
-                      className="block px-4 py-3 hover:bg-[#fbfaf6]"
-                    >
-                      <p className="font-semibold">{obraLabel(j)}</p>
-                      <p className="text-xs text-[#6d7c74]">
-                        {OBRA_STATUS_LABELS[j.status]} · UPME{" "}
-                        {TRAMITE_LABELS[j.upme]} · RETIE {TRAMITE_LABELS[j.retie]}
-                        {" · OR "}
-                        {TRAMITE_LABELS[j.operadorRed]}
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <WorkPanel
+            icon={ClipboardCheck}
+            title="Trámites de obra"
+            href="/obra"
+            count={hotJobs.length}
+            empty={{
+              title: "Sin trámites pendientes",
+              hint: "Las obras ganadas desde Pipeline aparecen aquí mientras tengan UPME, RETIE u OR abiertos.",
+              cta: "Abrir Obra",
+              ctaHref: "/obra",
+            }}
+          >
+            {hotJobs.slice(0, 6).map((j) => (
+              <WorkRow
+                key={j.id}
+                href="/obra"
+                onClick={() => sessionStorage.setItem(OPEN_OBRA_KEY, j.id)}
+                title={obraLabel(j)}
+                meta={`UPME ${TRAMITE_LABELS[j.upme]} · RETIE ${TRAMITE_LABELS[j.retie]} · OR ${TRAMITE_LABELS[j.operadorRed]}`}
+                pill={OBRA_STATUS_LABELS[j.status]}
+                tone="info"
+              />
+            ))}
+          </WorkPanel>
         ) : null}
 
         {can("om") ? (
-          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
-            <div className="flex items-center justify-between gap-2 border-b border-[#eee8dc] px-4 py-3">
-              <h2 className="font-semibold">O&M · calendario</h2>
-              <Link href="/om" className="text-xs font-semibold text-[#1f6b45] underline">
-                Abrir
-              </Link>
-            </div>
-            {hotPlants.length === 0 ? (
-              <p className="px-4 py-5 text-sm text-[#6d7c74]">
-                Nada vence en 30 días.
-                <span className="os-page-intro mt-1 block text-xs">
-                  Al energizar, pásela a O&M desde Obra.
-                </span>
-              </p>
-            ) : (
-              <ul className="divide-y divide-[#eee8dc]">
-                {hotPlants.slice(0, 8).map((p) => {
-                  const status = omStatus(p);
-                  const d = daysUntil(p.nextMaintenance);
-                  return (
-                    <li key={p.id}>
-                      <Link
-                        href="/om"
-                        onClick={() =>
-                          sessionStorage.setItem(OPEN_OM_PLANT_KEY, p.id)
-                        }
-                        className="block px-4 py-3 hover:bg-[#fbfaf6]"
-                      >
-                        <p className="font-semibold">{plantLabel(p)}</p>
-                        <p className="text-xs text-[#6d7c74]">
-                          {status === "vencido" ? "Vencido" : "Próximo"}
-                          {d !== null
-                            ? d < 0
-                              ? ` · hace ${Math.abs(d)} días`
-                              : ` · en ${d} días`
-                            : ""}
-                          {p.nextMaintenance ? ` · ${p.nextMaintenance}` : ""}
-                        </p>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+          <WorkPanel
+            icon={CalendarClock}
+            title="Calendario O&M"
+            href="/om"
+            count={hotPlants.length}
+            empty={{
+              title: "Nada vence en 30 días",
+              hint: "Al energizar una obra, pásela a O&M para programar sus mantenimientos.",
+              cta: "Abrir O&M",
+              ctaHref: "/om",
+            }}
+          >
+            {hotPlants.slice(0, 6).map((p) => {
+              const vencido = omStatus(p) === "vencido";
+              return (
+                <WorkRow
+                  key={p.id}
+                  href="/om"
+                  onClick={() => sessionStorage.setItem(OPEN_OM_PLANT_KEY, p.id)}
+                  title={plantLabel(p)}
+                  meta={p.nextMaintenance ? `Mantenimiento ${p.nextMaintenance}` : "Sin fecha"}
+                  pill={relativeDays(daysUntil(p.nextMaintenance))}
+                  tone={vencido ? "danger" : "warn"}
+                />
+              );
+            })}
+          </WorkPanel>
         ) : null}
 
         {can("contenido") ? (
-          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white">
-            <div className="flex items-center justify-between gap-2 border-b border-[#eee8dc] px-4 py-3">
-              <h2 className="font-semibold">Contenido · esta semana</h2>
-              <Link
+          <WorkPanel
+            icon={Megaphone}
+            title="Contenido de la semana"
+            href="/contenido"
+            count={weekPieces.length}
+            empty={{
+              title: "Aún no hay briefs",
+              hint: "En Contenido, pida a Daniela la planeación de la semana.",
+              cta: "Planear la semana",
+              ctaHref: "/contenido",
+            }}
+          >
+            {weekPieces.slice(0, 6).map((p) => (
+              <WorkRow
+                key={p.id}
                 href="/contenido"
-                className="text-xs font-semibold text-[#1f6b45] underline"
-              >
-                Abrir
-              </Link>
-            </div>
-            {weekPieces.length === 0 ? (
-              <p className="px-4 py-5 text-sm text-[#6d7c74]">
-                Aún no hay briefs.
-                <span className="os-page-intro mt-1 block text-xs">
-                  En Contenido, pida la semana a Daniela.
-                </span>
-              </p>
-            ) : (
-              <ul className="divide-y divide-[#eee8dc]">
-                {weekPieces.slice(0, 8).map((p) => (
-                  <li key={p.id}>
-                    <Link
-                      href="/contenido"
-                      className="block px-4 py-3 hover:bg-[#fbfaf6]"
-                    >
-                      <p className="font-semibold">{p.title || "Sin título"}</p>
-                      <p className="text-xs text-[#6d7c74]">
-                        {p.date} · {CONTENT_STATUS_LABELS[p.status]}
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                title={p.title || "Sin título"}
+                meta={p.date}
+                pill={CONTENT_STATUS_LABELS[p.status]}
+                tone="neutral"
+              />
+            ))}
+          </WorkPanel>
         ) : null}
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {can("pipeline") ? (
-          <Link
-            href="/pipeline"
-            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
-          >
-            Nuevo lead
-          </Link>
-        ) : null}
+      <nav className="os-quick" aria-label="Accesos rápidos">
         {can("cotizador") ? (
-          <Link
-            href="/cotizador?nueva=1"
-            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
-          >
-            Nueva cotización
-          </Link>
-        ) : null}
-        {can("cotizador") ? (
-          <Link
-            href="/cotizador/equipos"
-            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
-          >
-            Cotizar equipos
-          </Link>
-        ) : null}
-        {can("contenido") ? (
-          <Link
-            href="/contenido"
-            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
-          >
-            Contenido de la semana
+          <Link href="/cotizador/equipos" className="os-quick-item">
+            <FileSpreadsheet size={16} />
+            Cotizar solo equipos
           </Link>
         ) : null}
         {can("visita") ? (
-          <Link
-            href="/visita-tecnica"
-            className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-sm font-semibold text-[#1f6b45]"
-          >
+          <Link href="/visita-tecnica" className="os-quick-item">
+            <ClipboardCheck size={16} />
             Visita técnica
           </Link>
         ) : null}
-      </div>
+        {can("contenido") ? (
+          <Link href="/contenido" className="os-quick-item">
+            <Megaphone size={16} />
+            Contenido
+          </Link>
+        ) : null}
+      </nav>
     </AppShell>
   );
 }
