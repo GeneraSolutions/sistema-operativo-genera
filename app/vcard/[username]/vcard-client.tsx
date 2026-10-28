@@ -15,6 +15,7 @@ interface VCardData {
   website: string;
   bookingUrl?: string;
   avatarUrl: string;
+  avatarSize?: number;
   logoUrl: string;
   defaultWaMessage: string;
   tags: string[];
@@ -28,8 +29,8 @@ interface VCardData {
 
 const GENERA_PUBLIC = {
   company: "Genera Solutions SAS",
-  website: "https://generasolutions.com",
-  websiteUrl: "https://generasolutions.com",
+  website: "https://www.generasolutionsas.com",
+  websiteUrl: "https://www.generasolutionsas.com",
   portfolioUrl: "https://portafolio-genera.vercel.app",
   instagramUrl: "https://www.instagram.com/generasolutions/",
   tiktokUrl: "https://www.tiktok.com/@genera.solutions",
@@ -68,7 +69,8 @@ const PROFILES_DB: Record<string, VCardData> = {
     whatsappNumber: "573174553288",
     email: "camilo@generasolutions.com",
     ...GENERA_PUBLIC,
-    avatarUrl: "/brand/camilo.jpg",
+    avatarUrl: "/brand/camilo.jpg?v=2",
+    avatarSize: 128,
     defaultWaMessage:
       "Hola Camilo, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: [
@@ -246,7 +248,15 @@ END:VCARD`;
           <img
             src={profile.avatarUrl}
             alt={profile.fullName}
-            style={styles.avatar}
+            style={
+              profile.avatarSize
+                ? {
+                    ...styles.avatar,
+                    width: profile.avatarSize,
+                    height: profile.avatarSize,
+                  }
+                : styles.avatar
+            }
           />
           {profile.department ? (
             <span style={styles.department}>{profile.department}</span>
