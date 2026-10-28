@@ -12,7 +12,12 @@ import type {
   QuoteQuantities,
 } from "@/lib/quote-engine";
 import type { SystemWarranties } from "@/lib/warranties";
-import type { PaymentKind, ProposalKind, ProposalToggles } from "@/types/proposal";
+import type {
+  ParticularTerm,
+  PaymentKind,
+  ProposalKind,
+  ProposalToggles,
+} from "@/types/proposal";
 import type { AliadoTripId } from "@/lib/aliado-install";
 
 export interface SavedQuote {
@@ -84,6 +89,7 @@ export interface SavedQuote {
   engAddons?: AddonState[];
   toggles: ProposalToggles;
   warranties?: SystemWarranties;
+  particularTerms?: ParticularTerm[];
   bonusIds?: string[];
   /** Enlace comercial ya publicado; las fichas se liberan sobre este mismo id. */
   commercialProposalId?: string;
@@ -206,6 +212,7 @@ function pickRicher(newer: SavedQuote, older: SavedQuote): SavedQuote {
     qtyLocked: newer.qtyLocked || older.qtyLocked,
     engAddons: newer.engAddons?.length ? newer.engAddons : older.engAddons,
     warranties: newer.warranties?.items?.length ? newer.warranties : older.warranties,
+    particularTerms: newer.particularTerms ?? older.particularTerms,
     bonusIds: newer.bonusIds ?? older.bonusIds,
   };
 }

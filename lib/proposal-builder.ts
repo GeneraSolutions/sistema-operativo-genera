@@ -9,9 +9,11 @@ import {
   ColombiaSolarFinancials,
   type SolarProjectInput,
 } from "@/types/financials";
+import { cleanParticularTerms } from "@/lib/particular-terms";
 import type {
   CommercialLine,
   EpcProposal,
+  ParticularTerm,
   ProposalToggles,
   TechnicalBundle,
 } from "@/types/proposal";
@@ -62,6 +64,7 @@ export interface BuildProposalInput {
   toggles: ProposalToggles;
   applyLey1715: boolean;
   warranties?: SystemWarranties;
+  particularTerms?: ParticularTerm[];
   bonusIds?: string[];
 }
 
@@ -245,6 +248,7 @@ export function buildEpcProposal(input: BuildProposalInput): EpcProposal {
     bonuses: bonusesFromIds(input.bonusIds),
     toggles,
     warranties: cloneWarranties(input.warranties),
+    particularTerms: cleanParticularTerms(input.particularTerms),
     datasheets: buildDatasheets(selection, includeBattery),
   };
 }

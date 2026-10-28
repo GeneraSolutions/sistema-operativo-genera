@@ -6,6 +6,7 @@ import {
 } from "@/lib/colombia-tax";
 import { saleFromCost } from "@/lib/eng-labor-addons";
 import { buildPaymentSchedule } from "@/lib/payment-schedule";
+import { cleanParticularTerms } from "@/lib/particular-terms";
 import { IVA_RATE } from "@/lib/pricing";
 import {
   cloneWarranties,
@@ -19,6 +20,7 @@ import type {
   CommercialLine,
   EpcProposal,
   EquipmentDatasheet,
+  ParticularTerm,
   PaymentKind,
 } from "@/types/proposal";
 
@@ -210,6 +212,7 @@ export function buildEquipmentProposal(input: {
   advancePercent: number;
   totals: EquipmentQuoteTotals;
   warranties?: SystemWarranties;
+  particularTerms?: ParticularTerm[];
   executionDays?: number;
 }): EpcProposal {
   const { totals } = input;
@@ -353,6 +356,7 @@ export function buildEquipmentProposal(input: {
       },
     },
     warranties: input.warranties ?? warrantiesForEquipment(categories),
+    particularTerms: cleanParticularTerms(input.particularTerms),
     datasheets,
   };
 }

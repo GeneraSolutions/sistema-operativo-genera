@@ -9,7 +9,7 @@ import {
   type ClientPartyPhoto,
 } from "@/lib/client-party";
 import { compressVisitPhoto } from "@/lib/site-visit";
-import type { EpcProposal } from "@/types/proposal";
+import type { ClientIdType } from "@/lib/client-party";
 
 type Reading = {
   fullName: string;
@@ -18,7 +18,17 @@ type Reading = {
   extras?: string;
 };
 
-export function ContractCedulaCheck({ proposal }: { proposal: EpcProposal }) {
+export function ContractCedulaCheck({
+  clientName,
+  clientIdType,
+  clientNit,
+  clientDv,
+}: {
+  clientName: string;
+  clientIdType?: ClientIdType;
+  clientNit?: string;
+  clientDv?: string;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [photos, setPhotos] = useState<ClientPartyPhoto[]>([]);
   const [pdfText, setPdfText] = useState("");
@@ -29,11 +39,11 @@ export function ContractCedulaCheck({ proposal }: { proposal: EpcProposal }) {
   const [sessionOk, setSessionOk] = useState<boolean | null>(null);
 
   const quoteDoc = formatClientDocument(
-    proposal.clientIdType,
-    proposal.clientNit || "",
-    proposal.clientDv
+    clientIdType,
+    clientNit || "",
+    clientDv
   );
-  const quoteDigits = digitsOnly(proposal.clientNit || "");
+  const quoteDigits = digitsOnly(clientNit || "");
 
   async function ensureSession() {
     if (sessionOk != null) return sessionOk;
@@ -124,7 +134,7 @@ export function ContractCedulaCheck({ proposal }: { proposal: EpcProposal }) {
   }
 
   const nameOk = reading
-    ? namesLikelyMatch(reading.fullName, proposal.clientName)
+    ? namesLikelyMatch(reading.fullName, clientName)
     : false;
   const docOk = reading
     ? Boolean(quoteDigits) &&
@@ -139,7 +149,7 @@ export function ContractCedulaCheck({ proposal }: { proposal: EpcProposal }) {
       <p className="mt-1 text-sm leading-6 text-[#4d5c55]">
         Suba foto o PDF de la cédula y crúcelo con lo que ya está en la
         cotización
-        {quoteDoc ? ` (${quoteDoc} · ${proposal.clientName})` : ` (${proposal.clientName})`}
+        {quoteDoc ? ` (${quoteDoc} · ${clientName})` : ` (${clientName})`}
         .
       </p>
       <input
@@ -212,7 +222,7 @@ export function ContractCedulaCheck({ proposal }: { proposal: EpcProposal }) {
           <MatchRow
             ok={nameOk}
             label="Nombre"
-            quote={proposal.clientName}
+            quote={clientName}
             scanned={reading.fullName || "—"}
           />
           <MatchRow

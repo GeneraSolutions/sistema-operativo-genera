@@ -13,6 +13,7 @@ export function DeliverableShell({
   subtitle,
   children,
   accent = "kit",
+  tools,
 }: {
   proposal: EpcProposal;
   kicker: string;
@@ -20,6 +21,7 @@ export function DeliverableShell({
   subtitle: string;
   children: ReactNode;
   accent?: "kit" | "official";
+  tools?: ReactNode;
 }) {
   const gold = accent === "official";
   return (
@@ -37,6 +39,10 @@ export function DeliverableShell({
           Imprimir / PDF
         </button>
       </header>
+
+      {tools ? (
+        <div className="print:hidden mx-auto max-w-3xl px-5 pt-6">{tools}</div>
+      ) : null}
 
       <article className="mx-auto max-w-3xl px-5 py-10 print:max-w-none print:px-0 print:py-0">
         <div

@@ -106,6 +106,12 @@ export interface ProposalToggles {
 
 export type ProposalKind = "epc" | "equipos";
 
+export interface ParticularTerm {
+  id: string;
+  title: string;
+  body: string;
+}
+
 export interface EpcProposal {
   id: string;
   /** epc = planta llave en mano; equipos = suministro de SKUs sin obra. */
@@ -163,6 +169,8 @@ export interface EpcProposal {
   bonuses: ProposalBonus[];
   toggles: ProposalToggles;
   warranties: SystemWarranties;
+  /** Cláusulas de este cliente. Vacío: el contrato no lleva ese artículo. */
+  particularTerms?: ParticularTerm[];
   notes?: string;
   datasheets: EquipmentDatasheet[];
 }

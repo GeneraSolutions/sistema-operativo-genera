@@ -5,6 +5,8 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ClientIdFields } from "@/components/ClientIdFields";
 import { ClientRutPanel } from "@/components/ClientRutPanel";
+import { ContractCedulaCheck } from "@/components/deliverables/ContractCedulaCheck";
+import { ParticularTermsEditor } from "@/components/deliverables/ParticularTermsEditor";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
 import { WorkFold } from "@/components/WorkFold";
 import { isAliadoRole } from "@/lib/auth/roles";
@@ -58,7 +60,11 @@ import {
   type SavedQuote,
 } from "@/lib/saved-quotes";
 import type { CustomCategory, InventoryItem } from "@/types/inventory";
-import type { PaymentKind, ProposalToggles } from "@/types/proposal";
+import type {
+  ParticularTerm,
+  PaymentKind,
+  ProposalToggles,
+} from "@/types/proposal";
 
 function localISODate(d = new Date()) {
   const y = d.getFullYear();
@@ -103,6 +109,7 @@ function CotizadorEquiposInner() {
   const [issuedAt, setIssuedAt] = useState(() => localISODate());
   const [advancePercent, setAdvancePercent] = useState(50);
   const [paymentKind, setPaymentKind] = useState<PaymentKind>("two_shot");
+  const [particularTerms, setParticularTerms] = useState<ParticularTerm[]>([]);
   const [warranties, setWarranties] = useState<SystemWarranties>({
     items: [],
     notes:
@@ -248,6 +255,7 @@ function CotizadorEquiposInner() {
       advancePercent,
       totals,
       warranties,
+      particularTerms,
     });
     return { ...proposal, toggles };
   }, [
@@ -273,6 +281,7 @@ function CotizadorEquiposInner() {
     advancePercent,
     totals,
     warranties,
+    particularTerms,
     toggles,
   ]);
 
@@ -337,6 +346,7 @@ function CotizadorEquiposInner() {
     setCommercialProposalId(q.commercialProposalId ?? "");
     if (q.toggles) setToggles(q.toggles);
     if (q.warranties) setWarranties(cloneWarranties(q.warranties));
+    setParticularTerms(q.particularTerms ?? []);
     if (q.partnerCompanyName) setPartnerCompanyName(q.partnerCompanyName);
     if (q.partnerLogoDataUrl) setPartnerLogoDataUrl(q.partnerLogoDataUrl);
     const lines =
@@ -399,6 +409,7 @@ function CotizadorEquiposInner() {
       qtyLocked: true,
       toggles,
       warranties: cloneWarranties(warranties),
+      particularTerms,
       commercialProposalId: commercialProposalId || undefined,
       channel: aliado ? "aliado" : "genera",
       savedBy: sessionUser?.username,
@@ -750,6 +761,20 @@ function CotizadorEquiposInner() {
               />
               Cobrar IVA en ítems gravados
             </label>
+            <div className="mt-4">
+              <ContractCedulaCheck
+                clientName={clientName}
+                clientIdType={clientIdType}
+                clientNit={clientNit}
+                clientDv={clientDv}
+              />
+            </div>
+            <div className="mt-4">
+              <ParticularTermsEditor
+                terms={particularTerms}
+                onChange={setParticularTerms}
+              />
+            </div>
           </section>
 
           <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">

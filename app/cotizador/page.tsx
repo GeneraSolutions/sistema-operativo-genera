@@ -84,6 +84,8 @@ import {
 } from "@/lib/ideam-irradiance";
 import { IDEAM_STATIONS } from "@/lib/ideam-stations";
 import { FINANCED_MONTH_OPTIONS } from "@/lib/payment-schedule";
+import { ContractCedulaCheck } from "@/components/deliverables/ContractCedulaCheck";
+import { ParticularTermsEditor } from "@/components/deliverables/ParticularTermsEditor";
 import { buildEpcProposal } from "@/lib/proposal-builder";
 import { saveProposal } from "@/lib/proposal-store";
 import {
@@ -149,7 +151,11 @@ import {
   type WarrantyItem,
 } from "@/lib/warranties";
 import type { InventoryItem } from "@/types/inventory";
-import type { ClientDeliverables, PaymentKind } from "@/types/proposal";
+import type {
+  ClientDeliverables,
+  ParticularTerm,
+  PaymentKind,
+} from "@/types/proposal";
 
 const numFmt = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
 const copFmt = new Intl.NumberFormat("es-CO", {
@@ -282,6 +288,7 @@ function CotizadorInner() {
   );
   const [warrantyFlash, setWarrantyFlash] = useState("");
   const [bonusIds, setBonusIds] = useState<string[]>(() => defaultBonusIds());
+  const [particularTerms, setParticularTerms] = useState<ParticularTerm[]>([]);
   const [applyLey1715, setApplyLey1715] = useState(true);
   const [clientName, setClientName] = useState("Cliente Corporativo");
   const [clientCity, setClientCity] = useState("Bogotá");
@@ -791,6 +798,7 @@ function CotizadorInner() {
       toggles,
       applyLey1715,
       warranties,
+      particularTerms,
       bonusIds,
       companyName: aliado
         ? partnerCompanyName || sessionUser?.name || "Aliado comercial"
@@ -843,6 +851,7 @@ function CotizadorInner() {
     toggles,
     applyLey1715,
     warranties,
+    particularTerms,
     bonusIds,
     aliado,
     partnerCompanyName,
@@ -1131,6 +1140,7 @@ function CotizadorInner() {
       engAddons: addonsToState(quote.addons),
       toggles,
       warranties: cloneWarranties(warranties),
+      particularTerms,
       bonusIds,
       commercialProposalId: commercialProposalId || undefined,
       energyBill,
@@ -1279,6 +1289,7 @@ function CotizadorInner() {
       deliverables: resolveClientDeliverables(q.toggles),
     });
     setWarranties(cloneWarranties(q.warranties ?? loadCompanyWarranties()));
+    setParticularTerms(q.particularTerms ?? []);
     setBonusIds(q.bonusIds ?? defaultBonusIds());
     setCommercialProposalId(q.commercialProposalId ?? "");
     setEnergyBill(q.energyBill ?? emptyEnergyBill());
@@ -1909,6 +1920,16 @@ function CotizadorInner() {
                   setClientDv(next);
                   setClientParty((p) => ({ ...p, dv: next }));
                 }}
+              />
+              <ContractCedulaCheck
+                clientName={clientName}
+                clientIdType={clientIdType}
+                clientNit={clientNit}
+                clientDv={clientDv}
+              />
+              <ParticularTermsEditor
+                terms={particularTerms}
+                onChange={setParticularTerms}
               />
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
@@ -3924,6 +3945,11 @@ function CotizadorInner() {
               )}
             </div>
           </section>
+
+          <p className="text-xs leading-5 text-[#6d7c74] print:hidden">
+            Para un término distinto, ábralo en Contrato PDF: el cuadro
+            Condiciones particulares queda arriba de la hoja y no sale en el PDF.
+          </p>
 
           <div className="flex flex-wrap gap-3 print:hidden">
             <button

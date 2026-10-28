@@ -1,8 +1,9 @@
 "use client";
 
-import { ContractCedulaCheck } from "@/components/deliverables/ContractCedulaCheck";
+import type { ReactNode } from "react";
 import { DeliverableShell, DocH2 } from "@/components/deliverables/DeliverableShell";
 import { GENERA_LEGAL } from "@/lib/company-legal";
+import { cleanParticularTerms } from "@/lib/particular-terms";
 import { formatClientDocument } from "@/lib/client-party";
 import {
   cloneWarranties,
@@ -26,7 +27,13 @@ function todayLabel() {
   });
 }
 
-export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
+export function CommercialContract({
+  proposal: p,
+  tools,
+}: {
+  proposal: EpcProposal;
+  tools?: ReactNode;
+}) {
   const equipos = p.kind === "equipos";
   const idDoc = formatClientDocument(
     p.clientIdType,
@@ -37,6 +44,8 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
     cloneWarranties(p.warranties),
     p.includeBattery
   );
+  const particularTerms = cleanParticularTerms(p.particularTerms);
+  const particularNo = equipos ? 15 : 19;
   const title = equipos
     ? "Contrato de suministro de equipos"
     : "Contrato de suministro, instalación y puesta en marcha de sistema fotovoltaico";
@@ -48,6 +57,7 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
     <DeliverableShell
       proposal={p}
       accent="official"
+      tools={tools}
       kicker="Documento contractual · Genera Solutions SAS"
       title={title}
       subtitle={`Elaborado a partir de la cotización ${p.id.slice(0, 8).toUpperCase()} del ${p.createdAt}. Las partes lo revisan para decidir el cierre. No sustituye la firma manuscrita o electrónica de ambas partes.`}
@@ -74,8 +84,6 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           Cliente».
         </p>
       </section>
-
-      <ContractCedulaCheck proposal={p} />
 
       <section>
         <DocH2>Artículo 1. Objeto</DocH2>
@@ -534,6 +542,25 @@ export function CommercialContract({ proposal: p }: { proposal: EpcProposal }) {
           desde {p.clientEmail || "la dirección registrada en la cotización"}.
         </p>
       </section>
+
+      {particularTerms.length ? (
+        <section>
+          <DocH2>Artículo {particularNo}. Condiciones particulares</DocH2>
+          <p className="mt-2 text-sm leading-7 text-[#4d5c55]">
+            Las condiciones de este artículo prevalecen sobre los artículos
+            anteriores únicamente en lo que las contradigan. El precio, las
+            cantidades y los equipos siguen siendo los de la cotización anexa.
+          </p>
+          <ol className="mt-3 list-decimal space-y-3 pl-5 text-sm leading-7 text-[#4d5c55]">
+            {particularTerms.map((term) => (
+              <li key={term.id}>
+                {term.title ? <strong>{term.title}. </strong> : null}
+                <span className="whitespace-pre-wrap">{term.body}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
 
       <section className="grid gap-8 pt-4 sm:grid-cols-2">
         <SignBlock
