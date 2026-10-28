@@ -3927,19 +3927,18 @@ function CotizadorInner() {
             )}
           </dl>
           <p className="os-page-intro print:hidden text-sm text-[#4d5c55]">
-            Esta es la misma cotización que enviabas antes (estilo oscuro EPC). Lo que
-            cambias a la izquierda se refleja aquí. El enlace comercial abre esta
-            página completa para el cliente.
+            Esta es la hoja que abre el cliente. Lo que cambias a la izquierda se
+            refleja aquí. El enlace comercial abre esta misma página.
           </p>
           <section
             id="propuesta-comercial"
-            className="overflow-hidden rounded-2xl ring-1 ring-[#1e2d4a] shadow-[0_20px_50px_rgba(7,11,22,0.25)]"
+            className="overflow-hidden rounded-2xl ring-1 ring-[#163226] shadow-[0_18px_40px_-28px_rgba(7,17,12,0.55)]"
           >
             <div className="max-h-[85vh] overflow-y-auto print:max-h-none">
               {liveProposal ? (
                 <EpcProposalView proposal={liveProposal} embedded />
               ) : (
-                <div className="bg-[#070b16] p-10 text-center text-[#8aa0c2]">
+                <div className="bg-[#07110c] p-10 text-center text-[#8aa497]">
                   Cargando propuesta…
                 </div>
               )}

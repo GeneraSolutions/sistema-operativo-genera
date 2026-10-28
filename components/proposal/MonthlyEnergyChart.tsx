@@ -11,7 +11,56 @@ function niceMax(raw: number) {
   return nice * exp;
 }
 
-export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
+const chartInk = {
+  paper: {
+    grid: "#e7e0d4",
+    gen: "#c4922a",
+    cons: "#1f6b45",
+    month: "#6d7c74",
+    guide: "#c4bbaa",
+    tip: "#fff",
+    tipLine: "#e4ddd0",
+    tipText: "#12241c",
+    legend: "text-[#6d7c74]",
+    genBar: "bg-[#c4922a]",
+    consBar: "bg-[#1f6b45]",
+  },
+  deck: {
+    grid: "#1e2d4a",
+    gen: "#f5b942",
+    cons: "#5eead4",
+    month: "#8aa0c2",
+    guide: "#8aa0c2",
+    tip: "#0c1426",
+    tipLine: "#1e2d4a",
+    tipText: "#e8eef8",
+    legend: "text-[#8aa0c2]",
+    genBar: "bg-[#f5b942]",
+    consBar: "bg-[#5eead4]",
+  },
+  signal: {
+    grid: "#1e3d32",
+    gen: "#d4b46a",
+    cons: "#7ad0a4",
+    month: "#8aa497",
+    guide: "#3d5a4c",
+    tip: "#0d1a14",
+    tipLine: "#2a4638",
+    tipText: "#e8f6ee",
+    legend: "text-[#8aa497]",
+    genBar: "bg-[#d4b46a]",
+    consBar: "bg-[#7ad0a4]",
+  },
+} as const;
+
+export function MonthlyEnergyChart({
+  data,
+  tone = "paper",
+}: {
+  data: MonthlyEnergyPoint[];
+  tone?: "paper" | "signal" | "deck";
+}) {
+  const ink = chartInk[tone];
   const [hover, setHover] = useState<number | null>(null);
   const width = 920;
   const height = 280;
@@ -43,10 +92,10 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
   const active = hover != null ? points[hover] : null;
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full min-w-0 overflow-x-auto">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="h-auto w-full min-w-[520px]"
+        className="h-auto w-full"
         onMouseLeave={() => setHover(null)}
       >
         {genTicks.map((t) => (
@@ -56,10 +105,10 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
               x2={width - pad.r}
               y1={yGen(t)}
               y2={yGen(t)}
-              stroke="#1e2d4a"
+              stroke={ink.grid}
               strokeDasharray="3 6"
             />
-            <text x={8} y={yGen(t) + 4} fill="#f5b942" fontSize="11">
+            <text x={8} y={yGen(t) + 4} fill={ink.gen} fontSize="11">
               {t.toLocaleString("es-CO")}
             </text>
           </g>
@@ -70,26 +119,26 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
             x={width - 8}
             y={yCons(t) + 4}
             textAnchor="end"
-            fill="#5eead4"
+            fill={ink.cons}
             fontSize="11"
           >
             {t.toLocaleString("es-CO")}
           </text>
         ))}
         <path d={areaPath} fill="url(#genFill)" opacity="0.35" />
-        <path d={genPath} fill="none" stroke="#f5b942" strokeWidth="2.8" />
+        <path d={genPath} fill="none" stroke={ink.gen} strokeWidth="2.8" />
         <path
           d={consPath}
           fill="none"
-          stroke="#5eead4"
+          stroke={ink.cons}
           strokeWidth="2.6"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         {points.map((d, i) => (
           <g key={d.month}>
-            <circle cx={x(i)} cy={yGen(d.generationKWh)} r="3.2" fill="#f5b942" />
-            <circle cx={x(i)} cy={yCons(d.consumptionKWh)} r="3.2" fill="#5eead4" />
+            <circle cx={x(i)} cy={yGen(d.generationKWh)} r="3.2" fill={ink.gen} />
+            <circle cx={x(i)} cy={yCons(d.consumptionKWh)} r="3.2" fill={ink.cons} />
             <rect
               x={x(i) - innerW / points.length / 2}
               y={pad.t}
@@ -102,7 +151,7 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
               x={x(i)}
               y={height - 12}
               textAnchor="middle"
-              fill="#8aa0c2"
+              fill={ink.month}
               fontSize="11"
             >
               {d.month}
@@ -116,7 +165,7 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
               x2={x(hover)}
               y1={pad.t}
               y2={pad.t + innerH}
-              stroke="#8aa0c2"
+              stroke={ink.guide}
               strokeDasharray="4 4"
             />
             <rect
@@ -125,13 +174,13 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
               width={200}
               height={58}
               rx="8"
-              fill="#0c1426"
-              stroke="#1e2d4a"
+              fill={ink.tip}
+              stroke={ink.tipLine}
             />
             <text
               x={Math.min(x(hover) + 20, width - 210)}
               y={pad.t + 26}
-              fill="#e8eef8"
+              fill={ink.tipText}
               fontSize="12"
               fontWeight="600"
             >
@@ -140,7 +189,7 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
             <text
               x={Math.min(x(hover) + 20, width - 210)}
               y={pad.t + 42}
-              fill="#f5b942"
+              fill={ink.gen}
               fontSize="11"
             >
               Generación {active.generationKWh.toLocaleString("es-CO")} kWh
@@ -148,7 +197,7 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
             <text
               x={Math.min(x(hover) + 20, width - 210)}
               y={pad.t + 56}
-              fill="#5eead4"
+              fill={ink.cons}
               fontSize="11"
             >
               Consumo {active.consumptionKWh.toLocaleString("es-CO")} kWh
@@ -157,17 +206,21 @@ export function MonthlyEnergyChart({ data }: { data: MonthlyEnergyPoint[] }) {
         ) : null}
         <defs>
           <linearGradient id="genFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f5b942" stopOpacity="0.55" />
-            <stop offset="100%" stopColor="#f5b942" stopOpacity="0" />
+            <stop offset="0%" stopColor={ink.gen} stopOpacity="0.4" />
+            <stop offset="100%" stopColor={ink.gen} stopOpacity="0" />
           </linearGradient>
         </defs>
       </svg>
-      <div className="mt-1 flex justify-center gap-6 text-xs text-[#8aa0c2]">
+      <div
+        className={`mt-1 flex flex-wrap justify-center gap-x-6 gap-y-1 text-xs ${ink.legend}`}
+      >
         <span className="inline-flex items-center gap-2">
-          <i className="h-0.5 w-6 bg-[#f5b942]" /> Generación solar (eje izq.)
+          <i className={`h-0.5 w-6 ${ink.genBar}`} />{" "}
+          Generación solar (eje izq.)
         </span>
         <span className="inline-flex items-center gap-2">
-          <i className="h-0.5 w-6 bg-[#5eead4]" /> Consumo cliente (eje der.)
+          <i className={`h-0.5 w-6 ${ink.consBar}`} />{" "}
+          Consumo cliente (eje der.)
         </span>
       </div>
     </div>

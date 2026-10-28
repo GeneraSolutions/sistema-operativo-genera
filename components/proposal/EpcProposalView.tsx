@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect, useState, type ReactNode } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { formatDocDate } from "@/components/informes/DocSheet";
+import { EpcProposalClassic } from "@/components/proposal/EpcProposalClassic";
 import { MonthlyEnergyChart } from "@/components/proposal/MonthlyEnergyChart";
 import { formatClientDocument } from "@/lib/client-party";
 import { resolveClientDeliverables } from "@/lib/proposal-bonuses";
@@ -19,60 +22,33 @@ const cop = new Intl.NumberFormat("es-CO", {
 
 const num = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 1 });
 
-function formatProposalDate(iso: string) {
-  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("es-CO", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+const MODEL_KEY = "genera-quote-model";
+type QuoteModel = "actual" | "tablero";
+
+function readQuoteModel(value: string | null): QuoteModel | null {
+  if (value === "tablero") return "tablero";
+  if (value === "actual" || value === "anterior") return "actual";
+  return null;
 }
 
-function SectionHead({
-  n,
-  title,
-  subtitle,
-}: {
-  n: number;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="mb-5 flex items-end gap-3">
-      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#14b8a6] text-sm font-bold text-[#041018]">
-        {n}
-      </span>
-      <div>
-        <h2 className="text-lg font-semibold tracking-wide text-white uppercase">
-          {title}
-        </h2>
-        <p className="text-sm text-[#8aa0c2]">{subtitle}</p>
-      </div>
-    </div>
-  );
-}
-
-function SpecCard({
-  badge,
-  badgeClass,
-  value,
-  hint,
-}: {
-  badge: string;
-  badgeClass: string;
-  value: string;
-  hint: string;
-}) {
-  return (
-    <article className="rounded-2xl border border-[#1e2d4a] bg-[#10182c] p-4">
-      <p className={`text-[10px] font-bold tracking-[0.16em] uppercase ${badgeClass}`}>
-        {badge}
-      </p>
-      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs leading-5 text-[#8aa0c2]">{hint}</p>
-    </article>
-  );
+function useQuoteModel(): [QuoteModel, (next: QuoteModel) => void] {
+  const [model, setModel] = useState<QuoteModel>("tablero");
+  useEffect(() => {
+    const saved = readQuoteModel(window.localStorage.getItem(MODEL_KEY));
+    if (saved) setModel(saved);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== MODEL_KEY) return;
+      const next = readQuoteModel(event.newValue);
+      if (next) setModel(next);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+  const choose = (next: QuoteModel) => {
+    setModel(next);
+    window.localStorage.setItem(MODEL_KEY, next);
+  };
+  return [model, choose];
 }
 
 export function EpcProposalView({
@@ -98,697 +74,527 @@ export function EpcProposalView({
   const showLinePrices = p.commercialLines.some(
     (line) => line.saleTotalCOP != null
   );
+  const bonuses = p.bonuses.filter(
+    (b) => b.id !== "ev-charger" && !/cargador\s*ev/i.test(b.title)
+  );
+  const pulse: { label: string; value: string; hint: string }[] = [];
+  const ledger: { label: string; value: string; hint?: string }[] = [];
+  if (!isEquipos) {
+    if (p.toggles.showRoiPayback) {
+      pulse.push({
+        label: "ROI 25 años",
+        value: `${num.format(p.roiPercentage)}%`,
+        hint: `Payback ${num.format(p.paybackYearsSimple)} años`,
+      });
+      pulse.push({
+        label: "VAN @ 12%",
+        value: cop.format(p.npvCOP),
+        hint: p.toggles.showTir
+          ? `TIR ${num.format(p.irrPercentage)}%`
+          : "Valor actual neto",
+      });
+    }
+    pulse.push({
+      label: "Ahorro 25 años",
+      value: cop.format(p.total25ySavingsCOP),
+      hint: "Energía + tributario",
+    });
+    if (pulse.length < 3) {
+      pulse.unshift({
+        label: "Ahorro anual",
+        value: cop.format(p.annualEnergySavingsCOP),
+        hint: "100% factura",
+      });
+    }
+    const shown = new Set(pulse.map((item) => item.label));
+    const addMetric = (label: string, value: string, hint?: string) => {
+      if (!shown.has(label)) ledger.push({ label, value, hint });
+    };
+    addMetric("Ahorro anual", cop.format(p.annualEnergySavingsCOP), "100% factura");
+    addMetric(
+      "Ahorro anual total",
+      cop.format(p.blendedAnnualSavingsCOP),
+      "Energía + tributario + IVA año 1"
+    );
+    if (p.toggles.showDeductionLey1715) {
+      addMetric(
+        "Renta año 1",
+        cop.format(p.year1TaxSavingsCOP),
+        "50% ÷ 15 años · 35% renta"
+      );
+      addMetric(
+        "Deducción renta",
+        cop.format(p.taxes.rentaDeductionBaseCOP),
+        "Hasta el 50% de la inversión"
+      );
+    }
+    if (p.toggles.showIvaAranceles) {
+      addMetric(
+        "Devolución IVA",
+        cop.format(p.taxes.ivaRefundCOP),
+        "Equipos gravados · Ley 1715/2099"
+      );
+      addMetric("IVA paneles", "100%", "Excluidos de IVA");
+    }
+    if (p.toggles.showDepreciacion) {
+      addMetric(
+        "Depreciación",
+        cop.format(p.taxes.acceleratedDepreciationCOP),
+        `${cop.format(p.taxes.annualDepreciationCOP)} / año`
+      );
+    }
+    addMetric(
+      "Generación",
+      `${num.format(p.annualGenerationKWh)} kWh`,
+      ["por año", p.peakSunHours ? `${num.format(p.peakSunHours)} HSP` : ""]
+        .filter(Boolean)
+        .join(" · ")
+    );
+    addMetric(
+      "CO₂ evitado",
+      `${num.format(co2T)} t`,
+      `${num.format(co2Kg)} kg · ${trees} árboles · ${num.format(km)} km`
+    );
+  }
+  const chapters = [
+    !isEquipos ? { id: "gq-sistema", label: "Sistema" } : null,
+    { id: "gq-inversion", label: "Inversión" },
+    !isEquipos ? { id: "gq-cifras", label: "Cifras" } : null,
+    !isEquipos && bonuses.length ? { id: "gq-planta", label: "Planta" } : null,
+    { id: "gq-cierre", label: "Cierre" },
+  ].filter((item): item is { id: string; label: string } => Boolean(item));
+  const index = (id: string) =>
+    String(chapters.findIndex((item) => item.id === id) + 1).padStart(2, "0");
+  const [model, chooseModel] = useQuoteModel();
+  const modelBar = (
+    <div className="quote-model-switch print:hidden" role="group" aria-label="Modelo de cotización">
+      <span>Modelo</span>
+      <button
+        type="button"
+        aria-pressed={model === "actual"}
+        onClick={() => chooseModel("actual")}
+      >
+        Actual
+      </button>
+      <button
+        type="button"
+        aria-pressed={model === "tablero"}
+        onClick={() => chooseModel("tablero")}
+      >
+        Tablero
+      </button>
+      <em>La cotización que usas hoy, o esta propuesta.</em>
+    </div>
+  );
+
+  if (model === "actual") {
+    return (
+      <>
+        {modelBar}
+        <EpcProposalClassic proposal={p} embedded={embedded} />
+      </>
+    );
+  }
 
   return (
-    <div className={`proposal-print bg-[#070b16] text-[#e8eef8] ${embedded ? "" : "min-h-screen"}`}>
-      <header className={`sticky top-0 z-20 flex items-center justify-between border-b border-[#1a2744] bg-[#070b16]/90 px-5 py-3 backdrop-blur print:static ${embedded ? "print:hidden" : ""}`}>
-        <div className="flex items-center gap-2 text-sm text-[#c5d4ea]">
-          {p.partnerLogoDataUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={p.partnerLogoDataUrl}
-              alt={p.companyName}
-              style={{ height: 32, width: "auto" }}
+    <div className={`proposal-print gq is-brief is-signal ${embedded ? "is-embedded" : ""}`}>
+      {modelBar}
+      <article className="gq-sheet">
+        <section className="gq-cover">
+          <div className="gq-cover-top">
+            <ProposalMark
+              height={embedded ? 36 : 44}
+              logoUrl={p.partnerLogoDataUrl}
+              companyName={p.companyName}
             />
-          ) : (
-            <BrandLogo height={32} />
-          )}
-          {p.companyName} · {isEquipos ? "Cotización de equipos" : "Cotización"}
-        </div>
-        <div className="flex items-center gap-2 print:hidden">
-          {clientDocs.contrato ? (
-            <a
-              href={`/propuesta/epc/${p.id}/contrato`}
-              className="rounded-lg border border-[#d4b46a]/50 bg-[#1a160c] px-3 py-1.5 text-sm text-[#d4b46a] hover:bg-[#241c10]"
-            >
-              Contrato
-            </a>
-          ) : null}
-          {clientDocs.fichas ? (
-            <a
-              href={`/propuesta/epc/${p.id}/fichas`}
-              className="rounded-lg border border-[#2a3d63] bg-[#121a2e] px-3 py-1.5 text-sm text-[#5eead4] hover:bg-[#1a2744]"
-            >
-              Fichas técnicas
-            </a>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="rounded-lg border border-[#2a3d63] bg-[#121a2e] px-3 py-1.5 text-sm text-white hover:bg-[#1a2744]"
-          >
-            Imprimir / PDF
-          </button>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-5xl px-4 py-10">
-        <div className="text-center">
-          <ProposalMark
-            height={p.logoHeight ?? 80}
-            logoUrl={p.partnerLogoDataUrl}
-            companyName={p.companyName}
-          />
-          <p className="mt-4 inline-flex rounded-full bg-[#14352c] px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-[#5eead4] uppercase">
-            {p.companyTag}
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold text-white">{p.clientName}</h1>
-          <p className="mt-1 text-sm text-[#8aa0c2]">
-            Fecha: {formatProposalDate(p.createdAt)} · Vigencia: {p.validUntilDays}{" "}
-            días
-          </p>
-          {isEquipos ? (
-            <p className="mt-2 text-sm text-[#8aa0c2]">
-              {[
-                nitLabel || "",
-                p.clientEmail,
-                p.clientPhone,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+            <p>
+              {formatDocDate(p.createdAt)}
+              <span> · {p.validUntilDays} días</span>
             </p>
-          ) : null}
-        </div>
-
-        {p.siteImageDataUrl ? (
-          <div className="mt-8 overflow-hidden rounded-3xl border border-[#1e2d4a]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={p.siteImageDataUrl}
-              alt={`Lugar del proyecto · ${p.clientName}`}
-              className="max-h-[420px] w-full object-cover"
-            />
           </div>
-        ) : null}
+          {p.siteImageDataUrl ? (
+            <figure className="gq-photo">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={p.siteImageDataUrl}
+                alt={`Lugar del proyecto · ${p.clientName}`}
+              />
+            </figure>
+          ) : null}
 
-        <div className="mt-8 grid gap-3 md:grid-cols-3">
-          <InfoTile
-            label="Cliente"
-            value={p.clientName}
-            hint={[nitLabel, p.clientCity].filter(Boolean).join(" · ")}
-          />
-          {isEquipos ? (
-            <>
-              <InfoTile
-                label="Contacto"
-                value={p.clientEmail || p.clientPhone || "—"}
-                hint={[p.clientEmail && p.clientPhone ? p.clientPhone : "", p.clientCity]
+          <div className="gq-stage">
+            <div>
+              <p className="gq-tag">{p.companyTag}</p>
+              <h1>{p.clientName}</h1>
+              <p className="gq-place">
+                {[
+                  p.clientCity,
+                  nitLabel,
+                  isEquipos ? p.clientEmail : "",
+                  isEquipos ? p.clientPhone : "",
+                  isEquipos ? p.clientAddress : "",
+                ]
                   .filter(Boolean)
                   .join(" · ")}
-              />
-              <InfoTile
-                label="Dirección"
-                value={p.clientAddress || p.clientCity || "—"}
-                hint={p.payment.modality}
-              />
-            </>
-          ) : (
-            <>
-              <InfoTile
-                label="Forma de pago"
-                value={p.payment.modality}
-                hint={p.payment.summary}
-              />
-              <InfoTile
-                label="Tiempo de ejecución"
-                value={`${p.executionDays} días hábiles`}
-              />
-            </>
-          )}
-        </div>
-
-        {!isEquipos ? (
-        <>
-        <section className="mt-12">
-          <SectionHead
-            n={1}
-            title="Especificaciones del sistema"
-            subtitle="Capacidad, equipos principales y perfil energético"
-          />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SpecCard
-              badge="Capacidad total"
-              badgeClass="text-amber-300"
-              value={`${num.format(p.systemKwp)} kWp`}
-              hint={`${num.format(p.inverterKwAc)} kW AC (inversores)`}
-            />
-            <SpecCard
-              badge="Inversores"
-              badgeClass="text-sky-300"
-              value={`1 × ${num.format(p.inverterKwAc)} kW`}
-              hint={p.inverterLabel}
-            />
-            <SpecCard
-              badge="Paneles"
-              badgeClass="text-emerald-300"
-              value={`${p.panelCount} × ${p.panelWatts}W`}
-              hint={p.panelLabel}
-            />
-            <SpecCard
-              badge="Baterías"
-              badgeClass="text-violet-300"
-              value={p.includeBattery ? `${p.batteryKwh} kWh` : "No incluida"}
-              hint={p.includeBattery ? p.batteryLabel : "Solo autoconsumo / red"}
-            />
-            {p.toggles.showPricePerKwp && p.systemKwp > 0 ? (
-              <SpecCard
-                badge="COP / kWp instalado"
-                badgeClass="text-amber-200"
-                value={cop.format(Math.round(p.totalCOP / p.systemKwp))}
-                hint="Precio de esta oferta por kilovatio pico"
-              />
-            ) : null}
-          </div>
-
-          {p.toggles.showCharts ? (
-            <div className="mt-4 rounded-2xl border border-[#1e2d4a] bg-[#10182c] p-5">
-              <div className="mb-2 flex items-baseline justify-between">
-                <h3 className="text-sm font-semibold tracking-wide text-white uppercase">
-                  Generación solar vs. consumo del cliente
-                </h3>
-                <p className="text-xs text-[#6b7c99]">
-                  kWh / mes · Atlas IDEAM de radiación solar
-                  {p.ideamStationName ? ` · ${p.ideamStationName}` : ""}
-                </p>
+              </p>
+              <div className="gq-actions print:hidden">
+                {clientDocs.contrato ? (
+                  <a href={`/propuesta/epc/${p.id}/contrato`}>Contrato</a>
+                ) : null}
+                {clientDocs.fichas ? (
+                  <a href={`/propuesta/epc/${p.id}/fichas`}>Fichas técnicas</a>
+                ) : null}
+                <button type="button" onClick={() => window.print()}>
+                  Imprimir / PDF
+                </button>
               </div>
-              <MonthlyEnergyChart data={p.monthlyEnergy} />
             </div>
-          ) : null}
+
+            {isEquipos ? (
+              <div className="gq-stack">
+                <p>Suministro</p>
+                <strong>
+                  {p.commercialLines.length}
+                  <small>{p.commercialLines.length === 1 ? " ítem" : " ítems"}</small>
+                </strong>
+                <span>Sin instalación · sin obra</span>
+              </div>
+            ) : (
+              <div className="gq-stack">
+                <p>Composición</p>
+                <strong>
+                  {num.format(p.systemKwp)}
+                  <small> kWp</small>
+                </strong>
+                <ul>
+                  <li>
+                    <span>Paneles</span>
+                    <b>
+                      {p.panelCount} × {p.panelWatts}W
+                    </b>
+                    <em>{p.panelLabel}</em>
+                  </li>
+                  <li>
+                    <span>Inversor</span>
+                    <b>1 × {num.format(p.inverterKwAc)} kW</b>
+                    <em>{p.inverterLabel}</em>
+                  </li>
+                  <li>
+                    <span>Baterías</span>
+                    <b>{p.includeBattery ? `${p.batteryKwh} kWh` : "No incluida"}</b>
+                    <em>{p.includeBattery ? p.batteryLabel : "Solo autoconsumo / red"}</em>
+                  </li>
+                </ul>
+              </div>
+            )}
+          </div>
         </section>
 
-        <section className="mt-12">
-          <h2 className="text-xl font-semibold text-white">
-            Propuesta Técnica — Sistemas Incluidos
-          </h2>
-          <p className="mt-1 text-sm text-[#8aa0c2]">
-            {num.format(p.systemKwp)} kWp · 8 categorías · Ingeniería integral validada
-          </p>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {p.bundles.map((b) => (
-              <article
-                key={b.index}
-                className="rounded-2xl border bg-[#10182c] p-4"
-                style={{ borderColor: `${b.accent}55` }}
-              >
-                <p
-                  className="text-[11px] font-bold tracking-[0.16em] uppercase"
-                  style={{ color: b.accent }}
-                >
-                  {b.index}. {b.title}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">{b.description}</p>
-                {b.detail ? (
-                  <p className="mt-3 border-t border-[#1e2d4a] pt-2 text-sm text-white">
-                    {b.detail}
-                  </p>
+        {!isEquipos ? (
+          <Chapter id="gq-sistema" n={index("gq-sistema")} title="El sistema">
+            <div className="gq-split">
+              <div>
+                {p.toggles.showCharts ? (
+                  <div className="gq-chart">
+                    <div className="gq-chart-head">
+                      <h3>Generación solar vs. consumo del cliente</h3>
+                      <p>
+                        kWh / mes · Atlas IDEAM de radiación solar
+                        {p.ideamStationName ? ` · ${p.ideamStationName}` : ""}
+                      </p>
+                    </div>
+                    <MonthlyEnergyChart data={p.monthlyEnergy} tone="signal" />
+                  </div>
                 ) : null}
+                <p className="gq-hint">
+                  {num.format(p.systemKwp)} kWp · 8 categorías · Ingeniería integral · NTC 2050 ·
+                  NSR-10 — {p.companyName}
+                </p>
+              </div>
+              <div className="gq-bundles">
+              {p.bundles.map((b) => (
+                <article key={b.index}>
+                  <span>{String(b.index).padStart(2, "0")}</span>
+                  <div>
+                    <strong>{b.title}</strong>
+                    <p>{b.description}</p>
+                    {b.detail ? <em>{b.detail}</em> : null}
+                  </div>
+                </article>
+              ))}
+              </div>
+            </div>
+          </Chapter>
+        ) : null}
+
+        <Chapter
+          id="gq-inversion"
+          n={index("gq-inversion")}
+          title="La inversión"
+          hint={
+            isEquipos
+              ? "Suministro de equipos · sin instalación"
+              : "Suministros y servicios integrales · 8 categorías"
+          }
+        >
+          <div className="gq-lines">
+            {p.commercialLines.map((line) => (
+              <article key={line.index}>
+                <span>{String(line.index).padStart(2, "0")}</span>
+                <div>
+                  <strong>{line.title}</strong>
+                  <p>{line.description}</p>
+                </div>
+                <b>
+                  {showLinePrices ? cop.format(line.saleTotalCOP ?? 0) : line.qty}
+                  {showLinePrices ? <em>× {line.qty}</em> : null}
+                </b>
               </article>
             ))}
           </div>
-          <p className="mt-4 text-center text-xs text-[#6b7c99]">
-            Ingeniería integral · NTC 2050 · NSR-10 — {p.companyName}
+          <p className="gq-hint">
+            {isEquipos
+              ? "Suministro de equipos. No incluye instalación, ingeniería, visita técnica ni obra civil."
+              : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera Solutions SAS."}
           </p>
-        </section>
-        </>
-        ) : null}
-
-        <section className="mt-12">
-          <SectionHead
-            n={isEquipos ? 1 : 2}
-            title={isEquipos ? "Equipos cotizados" : "Equipos y servicios"}
-            subtitle={
-              isEquipos
-                ? "Suministro de equipos · sin instalación"
-                : "Technical Bundling · 8 categorías comerciales"
-            }
-          />
-          <div className="overflow-hidden rounded-2xl border border-[#1e2d4a] bg-[#10182c]">
-            <div className="border-b border-[#1e2d4a] px-4 py-3 text-xs font-semibold tracking-[0.16em] text-[#8aa0c2] uppercase">
-              {isEquipos
-                ? `${p.commercialLines.length} equipo${p.commercialLines.length === 1 ? "" : "s"}`
-                : "Suministros y servicios integrales · 8 categorías"}
-            </div>
-            <table className="w-full text-left text-sm">
-              <thead className="text-[#6b7c99]">
-                <tr>
-                  <th className="px-4 py-2 font-medium">#</th>
-                  <th className="px-4 py-2 font-medium">Descripción</th>
-                  <th className="px-4 py-2 text-right font-medium">Cant.</th>
-                  {showLinePrices ? (
-                    <>
-                      <th className="px-4 py-2 text-right font-medium">Precio</th>
-                      <th className="px-4 py-2 text-right font-medium">Total</th>
-                    </>
-                  ) : null}
-                </tr>
-              </thead>
-              <tbody>
-                {p.commercialLines.map((line) => (
-                  <tr key={line.index} className="border-t border-[#1e2d4a]">
-                    <td className="px-4 py-3 text-[#8aa0c2]">{line.index}</td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-white">{line.title}</p>
-                      <p className="text-xs leading-5 text-[#8aa0c2]">{line.description}</p>
-                    </td>
-                    <td className="px-4 py-3 text-right text-white">{line.qty}</td>
-                    {showLinePrices ? (
-                      <>
-                        <td className="px-4 py-3 text-right text-white">
-                          {cop.format(line.saleUnitCOP ?? 0)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-white">
-                          {cop.format(line.saleTotalCOP ?? 0)}
-                        </td>
-                      </>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="space-y-1 border-t border-[#1e2d4a] bg-[#0c1426] px-4 py-4 text-sm">
-              <Row k="Subtotal" v={cop.format(p.subtotalCOP)} />
-              <Row
-                k={p.ivaCOP > 0 ? "IVA (19%)" : "IVA"}
-                v={p.ivaCOP > 0 ? cop.format(p.ivaCOP) : "No aplicado"}
-              />
-              <Row k="Valor total" v={cop.format(p.totalCOP)} strong />
-              <p className="pt-1 text-xs text-[#6b7c99]">
-                {isEquipos
-                  ? "Suministro de equipos. No incluye instalación, ingeniería, visita técnica ni obra civil."
-                  : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera Solutions SAS."}
+          {p.withholdingsNote ? <p className="gq-note">{p.withholdingsNote}</p> : null}
+          <div className="gq-settle">
+          <div className="gq-math">
+            <p>
+              <span>Subtotal</span>
+              <span>{cop.format(p.subtotalCOP)}</span>
+            </p>
+            <p>
+              <span>{p.ivaCOP > 0 ? "IVA (19%)" : "IVA"}</span>
+              <span>{p.ivaCOP > 0 ? cop.format(p.ivaCOP) : "No aplicado"}</span>
+            </p>
+            {p.toggles.showPricePerKwp && p.systemKwp > 0 ? (
+              <p>
+                <span>Por kWp</span>
+                <span>{cop.format(Math.round(p.totalCOP / p.systemKwp))}</span>
               </p>
-              {p.withholdingsNote ? (
-                <p className="pt-1 text-xs text-[#5eead4]">{p.withholdingsNote}</p>
-              ) : null}
-            </div>
-          </div>
-        </section>
-
-        {!isEquipos ? (
-        <section className="mt-12">
-          <SectionHead
-            n={3}
-            title="Incentivos tributarios"
-            subtitle="Ley 1715 de 2014 · Ley 2099 de 2021"
-          />
-          <div className="grid gap-3 sm:grid-cols-2">
-            {p.toggles.showIvaAranceles ? (
-              <TaxCard
-                label="Devolución IVA"
-                value={cop.format(p.taxes.ivaRefundCOP)}
-                hint="Recupere el 100% del IVA pagado en equipos gravados"
-              />
-            ) : null}
-            {p.toggles.showDeductionLey1715 ? (
-              <TaxCard
-                label="Deducción renta (50%)"
-                value={cop.format(p.taxes.rentaDeductionBaseCOP)}
-                hint="Deduzca hasta el 50% de la inversión en renta"
-              />
-            ) : null}
-            {p.toggles.showDepreciacion ? (
-              <TaxCard
-                label="Depreciación acelerada"
-                value={cop.format(p.taxes.acceleratedDepreciationCOP)}
-                hint={`Activo depreciado en 3 años · ${cop.format(p.taxes.annualDepreciationCOP)}/año (33.33%) · Ley 2099`}
-              />
-            ) : null}
-            {p.toggles.showIvaAranceles ? (
-              <TaxCard
-                label="Exclusión IVA paneles"
-                value="100%"
-                hint="Paneles solares excluidos de IVA — Ley 1715/2099"
-              />
             ) : null}
           </div>
-          <ul className="mt-5 grid gap-2 text-sm text-[#c5d4ea] sm:grid-cols-2">
-            {[
-              "Ahorro significativo en facturas de energía",
-              "Energía limpia y reducción de huella de carbono",
-              "Independencia y resiliencia energética",
-              "Equipos certificados con garantía de fábrica",
-              "Incentivos tributarios Ley 1715 / 2099",
-              "Monitoreo en tiempo real de la planta",
-            ].map((item) => (
-              <li key={item} className="flex gap-2">
-                <span className="text-[#14b8a6]">✓</span>
-                {item}
-              </li>
-            ))}
-          </ul>
-        </section>
-        ) : null}
-
-        <section className="mt-12">
-          <SectionHead
-            n={isEquipos ? 2 : 4}
-            title="Forma de pago"
-            subtitle={`Modalidad: ${p.payment.modality}`}
-          />
-          <div
-            className={`grid gap-3 ${
-              p.payment.installments.length === 1
-                ? "md:grid-cols-1"
-                : p.payment.installments.length > 2
-                  ? "md:grid-cols-3"
-                  : "md:grid-cols-2"
-            }`}
-          >
+          <div className="gq-total">
+            <span>Valor total</span>
+            <strong>{cop.format(p.totalCOP)}</strong>
+          </div>
+          <div className="gq-pay">
             {p.payment.installments.map((item) => (
-              <PayCard
-                key={item.key}
-                label={item.label}
-                amount={
-                  item.key === "tarifa"
+              <article key={item.key}>
+                <p>{item.label}</p>
+                <strong>
+                  {item.key === "tarifa"
                     ? `${cop.format(item.amountCOP)}/kWh`
-                    : cop.format(item.amountCOP)
-                }
-                pct={
-                  item.percent != null
-                    ? `${item.percent} % del total`
-                    : item.hint
-                }
-                total={
-                  p.payment.kind === "ppa"
-                    ? `Inversión de planta (referencia): ${cop.format(p.totalCOP)}`
-                    : cop.format(p.totalCOP)
-                }
-              />
+                    : cop.format(item.amountCOP)}
+                </strong>
+                <span>
+                  {item.percent != null ? `${item.percent} % del total` : item.hint}
+                </span>
+              </article>
             ))}
+          </div>
           </div>
           {p.payment.kind === "ppa" ? (
-            <p className="mt-3 text-sm text-[#8aa0c2]">
+            <p className="gq-prose">
               Modelo PPA: Genera Solutions SAS invierte y opera la planta. El cliente paga la energía
               generada a {cop.format(p.payment.ppaPricePerKWhCOP ?? 0)}/kWh durante{" "}
-              {p.payment.ppaYears} años (máximo 25).
+              {p.payment.ppaYears} años (máximo 25). Inversión de planta (referencia):{" "}
+              {cop.format(p.totalCOP)}.
             </p>
           ) : p.payment.kind === "financed" ? (
-            <p className="mt-3 text-sm text-[#8aa0c2]">
+            <p className="gq-prose">
               Cuota mensual estimada {cop.format(p.payment.monthlyInstallmentCOP ?? 0)}{" "}
               durante {p.payment.financedMonths} meses
               {p.payment.financedEaPercent
-                ? ` · TEA ${p.payment.financedEaPercent}%`
-                : " · sin intereses"}.
+                ? ` · TEA ${p.payment.financedEaPercent}%.`
+                : " · sin intereses."}
             </p>
           ) : null}
-        </section>
+        </Chapter>
 
         {!isEquipos ? (
-        <section className="mt-12">
-          <SectionHead
-            n={5}
-            title="Retorno de inversión (ROI)"
-            subtitle="Proyección financiera a 25 años"
-          />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TaxCard
-              label="Ahorro anual energía"
-              value={cop.format(p.annualEnergySavingsCOP)}
-              hint="100% factura"
-            />
-            {p.toggles.showDeductionLey1715 ? (
-              <TaxCard
-                label="Ahorro fiscal renta (año 1)"
-                value={cop.format(p.year1TaxSavingsCOP)}
-                hint="50% ÷ 15 años · 35% renta · Ley 1715"
-              />
-            ) : null}
-            <TaxCard
-              label="Ahorro total 25 años"
-              value={cop.format(p.total25ySavingsCOP)}
-              hint="Energía + tributario"
-            />
-            <TaxCard
-              label="Ahorro anual total"
-              value={cop.format(p.blendedAnnualSavingsCOP)}
-              hint="Energía + tributario + IVA recuperable año 1"
-            />
-            {p.toggles.showRoiPayback ? (
-              <>
-                <TaxCard
-                  label="ROI 25 años"
-                  value={`${num.format(p.roiPercentage)}%`}
-                  hint={`Payback ${num.format(p.paybackYearsSimple)} años`}
-                />
-                <TaxCard
-                  label="VAN @ 12%"
-                  value={cop.format(p.npvCOP)}
-                  hint={
-                    p.toggles.showTir
-                      ? `TIR ${num.format(p.irrPercentage)}%`
-                      : "Valor actual neto"
+          <Chapter id="gq-cifras" n={index("gq-cifras")} title="Las cifras">
+            <div className="gq-pulse">
+              {pulse.map((item) => (
+                <div key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <em>{item.hint}</em>
+                </div>
+              ))}
+            </div>
+            <div className="gq-ledger">
+              {ledger.map((item, i) => (
+                <div
+                  key={item.label}
+                  className={
+                    i === ledger.length - 1 && ledger.length % 2 === 1 ? "is-wide" : undefined
                   }
-                />
-              </>
-            ) : null}
-          </div>
-        </section>
+                >
+                  <span>
+                    {item.label}
+                    {item.hint ? <em>{item.hint}</em> : null}
+                  </span>
+                  <b>{item.value}</b>
+                </div>
+              ))}
+            </div>
+          </Chapter>
         ) : null}
 
-        {!isEquipos && p.bonuses.filter(
-          (b) => b.id !== "ev-charger" && !/cargador\s*ev/i.test(b.title)
-        ).length ? (
-        <section className="mt-12">
-          <SectionHead
-            n={6}
-            title="Bonos y compromisos Genera Solutions SAS"
-            subtitle="Valor agregado incluido en su propuesta"
-          />
-          <div className="grid gap-3 md:grid-cols-2">
-            {p.bonuses
-              .filter(
-                (b) =>
-                  b.id !== "ev-charger" &&
-                  !/cargador\s*ev/i.test(b.title)
-              )
-              .map((b) => (
-              <article
-                key={b.id}
-                className="rounded-2xl border border-[#1e2d4a] bg-[#10182c] p-4"
-              >
-                <h3 className="font-semibold text-white">{b.title}</h3>
-                <p className="mt-1 text-xs font-medium text-[#5eead4]">{b.tagline}</p>
-                <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">{b.description}</p>
-                {b.document && clientDocs[b.document.slug] ? (
-                  <a
-                    href={`/propuesta/epc/${p.id}/${b.document.slug}`}
-                    className="mt-3 inline-flex text-sm font-medium text-[#5eead4] underline"
-                  >
-                    {b.document.cta}
-                  </a>
-                ) : null}
-              </article>
+        {!isEquipos && bonuses.length ? (
+          <Chapter
+            id="gq-planta"
+            n={index("gq-planta")}
+            title="Con la planta"
+            hint="Bonos y compromisos Genera Solutions SAS · valor agregado incluido en su propuesta"
+          >
+            <div className="gq-pledges">
+                {bonuses.map((b, i) => (
+                  <article key={b.id}>
+                    <span>{String(i + 1).padStart(2, "0")}</span>
+                    <div>
+                      <strong>{b.title}</strong>
+                      <em>{b.tagline}</em>
+                      {b.document && clientDocs[b.document.slug] ? (
+                        <a href={`/propuesta/epc/${p.id}/${b.document.slug}`}>
+                          {b.document.cta}
+                        </a>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            <p className="gq-hint">
+              * Bonos y compromisos sujetos a condiciones del contrato y alcance del
+              proyecto cotizado. Los documentos se personalizan con los equipos de
+              esta oferta.
+            </p>
+          </Chapter>
+        ) : null}
+
+        <Chapter id="gq-cierre" n={index("gq-cierre")} title="Cierre" hint="">
+          <div className="gq-ledger">
+            {isEquipos ? (
+              <div className="is-wide">
+                <span>
+                  Alcance
+                  <em>
+                    Equipos listados, con ficha de fábrica cuando exista. No incluye
+                    instalación, tableros, cableado de obra, RETIE ni trámites UPME.
+                  </em>
+                </span>
+                <b>Suministro</b>
+              </div>
+            ) : (
+              <div className="is-wide">
+                <span>
+                  Mantenimiento
+                  <em>
+                    Limpieza de paneles, estructura, conexiones, inversor y monitoreo.
+                    Primer año incluido después de la puesta en marcha.
+                  </em>
+                </span>
+                <b>Año 1</b>
+              </div>
+            )}
+            {warrantyItems.map((item) => (
+              <div key={item.id}>
+                <span>
+                  {item.label}
+                  {item.detail.trim() ? ` · ${item.detail.trim()}` : ""}
+                </span>
+                <b>{yearsLabel(item.years)}</b>
+              </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-[#6b7c99]">
-            * Bonos y compromisos sujetos a condiciones del contrato y alcance del
-            proyecto cotizado. Los documentos se personalizan con los equipos de
-            esta oferta.
-          </p>
-        </section>
-        ) : null}
-
-        {!isEquipos ? (
-        <section className="mt-12">
-          <SectionHead
-            n={7}
-            title="Impacto ambiental"
-            subtitle="Factor emisión SIN · 0.126 kg CO₂/kWh"
-          />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <TaxCard label="CO₂ evitado" value={`${num.format(co2T)} t`} hint={`${num.format(co2Kg)} kg / año`} />
-            <TaxCard label="Árboles equivalente" value={`${trees}`} hint="equivalente anual" />
-            <TaxCard label="Km no recorridos" value={`${num.format(km)} km`} hint="gasolina / año" />
-          </div>
-          <p className="mt-3 text-sm text-[#8aa0c2]">
-            Generación estimada: {num.format(p.annualGenerationKWh)} kWh/año
-            {p.peakSunHours
-              ? ` · ${num.format(p.peakSunHours)} kWh/m²·día (HSP IDEAM)`
-              : ""}
-            {p.ideamStationName
-              ? ` · ${p.ideamStationName}${
-                  p.ideamDistanceKm != null
-                    ? ` (${num.format(p.ideamDistanceKm)} km)`
-                    : ""
-                }`
-              : ""}
-          </p>
-        </section>
-        ) : null}
-
-        <section className="mt-12 grid gap-6 md:grid-cols-2">
-          <div>
-            <h2 className="text-lg font-semibold text-white">
-              {isEquipos ? "Alcance" : "Mantenimiento"}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">
-              {isEquipos
-                ? "Esta oferta cubre únicamente los equipos listados, con fichas de fábrica cuando estén disponibles. Entrega en las condiciones comerciales de esta cotización. No incluye instalación, tableros, cableado de obra, RETIE ni tramites UPME."
-                : "Mantenimiento preventivo anual recomendado: limpieza de paneles, inspección de estructura y conexiones, revisión de inversores y monitoreo. Primer mantenimiento incluido el primer año posterior a la puesta en marcha."}
-            </p>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-white">Garantías</h2>
-            {warrantyItems.length ? (
-              <ul className="mt-2 space-y-1.5 text-sm leading-6 text-[#c5d4ea]">
-                {warrantyItems.map((item) => (
-                  <li key={item.id}>
-                    <span className="text-white">{item.label}:</span>{" "}
-                    {yearsLabel(item.years)}
-                    {item.detail.trim() ? ` · ${item.detail.trim()}` : ""}
-                  </li>
-                ))}
+          {!warrantyItems.length ? (
+            <p className="gq-hint">Garantías según acuerdo comercial de este proyecto.</p>
+          ) : null}
+          {warranties.notes.trim() ? (
+            <p className="gq-hint">{warranties.notes.trim()}</p>
+          ) : null}
+          <div className="gq-close-grid">
+            <div>
+              <h3>{isEquipos ? "Facturación" : "Marco legal"}</h3>
+              <ul>
+                {isEquipos ? (
+                  <>
+                    <li>Factura de venta de equipos · IVA según ítem</li>
+                    {p.withholdingsNote ? (
+                      <li>{p.withholdingsNote}</li>
+                    ) : (
+                      <li>Retenciones según RUT del cliente al momento de facturar</li>
+                    )}
+                    <li>Garantía de fábrica, no de instalación</li>
+                  </>
+                ) : (
+                  <>
+                    <li>Ley 1715 de 2014</li>
+                    <li>Ley 2099 de 2021</li>
+                    <li>RETIE · UPME</li>
+                  </>
+                )}
               </ul>
-            ) : (
-              <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">
-                Garantías según acuerdo comercial de este proyecto.
-              </p>
-            )}
-            {warranties.notes.trim() ? (
-              <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">
-                {warranties.notes.trim()}
-              </p>
-            ) : null}
+            </div>
+            <div>
+              <h3>Condiciones de venta</h3>
+              <ul>
+                <li>Cotización válida por {p.validUntilDays} días calendario</li>
+                <li>Precios sujetos a disponibilidad de equipos</li>
+                <li>
+                  {isEquipos
+                    ? "No incluye instalación, ingeniería ni adecuaciones de sitio"
+                    : "No incluye obras civiles ni adecuaciones MT salvo mención expresa"}
+                </li>
+              </ul>
+            </div>
           </div>
-        </section>
+        </Chapter>
 
-        <section className="mt-12 grid gap-6 md:grid-cols-2">
-          <div>
-            <h2 className="text-lg font-semibold text-white">
-              {isEquipos ? "Facturación" : "Marco legal"}
-            </h2>
-            <ul className="mt-2 space-y-1 text-sm text-[#c5d4ea]">
-              {isEquipos ? (
-                <>
-                  <li>Factura de venta de equipos · IVA según ítem</li>
-                  {p.withholdingsNote ? (
-                    <li>{p.withholdingsNote}</li>
-                  ) : (
-                    <li>Retenciones según RUT del cliente al momento de facturar</li>
-                  )}
-                  <li>Garantía de fábrica, no de instalación</li>
-                </>
-              ) : (
-                <>
-                  <li>Ley 1715 de 2014</li>
-                  <li>Ley 2099 de 2021</li>
-                  <li>RETIE · UPME</li>
-                </>
-              )}
-            </ul>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-white">Condiciones de venta</h2>
-            <ul className="mt-2 space-y-1 text-sm text-[#c5d4ea]">
-              <li>Cotización válida por {p.validUntilDays} días calendario</li>
-              <li>Precios sujetos a disponibilidad de equipos</li>
-              <li>
-                {isEquipos
-                  ? "No incluye instalación, ingeniería ni adecuaciones de sitio"
-                  : "No incluye obras civiles ni adecuaciones MT salvo mención expresa"}
-              </li>
-            </ul>
-          </div>
-        </section>
-
-        <footer className="mt-16 border-t border-[#1e2d4a] py-10 text-center">
-          <p className="max-w-2xl mx-auto text-sm leading-6 text-[#c5d4ea]">
+        <footer className="gq-foot">
+          <p>
             Transformando el sol en su mejor inversión: en {p.companyName} combinamos
             excelencia técnica y normativa para garantizarle energía limpia, ahorro real y
             respaldo absoluto durante toda la vida útil de su planta.
           </p>
-          <div className="mt-6 grid gap-3 text-sm sm:grid-cols-3">
-            <p>
-              <span className="block text-xs text-[#6b7c99]">Correo</span>
-              info@generasolutions.co
-            </p>
-            <p>
-              <span className="block text-xs text-[#6b7c99]">Página web</span>
-              www.generasolutions.com.co
-            </p>
-            <p>
-              <span className="block text-xs text-[#6b7c99]">Contacto</span>
-              317 455 3288
-            </p>
+          <div>
+            <span>info@generasolutions.co</span>
+            <span>www.generasolutions.com.co</span>
+            <span>317 455 3288</span>
           </div>
-          <p className="mt-6 text-xs text-[#6b7c99]">
-            {p.companyName} · Energía limpia · Futuro brillante
-          </p>
+          <small>{p.companyName} · Energía limpia · Futuro brillante</small>
         </footer>
-      </div>
+      </article>
     </div>
   );
 }
 
-function InfoTile({
-  label,
-  value,
+function Chapter({
+  id,
+  n,
+  title,
   hint,
+  children,
 }: {
-  label: string;
-  value: string;
+  id: string;
+  n: string;
+  title: string;
   hint?: string;
+  children: ReactNode;
 }) {
   return (
-    <article className="rounded-2xl border border-[#1e2d4a] bg-[#10182c] p-4">
-      <p className="text-[10px] font-bold tracking-[0.18em] text-[#8aa0c2] uppercase">
-        {label}
-      </p>
-      <p className="mt-2 font-medium text-white">{value}</p>
-      {hint ? <p className="text-sm text-[#8aa0c2]">{hint}</p> : null}
-    </article>
-  );
-}
-
-function TaxCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-}) {
-  return (
-    <article className="rounded-2xl border border-[#1e2d4a] bg-[#10182c] p-4">
-      <p className="text-[10px] font-bold tracking-[0.16em] text-[#5eead4] uppercase">
-        {label}
-      </p>
-      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs leading-5 text-[#8aa0c2]">{hint}</p>
-    </article>
-  );
-}
-
-function PayCard({
-  label,
-  amount,
-  pct,
-  total,
-}: {
-  label: string;
-  amount: string;
-  pct: string;
-  total: string;
-}) {
-  return (
-    <article className="rounded-2xl border border-[#1e2d4a] bg-[#10182c] p-5">
-      <p className="text-[10px] font-bold tracking-[0.16em] text-[#f5b942] uppercase">
-        {label}
-      </p>
-      <p className="mt-2 text-3xl font-semibold text-white">{amount}</p>
-      <p className="mt-1 text-sm text-[#c5d4ea]">{pct}</p>
-      <p className="mt-3 text-xs text-[#6b7c99]">Total de esta oferta: {total}</p>
-    </article>
-  );
-}
-
-function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
-  return (
-    <div className={`flex justify-between ${strong ? "text-lg font-semibold text-white" : "text-[#c5d4ea]"}`}>
-      <span>{k}</span>
-      <span>{v}</span>
-    </div>
+    <section id={id} className="gq-sec">
+      <div className="gq-kicker">
+        <span>{n}</span>
+        <h2>{title}</h2>
+      </div>
+      <div>
+        {hint ? <p className="gq-hint gq-lead">{hint}</p> : null}
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -803,19 +609,13 @@ function ProposalMark({
 }) {
   if (logoUrl) {
     return (
-      <div className="flex justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={logoUrl}
-          alt={companyName}
-          style={{ height, width: "auto", maxWidth: 280 }}
-        />
-      </div>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt={companyName}
+        style={{ height, width: "auto", maxWidth: 220 }}
+      />
     );
   }
-  return (
-    <div className="flex justify-center">
-      <BrandLogo height={height} />
-    </div>
-  );
+  return <BrandLogo height={height} />;
 }
