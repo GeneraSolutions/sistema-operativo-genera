@@ -90,6 +90,20 @@ const PROFILES_DB: Record<string, VCardData> = {
       "Hola Jhons, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: ["Sistemas Fotovoltaicos", "Instalación Solar"],
   },
+  tatiana: {
+    firstName: "Tatiana",
+    lastName: "Ospina Reinoso",
+    fullName: "Tatiana Ospina Reinoso",
+    role: "Gerente Administrativa",
+    phone: "+573027460232",
+    whatsappNumber: "573027460232",
+    email: "tatiana.ospina@generasolutionsas.com",
+    ...GENERA_PUBLIC,
+    avatarUrl: "/brand/tatiana.jpg?v=2",
+    defaultWaMessage:
+      "Hola Tatiana, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
+    tags: ["Energía Solar", "Proyectos Fotovoltaicos", "Eficiencia Energética"],
+  },
 };
 
 function displayHost(url: string): string {
@@ -511,8 +525,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: "block",
   },
   avatar: {
-    width: 96,
-    height: 96,
+    width: 112,
+    height: 112,
     borderRadius: "50%",
     objectFit: "cover",
     display: "block",
