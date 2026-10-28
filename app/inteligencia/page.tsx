@@ -2,8 +2,18 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronDown,
+  FileText,
+  History,
+  Plus,
+  ShoppingCart,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { WorkFold } from "@/components/WorkFold";
+import { ROLE_LABELS, type Role } from "@/lib/auth/roles";
 import {
   SPECIALISTS,
   specialistsByGroup,
@@ -14,7 +24,6 @@ import {
   upsertSpecialistManual,
   type SpecialistManuals,
 } from "@/lib/specialist-manuals";
-import { ROLE_LABELS, type Role } from "@/lib/auth/roles";
 
 type TeamConsulta = {
   id: string;
@@ -35,6 +44,15 @@ type ChatMessage = {
   label?: string;
 };
 
+const EXAMPLES = [
+  "Dimensionar 120 kWp en cubierta metálica en Medellín con BESS 40 kWh.",
+  "Checklist CREG 174 para AGPE 80 kWp ante Enel Colombia.",
+  "Cláusulas críticas en un contrato EPC + PPA a 15 años.",
+];
+
+const field =
+  "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
+
 export default function InteligenciaPage() {
   const [mode, setMode] = useState<"specialist" | "mesa">("specialist");
   const [specialistId, setSpecialistId] = useState<SpecialistId>("fotovoltaico");
@@ -42,27 +60,30 @@ export default function InteligenciaPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [offlineNote, setOfflineNote] = useState(false);
   const [suggestedKwp, setSuggestedKwp] = useState("50");
   const [manuals, setManuals] = useState<SpecialistManuals>({});
   const [manualDraft, setManualDraft] = useState("");
-  const [manualSaved, setManualSaved] = useState(false);
+  const [flash, setFlash] = useState("");
   const [consultas, setConsultas] = useState<TeamConsulta[]>([]);
   const [viewerId, setViewerId] = useState("");
   const [viewerRole, setViewerRole] = useState<Role | "">("");
-  const [openConsulta, setOpenConsulta] = useState<string | null>(null);
-  const [asideOpen, setAsideOpen] = useState({
-    prompt: false,
-    manual: false,
-    consultas: false,
-    exportar: false,
-  });
+  const [menu, setMenu] = useState<"recent" | "more" | null>(null);
+  const [drawer, setDrawer] = useState<"manual" | "consulta" | null>(null);
+  const [openConsulta, setOpenConsulta] = useState<TeamConsulta | null>(null);
+  const recentRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
     () => SPECIALISTS.find((s) => s.id === specialistId)!,
     [specialistId]
   );
+  const manualsReady = SPECIALISTS.filter((s) => manuals[s.id]?.trim()).length;
+  const sessionLabel = mode === "mesa" ? "Mesa Redonda" : active.title;
+  const subtitle =
+    mode === "mesa"
+      ? `Mesa Redonda · ${manualsReady} manuales listos`
+      : `${active.name} · ${active.title}`;
 
   async function loadConsultas() {
     try {
@@ -89,7 +110,6 @@ export default function InteligenciaPage() {
 
   useEffect(() => {
     setManualDraft(manuals[specialistId] ?? "");
-    setManualSaved(false);
   }, [specialistId, manuals]);
 
   useEffect(() => {
@@ -98,6 +118,39 @@ export default function InteligenciaPage() {
       behavior: "smooth",
     });
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(""), 2800);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: MouseEvent) => {
+      const node = e.target as Node;
+      if (recentRef.current?.contains(node) || moreRef.current?.contains(node)) return;
+      setMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDrawer();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
 
   async function sendMessage(e?: FormEvent) {
     e?.preventDefault();
@@ -126,7 +179,9 @@ export default function InteligenciaPage() {
       if (!res.ok) {
         throw new Error(data.error || "Error en la consulta");
       }
-      setOfflineNote(Boolean(data.offline));
+      if (data.offline) {
+        setFlash("Modo demo: la respuesta no es en vivo.");
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -136,7 +191,6 @@ export default function InteligenciaPage() {
         },
       ]);
 
-      // Heurística: extraer kWp sugerido del texto
       const match = String(data.reply).match(/(\d+(?:[.,]\d+)?)\s*kWp/i);
       if (match) {
         setSuggestedKwp(match[1].replace(",", "."));
@@ -150,6 +204,10 @@ export default function InteligenciaPage() {
   }
 
   function exportPdf() {
+    if (messages.length === 0) {
+      setFlash("Consulte primero para exportar la sesión.");
+      return;
+    }
     window.print();
   }
 
@@ -158,394 +216,367 @@ export default function InteligenciaPage() {
     setError("");
   }
 
+  function closeDrawer() {
+    setDrawer(null);
+    setOpenConsulta(null);
+  }
+
+  function openManual() {
+    setMenu(null);
+    setOpenConsulta(null);
+    setDrawer("manual");
+  }
+
+  function openRecent(c: TeamConsulta) {
+    setMenu(null);
+    setOpenConsulta(c);
+    setDrawer("consulta");
+  }
+
+  function saveManual() {
+    const next = upsertSpecialistManual(specialistId, manualDraft, manuals);
+    setManuals(next);
+    setFlash("Manual GENERA guardado");
+  }
+
   const cotizadorHref = `/cotizador?kwp=${encodeURIComponent(suggestedKwp)}&ley1715=1`;
 
   return (
     <AppShell
-      title="Centro de Inteligencia"
-      subtitle="14 especialistas · Manual GENERA · Colombia"
-    >
-      <div className="os-page-hero mb-6">
-        <h2 className="text-2xl font-semibold">Especialistas virtuales</h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-          Catorce perfiles para no dejar pasar diseño, obra, SST, RETIE, O&M,
-          comercial, compras ni licencias. Pegue el manual de cada uno: manda
-          sobre el conocimiento genérico. La{" "}
-          <strong>Mesa Redonda</strong> cruza a todo el equipo.
-        </p>
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-2 print:hidden">
-        <button
-          type="button"
-          onClick={() => setMode("specialist")}
-          className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
-            mode === "specialist"
-              ? "bg-[#1f6b45] text-white"
-              : "bg-white ring-1 ring-[#d8d2c4]"
-          }`}
-        >
-          Especialista individual
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("mesa")}
-          className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
-            mode === "mesa"
-              ? "bg-[#0f2a1f] text-white"
-              : "bg-white ring-1 ring-[#d8d2c4]"
-          }`}
-        >
-          Mesa Redonda
-        </button>
-      </div>
-
-      {mode === "specialist" ? (
-        <div className="mb-6 space-y-4 print:hidden">
-          {specialistsByGroup().map((block) => (
-            <div key={block.group}>
-              <p className="mb-2 text-[11px] font-semibold tracking-[0.2em] text-[#8a6b2a] uppercase">
-                {block.label}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {block.items.map((s) => {
-                  const selected = specialistId === s.id;
-                  const hasManual = Boolean(manuals[s.id]?.trim());
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSpecialistId(s.id)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                        selected
-                          ? "bg-[#0f2a1f] text-white"
-                          : "bg-white text-[#12241c] ring-1 ring-[#d8d2c4] hover:ring-[#1f6b45]"
-                      }`}
-                    >
-                      {s.shortTitle}
-                      {hasManual ? " ·" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-          <p className="text-sm text-[#4d5c55]">
-            <span className="font-semibold text-[#12241c]">{active.name}</span>
-            {" · "}
-            {active.title}
-          </p>
-        </div>
-      ) : (
-        <div className="mb-6 rounded-2xl border border-[#1a3d2e] bg-[#0f2a1f] px-4 py-3 text-white print:hidden">
-          <p className="text-[11px] font-semibold tracking-[0.2em] text-[#d4b46a] uppercase">
-            Mesa Redonda · 14 especialistas
-          </p>
-          <p className="os-page-intro mt-1 max-w-2xl text-xs leading-5 text-[#c9d7cf]">
-            Si hay manuales pegados, la mesa los usa como doctrina GENERA.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {SPECIALISTS.map((s) => (
-              <span
-                key={s.id}
-                className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[#e8f0ec]"
+      title="Inteligencia"
+      printTitle="Informe de inteligencia"
+      subtitle={subtitle}
+      actions={
+        <>
+          {consultas.length > 0 ? (
+            <div className="os-menu print:hidden" ref={recentRef}>
+              <button
+                type="button"
+                className="os-btn os-btn-ghost"
+                aria-expanded={menu === "recent"}
+                onClick={() => setMenu((m) => (m === "recent" ? null : "recent"))}
               >
-                {s.shortTitle}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <section className="os-panel flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-[#ddd6c8] bg-white shadow-[0_12px_40px_rgba(18,36,28,0.06)]">
-          <div className="flex items-center justify-between border-b border-[#eee8dc] px-5 py-3">
-            <div>
-              <p className="text-xs tracking-[0.18em] text-[#8a6b2a] uppercase">
-                Sesión
-              </p>
-              <p className="font-semibold">
-                {mode === "mesa" ? "Mesa Redonda" : active.title}
-              </p>
+                <History size={16} />
+                Recientes
+                <ChevronDown size={15} />
+              </button>
+              {menu === "recent" ? (
+                <div className="os-menu-pop" role="menu">
+                  <p className="os-menu-label">
+                    {viewerRole === "ceo"
+                      ? "Consultas del equipo, incluidas las suyas"
+                      : "Consultas del equipo"}
+                  </p>
+                  {consultas.slice(0, 8).map((c) => {
+                    const mine = c.userId === viewerId;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        role="menuitem"
+                        className="os-menu-item"
+                        onClick={() => openRecent(c)}
+                      >
+                        <FileText size={15} />
+                        <span>
+                          {c.specialistLabel}
+                          {mine ? " · usted" : ` · ${c.userName}`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
+          ) : null}
+
+          <div className="os-menu print:hidden" ref={moreRef}>
             <button
               type="button"
-              onClick={clearChat}
-              className="text-xs font-semibold text-[#6d7c74] underline print:hidden"
+              className="os-btn os-btn-ghost"
+              aria-expanded={menu === "more"}
+              onClick={() => setMenu((m) => (m === "more" ? null : "more"))}
             >
-              Limpiar
+              Más
+              <ChevronDown size={15} />
             </button>
+            {menu === "more" ? (
+              <div className="os-menu-pop" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={openManual}
+                >
+                  <FileText size={15} />
+                  <span>Manual GENERA</span>
+                </button>
+                <div className="os-menu-kwp">
+                  <label>
+                    <span>kWp sugerido</span>
+                    <input
+                      value={suggestedKwp}
+                      onChange={(e) => setSuggestedKwp(e.target.value)}
+                      inputMode="decimal"
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          <div
-            ref={scrollRef}
-            id="informe-tecnico"
-            className="flex-1 space-y-4 overflow-y-auto px-5 py-4"
+          <button
+            type="button"
+            className="os-btn os-btn-ghost print:hidden"
+            onClick={clearChat}
+            disabled={messages.length === 0}
           >
-            {messages.length === 0 ? (
-              <div className="space-y-2 text-sm text-[#4d5c55]">
-                <p className="text-[11px] font-semibold tracking-wide text-[#8a6b2a] uppercase">
-                  Ejemplos
-                </p>
-                {[
-                  "Dimensionar 120 kWp en cubierta metálica en Medellín con BESS 40 kWh.",
-                  "Checklist CREG 174 para AGPE 80 kWp ante Enel Colombia.",
-                  "Cláusulas críticas en un contrato EPC + PPA a 15 años.",
-                ].map((example) => (
+            <Trash2 size={16} />
+            Limpiar
+          </button>
+          <button
+            type="button"
+            className="os-btn os-btn-ghost print:hidden"
+            onClick={exportPdf}
+            disabled={messages.length === 0}
+          >
+            <FileText size={16} />
+            PDF
+          </button>
+          <Link href={cotizadorHref} className="os-btn os-btn-primary print:hidden">
+            <ShoppingCart size={16} />
+            Cotizar {suggestedKwp} kWp
+          </Link>
+        </>
+      }
+    >
+      <div className="os-intel-split">
+        <nav className="os-work os-file-panel os-intel-rail print:hidden" aria-label="Especialistas">
+          <button
+            type="button"
+            className={`os-intel-person${mode === "mesa" ? " is-on" : ""}`}
+            aria-current={mode === "mesa" ? "true" : undefined}
+            onClick={() => setMode("mesa")}
+          >
+            <span className="os-work-row-title">Mesa Redonda</span>
+            <span className="os-work-row-meta">
+              Los 14 perfiles cruzan · {manualsReady} manuales
+            </span>
+          </button>
+          {specialistsByGroup().map((block) => (
+            <div key={block.group}>
+              <p className="os-intel-group-label">{block.label}</p>
+              {block.items.map((s) => {
+                const on = mode === "specialist" && specialistId === s.id;
+                const hasManual = Boolean(manuals[s.id]?.trim());
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`os-intel-person${on ? " is-on" : ""}`}
+                    aria-current={on ? "true" : undefined}
+                    onClick={() => {
+                      setMode("specialist");
+                      setSpecialistId(s.id);
+                    }}
+                  >
+                    <span className="os-work-row-title">{s.name}</span>
+                    <span className="os-work-row-meta">
+                      {s.shortTitle}
+                      {hasManual ? " · Manual" : ""}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+      <section className="os-work os-file-panel os-intel-chat">
+        <div className="os-intel-chat-head print:hidden">
+          <div className="min-w-0">
+            <p className="os-drawer-kicker">Consulta</p>
+            <p className="os-intel-chat-who">{sessionLabel}</p>
+          </div>
+          {mode === "specialist" && manuals[specialistId]?.trim() ? (
+            <span className="os-pill" data-tone="ok">
+              Manual listo
+            </span>
+          ) : null}
+        </div>
+
+        <div ref={scrollRef} id="informe-tecnico" className="os-intel-log">
+          {messages.length === 0 ? (
+            <div className="os-empty">
+              <span className="os-empty-icon">
+                <Sparkles size={20} />
+              </span>
+              <p className="os-empty-title">
+                {mode === "mesa" ? "Formule la consulta a la mesa" : `Consulte a ${active.name}`}
+              </p>
+              <p className="os-empty-hint">
+                El manual GENERA, si está pegado, manda sobre el conocimiento genérico.
+              </p>
+              <div className="os-quick">
+                {EXAMPLES.map((example) => (
                   <button
                     key={example}
                     type="button"
+                    className="os-quick-item"
                     onClick={() => setInput(example)}
-                    className="block w-full rounded-xl bg-[#f7f4ee] px-3 py-2 text-left text-xs leading-5 hover:bg-[#eee8dc]"
                   >
+                    <Plus size={14} />
                     {example}
                   </button>
                 ))}
               </div>
-            ) : null}
-
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={`max-w-[95%] rounded-2xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap ${
-                  m.role === "user"
-                    ? "ml-auto bg-[#1f6b45] text-white"
-                    : "bg-[#f7f4ee] text-[#12241c] ring-1 ring-[#eee8dc]"
-                }`}
-              >
-                {m.role === "assistant" && m.label ? (
-                  <p className="mb-1 text-[10px] font-bold tracking-[0.16em] text-[#8a6b2a] uppercase">
-                    {m.label}
-                  </p>
-                ) : null}
-                {m.content}
-              </div>
-            ))}
-
-            {loading ? (
-              <p className="text-sm text-[#6d7c74]">Analizando con el equipo…</p>
-            ) : null}
-            {error ? (
-              <p className="text-sm font-medium text-[#9b2c2c]">{error}</p>
-            ) : null}
-            {offlineNote ? (
-              <p className="text-xs text-[#8a6b2a]">
-                Modo demo: configure OPENAI_API_KEY en .env.local para respuestas
-                en vivo.
-              </p>
-            ) : null}
-          </div>
-
-          <form
-            onSubmit={sendMessage}
-            className="border-t border-[#eee8dc] p-4 print:hidden"
-          >
-            <textarea
-              className="w-full resize-none rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-4 py-3 text-sm outline-none ring-[#1f6b45] focus:ring-2"
-              rows={3}
-              placeholder={
-                mode === "mesa"
-                  ? "Formule la consulta para la mesa redonda…"
-                  : `Consulte a ${active.name}…`
-              }
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void sendMessage();
-                }
-              }}
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="mt-3 w-full rounded-xl bg-[#d4b46a] px-4 py-3 text-sm font-semibold text-[#12241c] uppercase disabled:opacity-50 hover:bg-[#c7a45a]"
-            >
-              {loading ? "Procesando…" : "Enviar consulta"}
-            </button>
-          </form>
-        </section>
-
-        <aside className="space-y-4 print:hidden">
-          <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <WorkFold
-              title={
-                mode === "mesa" ? "Prompt · Mesa Redonda" : `Prompt · ${active.shortTitle}`
-              }
-              open={asideOpen.prompt}
-              onToggle={() =>
-                setAsideOpen((s) => ({ ...s, prompt: !s.prompt }))
-              }
-            >
-            <p className="max-h-32 overflow-y-auto text-xs leading-5 text-[#4d5c55]">
-              {mode === "mesa"
-                ? "Síntesis de los 14 flancos. Los manuales pegados mandan sobre el modelo genérico."
-                : active.systemPrompt.slice(0, 420) + "…"}
-            </p>
-            </WorkFold>
-          </div>
-
-          {mode === "specialist" ? (
-            <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <WorkFold
-              title={`Manual GENERA · ${active.shortTitle}`}
-              open={asideOpen.manual}
-              onToggle={() =>
-                setAsideOpen((s) => ({ ...s, manual: !s.manual }))
-              }
-            >
-              <p className="os-page-intro text-xs leading-5 text-[#4d5c55]">
-                {active.manualHint} Se guarda en este navegador y se inyecta en
-                cada consulta de este perfil.
-              </p>
-              <textarea
-                className="mt-3 w-full resize-y rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-xs leading-5 outline-none ring-[#1f6b45] focus:ring-2"
-                rows={10}
-                placeholder="Pegue aquí procedimientos, checklists, marcas homologadas, lo que nunca se improvisa…"
-                value={manualDraft}
-                onChange={(e) => {
-                  setManualDraft(e.target.value);
-                  setManualSaved(false);
-                }}
-              />
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="text-[11px] text-[#8a7f70]">
-                  {manualDraft.trim().length.toLocaleString("es-CO")} caracteres
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = upsertSpecialistManual(
-                      specialistId,
-                      manualDraft,
-                      manuals
-                    );
-                    setManuals(next);
-                    setManualSaved(true);
-                  }}
-                  className="rounded-xl bg-[#0f2a1f] px-3 py-2 text-xs font-semibold text-white"
-                >
-                  {manualSaved ? "Manual guardado" : "Guardar manual"}
-                </button>
-              </div>
-            </WorkFold>
             </div>
           ) : (
-            <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5 text-xs leading-5 text-[#4d5c55]">
-              <p className="font-semibold text-[#12241c]">
-                Manuales en la mesa ·{" "}
-                {SPECIALISTS.filter((s) => manuals[s.id]?.trim()).length} /{" "}
-                {SPECIALISTS.length}
-              </p>
-              <p className="os-page-intro mt-1">
-                Cargue manuales en modo especialista; la mesa los lee todos.
-              </p>
-            </div>
+            messages.map((m, i) => (
+              <div
+                key={i}
+                className={`os-intel-msg${m.role === "user" ? " is-user" : ""}`}
+              >
+                {m.role === "assistant" && m.label ? (
+                  <p className="os-intel-msg-label">{m.label}</p>
+                ) : null}
+                <p>{m.content}</p>
+              </div>
+            ))
           )}
+          {loading ? <p className="os-intel-status">Analizando con el equipo…</p> : null}
+          {error ? <p className="os-intel-status is-err">{error}</p> : null}
+        </div>
 
-          <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <WorkFold
-              title="Consultas del personal"
-              open={asideOpen.consultas}
-              onToggle={() =>
-                setAsideOpen((s) => ({ ...s, consultas: !s.consultas }))
+        <form onSubmit={sendMessage} className="os-intel-composer print:hidden">
+          <textarea
+            rows={2}
+            placeholder={
+              mode === "mesa"
+                ? "Formule la consulta para la mesa redonda…"
+                : `Consulte a ${active.name}…`
+            }
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void sendMessage();
               }
-            >
-            <p className="os-page-intro text-xs leading-5 text-[#4d5c55]">
-              {viewerRole === "ceo"
-                ? "Como CEO ve todas las consultas, incluidas las suyas (privadas para el resto)."
-                : "Ve las consultas del equipo. Las del CEO no aparecen aquí."}
-            </p>
-            <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
-              {consultas.length === 0 ? (
-                <p className="text-xs text-[#6d7c74]">Aún no hay consultas visibles.</p>
-              ) : (
-                consultas.map((c) => {
-                  const mine = c.userId === viewerId;
-                  const ceoPrivate = c.role === "ceo";
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() =>
-                        setOpenConsulta((id) => (id === c.id ? null : c.id))
-                      }
-                      className="w-full rounded-xl bg-[#f7f4ee] px-3 py-2 text-left text-xs"
-                    >
-                      <p className="font-semibold text-[#12241c]">
-                        {c.userName}
-                        {mine ? " · usted" : ""}
-                        {ceoPrivate && mine ? " · privada" : ""}
-                      </p>
-                      <p className="text-[10px] uppercase tracking-wide text-[#8a6b2a]">
-                        {ROLE_LABELS[c.role] ?? c.role} · {c.specialistLabel}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-[#4d5c55]">{c.question}</p>
-                      {openConsulta === c.id ? (
-                        <div className="mt-2 whitespace-pre-wrap border-t border-[#eee8dc] pt-2 text-[#12241c]">
-                          <p className="font-medium">Pregunta</p>
-                          <p>{c.question}</p>
-                          <p className="mt-2 font-medium">Respuesta</p>
-                          <p>{c.answer}</p>
-                        </div>
-                      ) : null}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-            </WorkFold>
-          </div>
-
-          <div className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
-            <WorkFold
-              title={`Exportar / Cotizador · ${suggestedKwp} kWp`}
-              open={asideOpen.exportar}
-              onToggle={() =>
-                setAsideOpen((s) => ({ ...s, exportar: !s.exportar }))
-              }
-            >
-            <p className="os-page-intro text-xs text-[#4d5c55]">
-              PDF de la sesión o envío de kWp al cotizador.
-            </p>
-            <label className="mt-3 block text-sm">
-              <span className="mb-1 block font-medium">kWp sugerido</span>
-              <input
-                className="w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5"
-                value={suggestedKwp}
-                onChange={(e) => setSuggestedKwp(e.target.value)}
-              />
-            </label>
-            <div className="mt-3 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={exportPdf}
-                disabled={messages.length === 0}
-                className="rounded-xl bg-[#0f2a1f] px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
-              >
-                Exportar informe técnico (PDF)
-              </button>
-              <Link
-                href={cotizadorHref}
-                className="rounded-xl bg-[#d4b46a] px-4 py-3 text-center text-sm font-semibold text-[#12241c]"
-              >
-                Enviar parámetros al Cotizador
-              </Link>
-            </div>
-            </WorkFold>
-          </div>
-
-          <div className="os-page-intro rounded-2xl bg-[#f7f4ee] p-4 text-xs leading-5 text-[#4d5c55]">
-            <p className="font-semibold text-[#12241c]">API OpenAI</p>
-            <p className="mt-1">
-              Endpoint <code className="text-[#1f6b45]">/api/inteligencia</code>.
-              Variable de entorno <code>OPENAI_API_KEY</code>. Modelo opcional:{" "}
-              <code>OPENAI_MODEL</code> (default gpt-4o-mini).
-            </p>
-          </div>
-        </aside>
+            }}
+          />
+          <button
+            type="submit"
+            className="os-btn os-btn-primary"
+            disabled={loading || !input.trim()}
+          >
+            {loading ? "Procesando…" : "Enviar"}
+          </button>
+        </form>
+      </section>
       </div>
+
+      {drawer ? <div className="os-drawer-backdrop" onClick={closeDrawer} /> : null}
+      <aside
+        className="os-drawer"
+        data-open={drawer ? "true" : undefined}
+        aria-hidden={!drawer}
+        aria-label={drawer === "consulta" ? "Consulta reciente" : "Manual GENERA"}
+      >
+        <header className="os-drawer-head">
+          <div className="min-w-0">
+            <p className="os-drawer-kicker">
+              {drawer === "consulta" ? "Consulta reciente" : "Manual GENERA"}
+            </p>
+            <h2 className="os-drawer-title">
+              {drawer === "consulta"
+                ? openConsulta?.specialistLabel || "Sesión"
+                : mode === "mesa"
+                  ? "Doctrina de la mesa"
+                  : active.shortTitle}
+            </h2>
+          </div>
+          <button type="button" className="os-icon-btn" aria-label="Cerrar" onClick={closeDrawer}>
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="os-drawer-body">
+          {drawer === "consulta" && openConsulta ? (
+            <>
+              <p className="os-intel-meta">
+                {openConsulta.userName}
+                {openConsulta.userId === viewerId ? " · usted" : ""}
+                {openConsulta.role === "ceo" && openConsulta.userId === viewerId
+                  ? " · privada"
+                  : ""}
+                {" · "}
+                {ROLE_LABELS[openConsulta.role] ?? openConsulta.role}
+              </p>
+              <p className="os-drawer-section">Pregunta</p>
+              <p className="whitespace-pre-wrap text-sm leading-6">{openConsulta.question}</p>
+              <p className="os-drawer-section">Respuesta</p>
+              <p className="whitespace-pre-wrap text-sm leading-6">{openConsulta.answer}</p>
+            </>
+          ) : mode === "mesa" ? (
+            <>
+              <p className="text-sm leading-6 text-[#4d5c55]">
+                La mesa lee los manuales pegados en cada perfil. Cárguelos en modo
+                Especialista.
+              </p>
+              <p className="mt-3 text-sm font-semibold">
+                {manualsReady} / {SPECIALISTS.length} con manual
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm leading-6 text-[#4d5c55]">{active.manualHint}</p>
+              <p className="os-page-intro mt-2 text-xs">
+                Se guarda en este navegador y manda sobre el conocimiento genérico.
+              </p>
+              <textarea
+                className={`${field} mt-3`}
+                rows={12}
+                placeholder="Pegue procedimientos, checklists y marcas homologadas…"
+                value={manualDraft}
+                onChange={(e) => setManualDraft(e.target.value)}
+              />
+              <p className="mt-2 text-xs text-[#8a7f70]">
+                {manualDraft.trim().length.toLocaleString("es-CO")} caracteres
+              </p>
+            </>
+          )}
+        </div>
+
+        <footer className="os-drawer-foot">
+          <button type="button" className="os-btn os-btn-ghost" onClick={closeDrawer}>
+            Cerrar
+          </button>
+          {drawer === "manual" && mode === "specialist" ? (
+            <button type="button" className="os-btn os-btn-primary" onClick={saveManual}>
+              Guardar manual
+            </button>
+          ) : null}
+          {drawer === "consulta" && openConsulta ? (
+            <button
+              type="button"
+              className="os-btn os-btn-primary"
+              onClick={() => {
+                setInput(openConsulta.question);
+                closeDrawer();
+              }}
+            >
+              Usar esta pregunta
+            </button>
+          ) : null}
+        </footer>
+      </aside>
+
+      {flash ? (
+        <div className="os-toast" role="status">
+          {flash}
+        </div>
+      ) : null}
     </AppShell>
   );
 }

@@ -1607,6 +1607,194 @@ html[data-look="operativo"] .os-inv-pane.os-drawer {
   border-radius: 10px;
 }
 
+/* Inteligencia */
+
+.os-intel-split {
+  display: grid;
+  gap: 1rem;
+}
+
+.os-intel-rail {
+  overflow: auto;
+  max-height: min(68vh, 720px);
+}
+
+.os-intel-group-label {
+  margin: 0.75rem 1.05rem 0.25rem;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a6b2a;
+}
+
+.os-intel-person {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.7rem 1.1rem;
+  text-align: left;
+  border-top: 1px solid var(--line-soft);
+}
+
+.os-intel-rail > .os-intel-person:first-child {
+  border-top: 0;
+}
+
+.os-intel-person:hover {
+  background: #f7f9f6;
+}
+
+.os-intel-person.is-on {
+  background: #eef6f1;
+}
+
+@media (min-width: 960px) {
+  .os-intel-split {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .os-intel-chat {
+    min-height: min(68vh, 720px);
+  }
+}
+
+.os-intel-chat {
+  display: flex;
+  min-height: min(68vh, 720px);
+  flex-direction: column;
+}
+
+.os-intel-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1.15rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.os-intel-chat-who {
+  font-size: 15px;
+  font-weight: 650;
+  color: #12241c;
+}
+
+.os-intel-log {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 280px;
+  padding: 1rem 1.15rem;
+  overflow-y: auto;
+}
+
+.os-intel-log .os-empty {
+  margin: auto;
+}
+
+.os-intel-log .os-quick {
+  justify-content: center;
+}
+
+.os-intel-msg {
+  max-width: 42rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: #f7f9f6;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.os-intel-msg.is-user {
+  align-self: flex-end;
+  border-color: transparent;
+  background: #1f6b45;
+  color: #fff;
+}
+
+.os-intel-msg-label {
+  margin-bottom: 0.35rem;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a6b2a;
+}
+
+.os-intel-status {
+  font-size: 13px;
+  color: #5d6d65;
+}
+
+.os-intel-status.is-err {
+  color: #9b2c2c;
+}
+
+.os-intel-composer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem;
+  padding: 0.85rem 1.15rem 1rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.os-intel-composer textarea {
+  flex: 1;
+  min-width: min(100%, 220px);
+  min-height: 52px;
+  resize: none;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fbfaf6;
+  font: inherit;
+  outline: none;
+}
+
+.os-intel-composer textarea:focus {
+  border-color: rgba(31, 107, 69, 0.45);
+}
+
+.os-intel-meta {
+  font-size: 12.5px;
+  color: #5d6d65;
+}
+
+.os-menu-kwp {
+  padding: 0.55rem 0.85rem 0.75rem;
+}
+
+.os-menu-kwp span {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: #5d6d65;
+}
+
+.os-menu-kwp input {
+  width: 100%;
+  height: 34px;
+  padding: 0 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fbfaf6;
+  font: inherit;
+  outline: none;
+}
+
+html[data-look="operativo"] .os-intel-msg {
+  border-radius: 10px;
+}
+
 html[data-look="operativo"] .os-file-panel {
   border-radius: 10px;
 }
