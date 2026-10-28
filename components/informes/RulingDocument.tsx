@@ -1,6 +1,6 @@
 "use client";
 
-import { BrandLogo } from "@/components/BrandLogo";
+import { DocSection, DocSheet, formatDocDate } from "@/components/informes/DocSheet";
 import {
   SEVERITY_LABELS,
   emptyFinding,
@@ -12,17 +12,6 @@ import {
   type PhotoRuling,
 } from "@/lib/photo-ruling";
 import { NORMS, SEVERITIES } from "@/lib/ruling-refine";
-
-const TONE: Record<FindingSeverity, string> = {
-  critica: "border-[#9b2c2c] bg-[#fde8e8]",
-  mayor: "border-[#b45309] bg-[#fff4e5]",
-  menor: "border-[#8a6b2a] bg-[#f7f4ee]",
-  observacion: "border-[#2a5f8f] bg-[#eef4fa]",
-  conforme: "border-[#1f6b45] bg-[#e8f6ee]",
-};
-
-const field =
-  "w-full rounded-lg border border-[#d8d2c4] bg-white px-2.5 py-1.5 text-sm";
 
 function FindingCard({
   h,
@@ -39,36 +28,35 @@ function FindingCard({
 }) {
   if (!editable || !onChange) {
     return (
-      <div
-        className={`rounded-2xl border px-3 py-2.5 text-sm ${TONE[h.criticidad] || TONE.observacion}`}
-      >
-        <p className="font-semibold">
-          {SEVERITY_LABELS[h.criticidad] || h.criticidad} · {h.titulo}
-        </p>
-        {h.hechos ? <p className="mt-1 leading-6">{h.hechos}</p> : null}
+      <article className="gen-doc-finding" data-tone={h.criticidad || "observacion"}>
+        <header>
+          <span className="gen-doc-mark">
+            {SEVERITY_LABELS[h.criticidad] || h.criticidad}
+          </span>
+          <strong>{h.titulo}</strong>
+        </header>
+        {h.hechos ? <p>{h.hechos}</p> : null}
         {h.norma || h.articulo ? (
-          <p className="mt-2 text-xs">
-            <strong>{h.norma}</strong>
+          <p className="gen-doc-cite">
+            {h.norma}
             {h.articulo ? ` · ${h.articulo}` : ""}
           </p>
         ) : null}
-        {h.fundamento ? <p className="mt-1 leading-6">{h.fundamento}</p> : null}
+        {h.fundamento ? <p>{h.fundamento}</p> : null}
         {h.accion ? (
-          <p className="mt-1 leading-6">
-            <strong>Corrección:</strong> {h.accion}
+          <p>
+            <strong>Corrección. </strong>
+            {h.accion}
           </p>
         ) : null}
-      </div>
+      </article>
     );
   }
 
   return (
-    <div
-      className={`space-y-2 rounded-2xl border px-3 py-2.5 text-sm ${TONE[h.criticidad] || TONE.observacion}`}
-    >
+    <div className="gen-doc-finding gen-doc-edit" data-tone={h.criticidad || "observacion"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <select
-          className="rounded-lg border border-[#d8d2c4] bg-white px-2 py-1 text-xs font-semibold"
           value={h.criticidad}
           onChange={(e) =>
             onChange({ ...h, criticidad: e.target.value as FindingSeverity })
@@ -81,7 +69,6 @@ function FindingCard({
           ))}
         </select>
         <select
-          className="rounded-lg border border-[#d8d2c4] bg-white px-2 py-1 text-xs"
           value={h.foto ?? ""}
           onChange={(e) =>
             onChange({
@@ -93,28 +80,22 @@ function FindingCard({
           <option value="">Sin foto</option>
           {Array.from({ length: photoCount }, (_, i) => (
             <option key={i + 1} value={i + 1}>
-              foto{i + 1}
+              Foto {i + 1}
             </option>
           ))}
         </select>
         {onRemove ? (
-          <button
-            type="button"
-            className="text-xs font-semibold text-[#9b2c2c] underline"
-            onClick={onRemove}
-          >
+          <button type="button" className="gen-doc-link" data-tone="bad" onClick={onRemove}>
             Quitar hallazgo
           </button>
         ) : null}
       </div>
       <input
-        className={field}
         value={h.titulo}
         placeholder="Título del hallazgo"
         onChange={(e) => onChange({ ...h, titulo: e.target.value })}
       />
       <textarea
-        className={field}
         rows={3}
         value={h.hechos}
         placeholder="Hechos (lo que se ve o lo declarado en esta foto)"
@@ -122,7 +103,6 @@ function FindingCard({
       />
       <div className="grid gap-2 sm:grid-cols-2">
         <select
-          className={field}
           value={NORMS.some((n) => n === h.norma) ? h.norma : "otro"}
           onChange={(e) => onChange({ ...h, norma: e.target.value })}
         >
@@ -133,21 +113,18 @@ function FindingCard({
           ))}
         </select>
         <input
-          className={field}
           value={h.articulo}
           placeholder="Artículo / numeral"
           onChange={(e) => onChange({ ...h, articulo: e.target.value })}
         />
       </div>
       <textarea
-        className={field}
         rows={2}
         value={h.fundamento}
         placeholder="Fundamento"
         onChange={(e) => onChange({ ...h, fundamento: e.target.value })}
       />
       <textarea
-        className={field}
         rows={2}
         value={h.accion}
         placeholder="Corrección"
@@ -193,218 +170,203 @@ export function RulingDocument({
     });
   }
 
-  return (
-    <article className="mx-auto max-w-3xl bg-white px-6 py-8 text-[#12241c]">
-      <header className="flex items-start justify-between gap-4 border-b border-[#eee8dc] pb-4">
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.22em] text-[#8a6b2a] uppercase">
-            Genera Solutions SAS · Dictamen fotográfico
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold">
-            Interventoría RETIE / NTC 2050
-          </h1>
-          <p className="mt-1 text-sm text-[#4d5c55]">
-            {inspectorDisplayName(ruling.inspector)} ·{" "}
-            {new Date(ruling.createdAt).toLocaleDateString("es-CO")} ·{" "}
-            {photos.length} foto{photos.length === 1 ? "" : "s"}
-          </p>
-        </div>
-        <BrandLogo height={48} />
-      </header>
+  const photoLabel =
+    photos.length === 1 ? "1 foto" : `${photos.length} fotos`;
 
-      {ruling.siteNote ? (
-        <p className="mt-4 text-sm">
-          <strong>Sitio / contexto:</strong> {ruling.siteNote}
-        </p>
+  return (
+    <DocSheet
+      kicker="Genera Solutions SAS · Dictamen fotográfico"
+      title="Interventoría RETIE / NTC 2050"
+      meta={[inspectorDisplayName(ruling.inspector), photoLabel]
+        .filter(Boolean)
+        .join(" · ")}
+      facts={[
+        { label: "Inspector", value: inspectorDisplayName(ruling.inspector) },
+        { label: "Fecha", value: formatDocDate(ruling.createdAt) },
+        { label: "Evidencia", value: photoLabel },
+        {
+          label: "Sitio",
+          value: ruling.siteNote.length > 90 ? "" : ruling.siteNote,
+        },
+      ]}
+      legal={
+        <>
+          Memoria de interventoría Genera Solutions SAS (RETIE / NTC 2050 y normas
+          conexas). No reemplaza el dictamen de un organismo de inspección
+          acreditado ONAC ni la firma del ingeniero competente. Verificar
+          numerales en la edición vigente.
+        </>
+      }
+    >
+      {ruling.siteNote.length > 90 ? (
+        <DocSection title="Sitio / contexto">
+          <p className="gen-doc-prose">{ruling.siteNote}</p>
+        </DocSection>
       ) : null}
 
       {ruling.resumen || editable ? (
-        <section className="mt-6">
-          <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
-            Síntesis de interventoría
-          </h2>
+        <DocSection title="Síntesis de interventoría">
           {editable ? (
             <textarea
-              className={`${field} mt-2`}
+              className="gen-doc-field mt-2"
               rows={5}
               value={ruling.resumen}
               placeholder="Puede dejar el texto de la IA o reescribirlo."
               onChange={(e) => patch({ resumen: e.target.value })}
             />
           ) : (
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-              {ruling.resumen}
-            </p>
+            <p className="gen-doc-prose">{ruling.resumen}</p>
           )}
-        </section>
+        </DocSection>
       ) : null}
 
       {photos.length ? (
-        <section className="mt-8 space-y-8">
-          <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
-            Evidencia, hallazgos y no conformidades
-          </h2>
-          {photos.map((p, i) => {
-            const n = i + 1;
-            const lectura = ruling.lecturaPorFoto?.find(
-              (row) => Number(row.indice) === n
-            );
-            const items = ruling.hallazgos.filter((h) => Number(h.foto) === n);
-            return (
-              <div
-                key={p.id}
-                className="break-inside-avoid rounded-2xl border border-[#eee8dc] p-3"
-              >
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold tracking-wide text-[#8a6b2a] uppercase">
-                    foto{n}
-                  </p>
-                  {editable ? (
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-[#9b2c2c] underline"
-                      onClick={() => onChange?.(removeRulingPhoto(ruling, p.id))}
-                    >
-                      Quitar foto
-                    </button>
-                  ) : null}
-                </div>
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                  <figure>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.dataUrl}
-                      alt={`foto${n}`}
-                      className="max-h-72 w-full rounded-xl object-contain bg-[#f7f4ee]"
-                    />
-                    {p.notaCampo || editable ? (
-                      <figcaption className="mt-2">
-                        {editable ? (
-                          <textarea
-                            className={field}
-                            rows={2}
-                            value={p.notaCampo || ""}
-                            placeholder={`Anotación de foto${n} (va junto a esta imagen)`}
-                            onChange={(e) =>
-                              onChange?.({
-                                ...ruling,
-                                photos: photos.map((x) =>
-                                  x.id === p.id
-                                    ? { ...x, notaCampo: e.target.value }
-                                    : x
-                                ),
-                              })
-                            }
-                          />
-                        ) : (
-                          <p className="text-xs leading-5 text-[#4d5c55]">
-                            {p.notaCampo}
-                          </p>
-                        )}
-                      </figcaption>
-                    ) : null}
-                  </figure>
-                  <div className="space-y-2">
-                    {editable ? (
-                      <label className="block text-sm">
-                        <span className="mb-1 block font-medium">Lectura</span>
-                        <textarea
-                          className={field}
-                          rows={4}
-                          value={lectura?.descripcion || ""}
-                          placeholder="Deje la lectura de la IA o edítela."
-                          onChange={(e) => {
-                            const rest = (ruling.lecturaPorFoto || []).filter(
-                              (row) => Number(row.indice) !== n
-                            );
-                            patch({
-                              lecturaPorFoto: [
-                                ...rest,
-                                { indice: n, descripcion: e.target.value },
-                              ].sort(
-                                (a, b) => Number(a.indice) - Number(b.indice)
-                              ),
-                            });
-                          }}
-                        />
-                      </label>
-                    ) : lectura?.descripcion ? (
-                      <p className="whitespace-pre-wrap text-sm leading-6">
-                        <strong>Lectura. </strong>
-                        {lectura.descripcion}
-                      </p>
-                    ) : null}
-                    {items.length ? (
-                      items.map((h, hi) => (
-                        <FindingCard
-                          key={h.id || `${h.titulo}-${hi}`}
-                          h={h}
-                          photoCount={photos.length}
-                          editable={editable}
-                          onChange={(next) => patchFinding(h, next)}
-                          onRemove={() => dropFinding(h)}
-                        />
-                      ))
-                    ) : (
-                      <p className="text-sm text-[#6d7c74]">
-                        {ruling.resumen
-                          ? "Sin no conformidad asignada a esta foto."
-                          : "Analice como interventor para ver hallazgos junto a cada imagen."}
-                      </p>
-                    )}
+        <DocSection title="Evidencia, hallazgos y no conformidades">
+          <div className="gen-doc-stack">
+            {photos.map((p, i) => {
+              const n = i + 1;
+              const lectura = ruling.lecturaPorFoto?.find(
+                (row) => Number(row.indice) === n
+              );
+              const items = ruling.hallazgos.filter((h) => Number(h.foto) === n);
+              return (
+                <article key={p.id} className="gen-doc-photo">
+                  <header>
+                    <p>Foto {n}</p>
                     {editable ? (
                       <button
                         type="button"
-                        className="text-xs font-semibold text-[#1f6b45] underline"
-                        onClick={() =>
-                          patch({
-                            hallazgos: [
-                              ...ruling.hallazgos,
-                              emptyFinding(n),
-                            ],
-                          })
-                        }
+                        className="gen-doc-link"
+                        data-tone="bad"
+                        onClick={() => onChange?.(removeRulingPhoto(ruling, p.id))}
                       >
-                        Añadir hallazgo a foto{n}
+                        Quitar foto
                       </button>
                     ) : null}
+                  </header>
+                  <div className="gen-doc-photo-grid">
+                    <figure>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.dataUrl} alt={`Foto ${n}`} />
+                      {p.notaCampo || editable ? (
+                        <figcaption>
+                          {editable ? (
+                            <textarea
+                              className="gen-doc-field"
+                              rows={2}
+                              value={p.notaCampo || ""}
+                              placeholder={`Anotación de Foto ${n} (va junto a esta imagen)`}
+                              onChange={(e) =>
+                                onChange?.({
+                                  ...ruling,
+                                  photos: photos.map((x) =>
+                                    x.id === p.id
+                                      ? { ...x, notaCampo: e.target.value }
+                                      : x
+                                  ),
+                                })
+                              }
+                            />
+                          ) : (
+                            p.notaCampo
+                          )}
+                        </figcaption>
+                      ) : null}
+                    </figure>
+                    <div className="gen-doc-stack">
+                      {editable ? (
+                        <label className="gen-doc-edit">
+                          <span className="text-sm font-medium">Lectura</span>
+                          <textarea
+                            rows={4}
+                            value={lectura?.descripcion || ""}
+                            placeholder="Deje la lectura de la IA o edítela."
+                            onChange={(e) => {
+                              const rest = (ruling.lecturaPorFoto || []).filter(
+                                (row) => Number(row.indice) !== n
+                              );
+                              patch({
+                                lecturaPorFoto: [
+                                  ...rest,
+                                  { indice: n, descripcion: e.target.value },
+                                ].sort(
+                                  (a, b) => Number(a.indice) - Number(b.indice)
+                                ),
+                              });
+                            }}
+                          />
+                        </label>
+                      ) : lectura?.descripcion ? (
+                        <p className="gen-doc-prose">
+                          <strong>Lectura. </strong>
+                          {lectura.descripcion}
+                        </p>
+                      ) : null}
+                      {items.length ? (
+                        items.map((h, hi) => (
+                          <FindingCard
+                            key={h.id || `${h.titulo}-${hi}`}
+                            h={h}
+                            photoCount={photos.length}
+                            editable={editable}
+                            onChange={(next) => patchFinding(h, next)}
+                            onRemove={() => dropFinding(h)}
+                          />
+                        ))
+                      ) : (
+                        <p className="gen-doc-hint">
+                          {ruling.resumen
+                            ? "Sin no conformidad asignada a esta foto."
+                            : "Analice como interventor para ver hallazgos junto a cada imagen."}
+                        </p>
+                      )}
+                      {editable ? (
+                        <button
+                          type="button"
+                          className="gen-doc-link"
+                          onClick={() =>
+                            patch({
+                              hallazgos: [...ruling.hallazgos, emptyFinding(n)],
+                            })
+                          }
+                        >
+                          Añadir hallazgo a Foto {n}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-        </section>
+                </article>
+              );
+            })}
+          </div>
+        </DocSection>
       ) : null}
 
       {leftover.length ? (
-        <section className="mt-6 space-y-3">
-          <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
-            Hallazgos sin foto asignada
-          </h2>
-          {leftover.map((h, i) => (
-            <FindingCard
-              key={h.id || `${h.titulo}-x-${i}`}
-              h={h}
-              photoCount={photos.length}
-              editable={editable}
-              onChange={(next) => patchFinding(h, next)}
-              onRemove={() => dropFinding(h)}
-            />
-          ))}
-        </section>
+        <DocSection title="Hallazgos sin foto asignada">
+          <div className="gen-doc-stack">
+            {leftover.map((h, i) => (
+              <FindingCard
+                key={h.id || `${h.titulo}-x-${i}`}
+                h={h}
+                photoCount={photos.length}
+                editable={editable}
+                onChange={(next) => patchFinding(h, next)}
+                onRemove={() => dropFinding(h)}
+              />
+            ))}
+          </div>
+        </DocSection>
       ) : null}
 
       {ruling.conformidades.length || editable ? (
-        <section className="mt-6">
-          <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
-            Lo que se ve conforme
-          </h2>
+        <DocSection title="Lo que se ve conforme">
           {editable ? (
-            <ul className="mt-2 space-y-2">
+            <div className="gen-doc-stack">
               {ruling.conformidades.map((c, i) => (
-                <li key={`conf-${i}`} className="flex gap-2">
+                <div key={`conf-${i}`} className="flex items-start gap-2">
                   <textarea
-                    className={field}
+                    className="gen-doc-field"
                     rows={2}
                     value={c}
                     onChange={(e) =>
@@ -417,7 +379,8 @@ export function RulingDocument({
                   />
                   <button
                     type="button"
-                    className="shrink-0 text-xs text-[#9b2c2c] underline"
+                    className="gen-doc-link shrink-0"
+                    data-tone="bad"
                     onClick={() =>
                       patch({
                         conformidades: ruling.conformidades.filter(
@@ -428,59 +391,43 @@ export function RulingDocument({
                   >
                     Quitar
                   </button>
-                </li>
+                </div>
               ))}
-              <li>
-                <button
-                  type="button"
-                  className="text-xs font-semibold text-[#1f6b45] underline"
-                  onClick={() =>
-                    patch({
-                      conformidades: [...ruling.conformidades, ""],
-                    })
-                  }
-                >
-                  Añadir conformidad
-                </button>
-              </li>
-            </ul>
+              <button
+                type="button"
+                className="gen-doc-link"
+                onClick={() =>
+                  patch({ conformidades: [...ruling.conformidades, ""] })
+                }
+              >
+                Añadir conformidad
+              </button>
+            </div>
           ) : (
-            <ul className="mt-2 list-disc pl-5 text-sm leading-6">
+            <ul className="gen-doc-list">
               {ruling.conformidades.map((c) => (
                 <li key={c}>{c}</li>
               ))}
             </ul>
           )}
-        </section>
+        </DocSection>
       ) : null}
 
       {ruling.limites || editable ? (
-        <section className="mt-6">
-          <h2 className="text-sm font-semibold tracking-wide text-[#1f6b45] uppercase">
-            Límites de la evidencia
-          </h2>
+        <DocSection title="Límites de la evidencia">
           {editable ? (
             <textarea
-              className={`${field} mt-2`}
+              className="gen-doc-field mt-2"
               rows={4}
               value={ruling.limites}
               placeholder="Qué no se puede afirmar con estas fotos."
               onChange={(e) => patch({ limites: e.target.value })}
             />
           ) : (
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-              {ruling.limites}
-            </p>
+            <p className="gen-doc-prose">{ruling.limites}</p>
           )}
-        </section>
+        </DocSection>
       ) : null}
-
-      <footer className="mt-10 border-t border-[#eee8dc] pt-4 text-xs leading-5 text-[#6d7c74]">
-        Memoria de interventoría Genera Solutions SAS (RETIE / NTC 2050 y normas
-        conexas). No reemplaza el dictamen de un organismo de inspección
-        acreditado ONAC ni la firma del ingeniero competente. Verificar
-        numerales en la edición vigente.
-      </footer>
-    </article>
+    </DocSheet>
   );
 }

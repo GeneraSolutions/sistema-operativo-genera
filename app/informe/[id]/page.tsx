@@ -29,7 +29,7 @@ export default async function SharedReportPage({
   return (
     <div className="min-h-screen bg-[#f4efe4] text-[#12241c]">
       <PrintBar title="Informe técnico Genera Solutions SAS" />
-      <main className="py-6">
+      <main className="px-4 py-8 sm:px-6">
         <ReportDocument report={report} />
       </main>
     </div>
