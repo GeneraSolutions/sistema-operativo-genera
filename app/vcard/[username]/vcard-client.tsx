@@ -99,7 +99,7 @@ const PROFILES_DB: Record<string, VCardData> = {
     whatsappNumber: "573027460232",
     email: "tatiana.ospina@generasolutionsas.com",
     ...GENERA_PUBLIC,
-    avatarUrl: "/brand/tatiana.jpg?v=2",
+    avatarUrl: "/brand/tatiana.jpg?v=3",
     defaultWaMessage:
       "Hola Tatiana, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: ["Energía Solar", "Proyectos Fotovoltaicos", "Eficiencia Energética"],
