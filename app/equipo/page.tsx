@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { WorkFold } from "@/components/WorkFold";
 import {
   APP_MODULES,
   ROLE_LABELS,
@@ -33,6 +33,9 @@ interface RoleOption {
 
 const TEAM_CACHE_KEY = "genera:team-directory";
 
+const field =
+  "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
+
 function readTeamCache(): TeamUser[] {
   try {
     const raw = localStorage.getItem(TEAM_CACHE_KEY);
@@ -62,8 +65,10 @@ export default function EquipoPage() {
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
-  const [showCargo, setShowCargo] = useState(false);
-  const [formOpen, setFormOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState("");
+  const [menu, setMenu] = useState(false);
+  const [panel, setPanel] = useState<"new" | "cargos" | "install" | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState({
     name: "",
     username: "",
@@ -74,7 +79,6 @@ export default function EquipoPage() {
     label: "",
     modules: ["visita", "inteligencia"] as AppModule[],
   });
-  const [installOpen, setInstallOpen] = useState(false);
   const [installConfig, setInstallConfig] = useState<AliadoInstallConfig>(
     DEFAULT_ALIADO_INSTALL
   );
@@ -83,6 +87,8 @@ export default function EquipoPage() {
     const map = new Map(roles.map((r) => [r.id, r.label]));
     return (role: string) => map.get(role) || ROLE_LABELS[role] || role;
   }, [roles]);
+  const selected = users.find((u) => u.id === selectedId) ?? null;
+  const activeCount = users.filter((u) => u.active).length;
 
   async function load() {
     try {
@@ -103,6 +109,37 @@ export default function EquipoPage() {
       if (cached.length) setUsers(cached);
       setError("No se pudo cargar el equipo");
     }
+  }
+
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setMenu(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  useEffect(() => {
+    if (!panel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPanel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panel]);
+
+  function openPanel(next: "new" | "cargos" | "install") {
+    setMenu(false);
+    setPanel(next);
   }
 
   useEffect(() => {
@@ -135,6 +172,8 @@ export default function EquipoPage() {
       writeTeamCache(next);
     }
     setForm({ name: "", username: "", password: "", role: form.role });
+    if (data.user?.id) setSelectedId(data.user.id);
+    setPanel(null);
     setOk(`Usuario ${data.user.username} creado.`);
     void load();
   }
@@ -177,6 +216,7 @@ export default function EquipoPage() {
     const next = users.filter((u) => u.id !== id);
     setUsers(next);
     writeTeamCache(next);
+    if (selectedId === id) setSelectedId("");
     setOk("Usuario eliminado.");
   }
 
@@ -231,25 +271,71 @@ export default function EquipoPage() {
 
   return (
     <AppShell
-      title="Equipo y cargos"
-      subtitle="Usuarios del sistema operativo"
+      title="Equipo"
+      subtitle="Personas, cargos y acceso"
+      actions={
+        <>
+          <div className="os-menu print:hidden" ref={menuRef}>
+            <button
+              type="button"
+              className="os-btn os-btn-ghost"
+              aria-expanded={menu}
+              onClick={() => setMenu((open) => !open)}
+            >
+              Más
+              <ChevronDown size={15} />
+            </button>
+            {menu ? (
+              <div className="os-menu-pop" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={() => openPanel("cargos")}
+                >
+                  <span>Cargos</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={() => openPanel("install")}
+                >
+                  <span>Instalación para aliado</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="os-btn os-btn-primary"
+            onClick={() => openPanel("new")}
+          >
+            <Plus size={16} />
+            Nuevo usuario
+          </button>
+        </>
+      }
     >
-      <p className="os-page-intro mb-6 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-        Cree un usuario por persona. El cargo define a qué módulos entra. Las
-        consultas de Inteligencia del CEO no las ve nadie más; el CEO sí ve las
-        de todo el equipo.
-      </p>
-
-      <section className="os-panel mb-4 rounded-2xl border border-[#ddd6c8] bg-white p-5">
-        <WorkFold
-          title="Nuevo usuario"
-          open={formOpen}
-          onToggle={() => setFormOpen((v) => !v)}
-        >
-      <form
-        onSubmit={onCreate}
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
-      >
+      {panel === "new" ? (
+        <>
+          <div className="os-drawer-backdrop" onClick={() => setPanel(null)} />
+          <aside className="os-drawer" data-open="true" aria-label="Nuevo usuario">
+            <header className="os-drawer-head">
+              <div>
+                <p className="os-drawer-kicker">Acceso</p>
+                <h2 className="os-drawer-title">Nuevo usuario</h2>
+              </div>
+              <button
+                type="button"
+                className="os-icon-btn"
+                aria-label="Cerrar"
+                onClick={() => setPanel(null)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <form onSubmit={onCreate} className="os-drawer-body">
         <label className="text-sm lg:col-span-1">
           <span className="mb-1 block font-medium">Nombre</span>
           <input
@@ -302,21 +388,35 @@ export default function EquipoPage() {
         <div className="flex items-end gap-2">
           <button
             type="submit"
-            className="w-full rounded-xl bg-[#0f2a1f] px-3 py-2.5 text-sm font-semibold text-white"
+            className="os-btn os-btn-primary"
           >
             Crear usuario
           </button>
         </div>
       </form>
-        </WorkFold>
-      </section>
+          </aside>
+        </>
+      ) : null}
 
-      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
-        <WorkFold
-          title="Cargos"
-          open={showCargo}
-          onToggle={() => setShowCargo((v) => !v)}
-        >
+      {panel === "cargos" ? (
+        <>
+          <div className="os-drawer-backdrop" onClick={() => setPanel(null)} />
+          <aside className="os-drawer" data-open="true" aria-label="Cargos">
+            <header className="os-drawer-head">
+              <div>
+                <p className="os-drawer-kicker">Acceso</p>
+                <h2 className="os-drawer-title">Cargos</h2>
+              </div>
+              <button
+                type="button"
+                className="os-icon-btn"
+                aria-label="Cerrar"
+                onClick={() => setPanel(null)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <div className="os-drawer-body">
           <p className="os-page-intro mb-3 text-xs text-[#4d5c55]">
             Auxiliar, auxiliar eléctrico, coordinador de proyectos y los que
             necesite.
@@ -409,15 +509,30 @@ export default function EquipoPage() {
                 ))}
             </ul>
           ) : null}
-        </WorkFold>
-      </section>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
-      <section className="os-panel mb-8 rounded-2xl border border-[#ddd6c8] bg-white p-5">
-        <WorkFold
-          title="Instalación para aliado"
-          open={installOpen}
-          onToggle={() => setInstallOpen((v) => !v)}
-        >
+      {panel === "install" ? (
+        <>
+          <div className="os-drawer-backdrop" onClick={() => setPanel(null)} />
+          <aside className="os-drawer" data-open="true" aria-label="Instalación para aliado">
+            <header className="os-drawer-head">
+              <div>
+                <p className="os-drawer-kicker">Aliado</p>
+                <h2 className="os-drawer-title">Instalación</h2>
+              </div>
+              <button
+                type="button"
+                className="os-icon-btn"
+                aria-label="Cerrar"
+                onClick={() => setPanel(null)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <div className="os-drawer-body">
           <p className="mb-3 text-xs text-[#6d7c74]">
             Tarifa al aliado: máximo(kWp, piso) × COP/kWp + herramienta + viaje +
             ARL. Los jornales son el piso interno, no se le cobran aparte.
@@ -569,7 +684,7 @@ export default function EquipoPage() {
           </div>
           <button
             type="button"
-            className="mt-3 rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white"
+            className="os-btn os-btn-primary mt-3"
             onClick={async () => {
               setError("");
               const res = await fetch("/api/aliado/install", {
@@ -588,57 +703,157 @@ export default function EquipoPage() {
           >
             Guardar tarifas
           </button>
-        </WorkFold>
-      </section>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
-      {error ? <p className="mb-3 text-sm text-[#9b2c2c]">{error}</p> : null}
-      {ok ? <p className="mb-3 text-sm text-[#1f6b45]">{ok}</p> : null}
-
-      <div className="os-panel overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-[#f7f4ee] text-xs uppercase tracking-wide text-[#6d7c74]">
-            <tr>
-              <th className="px-4 py-3">Nombre</th>
-              <th className="px-4 py-3">Usuario</th>
-              <th className="px-4 py-3">Cargo</th>
-              <th className="px-4 py-3">Estado</th>
-              <th className="px-4 py-3">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-t border-[#eee8dc]">
-                <td className="px-4 py-3">{u.name}</td>
-                <td className="px-4 py-3">{u.username}</td>
-                <td className="px-4 py-3">{roleLabel(u.role)}</td>
-                <td className="px-4 py-3">
-                  {u.active ? "Activo" : "Inactivo"}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="text-xs font-semibold underline"
-                      onClick={() => void patch(u.id, { active: !u.active })}
-                    >
-                      {u.active ? "Desactivar" : "Activar"}
-                    </button>
-                    {u.role !== "ceo" ? (
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-[#9b2c2c] underline"
-                        onClick={() => remove(u.id)}
+      <div className="os-inv-split">
+        <section className="os-work os-file-panel">
+          <div className="os-inv-sheet-bar">
+            <span>
+              {users.length} {users.length === 1 ? "persona" : "personas"} · {activeCount}{" "}
+              {activeCount === 1 ? "activa" : "activas"}
+            </span>
+          </div>
+          {users.length === 0 ? (
+            <div className="os-empty">
+              <p className="os-empty-title">Aún no hay personas</p>
+              <p className="os-empty-hint">
+                Cree un usuario por persona. El cargo define a qué módulos entra.
+              </p>
+            </div>
+          ) : (
+            <div className="os-inv-table-wrap">
+              <table className="os-inv-table">
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Usuario</th>
+                    <th>Cargo</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => {
+                    const on = selectedId === u.id;
+                    return (
+                      <tr
+                        key={u.id}
+                        className={on ? "is-on" : u.active ? "" : "is-off"}
+                        onClick={() => setSelectedId(u.id)}
                       >
-                        Eliminar
-                      </button>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                        <td>
+                          <button type="button" className="os-inv-row-open">
+                            <span className="os-work-row-title">{u.name}</span>
+                          </button>
+                        </td>
+                        <td>{u.username}</td>
+                        <td>{roleLabel(u.role)}</td>
+                        <td>
+                          <span className="os-pill" data-tone={u.active ? "ok" : "neutral"}>
+                            {u.active ? "Activo" : "Inactivo"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <aside
+          className="os-drawer os-inv-pane"
+          data-open={selected ? "true" : undefined}
+          aria-hidden={!selected}
+          aria-label="Ficha de la persona"
+        >
+          <div className="os-empty os-inv-pane-empty">
+            <p className="os-empty-title">La ficha aparece aquí</p>
+            <p className="os-empty-hint">
+              Pulse una persona para ver el cargo, activarla o quitarla. El CEO no se elimina.
+            </p>
+          </div>
+          {selected ? (
+            <>
+              <header className="os-drawer-head">
+                <div className="min-w-0">
+                  <p className="os-drawer-kicker">{selected.username}</p>
+                  <h2 className="os-drawer-title">{selected.name}</h2>
+                  <span className="os-pill" data-tone={selected.active ? "ok" : "neutral"}>
+                    {selected.active ? "Activo" : "Inactivo"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="os-icon-btn"
+                  aria-label="Cerrar ficha"
+                  onClick={() => setSelectedId("")}
+                >
+                  <X size={18} />
+                </button>
+              </header>
+              <div className="os-drawer-body">
+                {selected.role === "ceo" ? (
+                  <p className="os-cnt-field">
+                    <span>Cargo</span>
+                    {roleLabel(selected.role)}
+                  </p>
+                ) : (
+                  <label className="os-cnt-field">
+                    <span>Cargo</span>
+                    <select
+                      className={field}
+                      value={selected.role}
+                      onChange={(e) => void patch(selected.id, { role: e.target.value })}
+                    >
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <p className="os-page-intro mt-4 text-sm">
+                  El cargo define a qué módulos entra. Las consultas de Inteligencia del CEO no las ve nadie más.
+                </p>
+              </div>
+              <footer className="os-drawer-foot">
+                {selected.role !== "ceo" ? (
+                  <button
+                    type="button"
+                    className="os-btn os-btn-ghost is-danger"
+                    onClick={() => void remove(selected.id)}
+                  >
+                    Eliminar
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <button
+                  type="button"
+                  className="os-btn os-btn-ghost"
+                  onClick={() => void patch(selected.id, { active: !selected.active })}
+                >
+                  {selected.active ? "Desactivar" : "Activar"}
+                </button>
+              </footer>
+            </>
+          ) : null}
+        </aside>
+        {selected ? (
+          <div className="os-drawer-backdrop" onClick={() => setSelectedId("")} />
+        ) : null}
       </div>
+
+      {error || ok ? (
+        <div className="os-toast" role="status">
+          {error || ok}
+        </div>
+      ) : null}
     </AppShell>
   );
 }
