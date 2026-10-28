@@ -1,16 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BarChart3,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Library,
+  Link2,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { WorkFold } from "@/components/WorkFold";
 import {
   CONTENT_BANK,
   CONTENT_FORMAT_LABELS,
   CONTENT_NETWORK_LABELS,
   CONTENT_OBJECTIVE_LABELS,
   CONTENT_STATUS_LABELS,
-  CONTENT_STATUS_TONE,
   WEEKDAY_NAMES,
   addDays,
   addMonths,
@@ -56,6 +66,13 @@ import {
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
 
+const STATUS_TONE: Record<ContentStatus, "neutral" | "info" | "warn" | "ok"> = {
+  idea: "neutral",
+  aprobado: "info",
+  grabado: "warn",
+  publicado: "ok",
+};
+
 const VIEW_KEY = "genera.contenido.vista";
 type CalendarView = "dia" | "semana" | "mes";
 
@@ -97,24 +114,18 @@ function PieceCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full rounded-xl border px-2.5 py-2 text-left text-sm ${
-        selected
-          ? "border-[#1f6b45] bg-[#e8f6ee]"
-          : "border-[#eee8dc] bg-[#fbfaf6]"
-      }`}
+      className={`os-cnt-piece${selected ? " is-on" : ""}`}
     >
-      <span
-        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${CONTENT_STATUS_TONE[piece.status]}`}
-      >
+      <span className="os-pill" data-tone={STATUS_TONE[piece.status]}>
         {CONTENT_STATUS_LABELS[piece.status]}
       </span>
-      <p className={`mt-1 font-semibold leading-5 ${compact ? "line-clamp-2" : ""}`}>
+      <span className={`os-cnt-piece-title${compact ? " line-clamp-2" : ""}`}>
         {piece.title || "Sin título"}
-      </p>
+      </span>
       {compact ? null : (
-        <p className="text-[11px] text-[#6d7c74]">
+        <span className="os-cnt-piece-meta">
           {CONTENT_FORMAT_LABELS[piece.format]} · {CONTENT_NETWORK_LABELS[piece.network]}
-        </p>
+        </span>
       )}
     </button>
   );
@@ -129,15 +140,13 @@ export default function ContenidoPage() {
   const [flash, setFlash] = useState("");
   const [note, setNote] = useState("");
   const [ask, setAsk] = useState("");
-  const [briefOpen, setBriefOpen] = useState(true);
-  const [bankOpen, setBankOpen] = useState(false);
-  const [tandaOpen, setTandaOpen] = useState(true);
-  const [reportOpen, setReportOpen] = useState(true);
   const [reports, setReports] = useState<ContentWeekReport[]>([]);
   const [reportBusy, setReportBusy] = useState(false);
   const [improveAsk, setImproveAsk] = useState("");
   const [improveBusy, setImproveBusy] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(true);
+  const [menu, setMenu] = useState(false);
+  const [panel, setPanel] = useState<"link" | "numbers" | "bank" | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [videoUrl, setVideoUrl] = useState("");
   const [videoNotes, setVideoNotes] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
@@ -188,6 +197,32 @@ export default function ContenidoPage() {
   useEffect(() => {
     setImproveAsk("");
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setMenu(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  useEffect(() => {
+    if (!panel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPanel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panel]);
 
   useEffect(() => {
     setView(readView());
@@ -256,7 +291,7 @@ export default function ContenidoPage() {
       setNote(data.note || "");
       setFlash(
         data.offline
-          ? "Semana lista desde el banco (demo). Con OPENAI_API_KEY Daniela escribe briefs nuevos."
+          ? "Semana lista desde el banco. Modo demo."
           : "Daniela armó la semana. Aprueben y graben."
       );
       const first = incoming[0];
@@ -304,8 +339,8 @@ export default function ContenidoPage() {
       }
       setFlash(
         data.offline
-          ? "Lectura local. Con OPENAI_API_KEY Daniela interpreta la semana."
-          : "Daniela leyó la semana. Abajo está qué repetir y qué parar."
+          ? "Lectura local. Modo demo."
+          : "Daniela leyó la semana. La lectura queda en Números."
       );
     } catch {
       setFlash("No hay conexión con Daniela.");
@@ -376,6 +411,7 @@ export default function ContenidoPage() {
     persistContentCloud(next);
     setSelectedId(piece.id);
     setCursor(date);
+    setPanel(null);
   }
 
   async function analizarEnlace() {
@@ -403,7 +439,7 @@ export default function ContenidoPage() {
       setAnalysis(data.analysis ?? null);
       setFlash(
         data.offline
-          ? "Checklist local. Con OPENAI_API_KEY Daniela reescribe el guion."
+          ? "Checklist local. Modo demo."
           : "Daniela analizó el enlace. Revisen y sumen la pieza si sirve."
       );
     } catch {
@@ -440,6 +476,7 @@ export default function ContenidoPage() {
     setPieces(next);
     persistContentCloud(next);
     setSelectedId(piece.id);
+    setPanel(null);
     setFlash("Pieza nueva en el día enfocado. No es el video original: es la versión Genera.");
     window.setTimeout(() => setFlash(""), 5000);
   }
@@ -483,110 +520,164 @@ export default function ContenidoPage() {
         ? `Semana del ${weekdayLabel(weekStart)}`
         : monthLabel(cursor);
 
+  function openPanel(next: "link" | "numbers" | "bank") {
+    setMenu(false);
+    setPanel(next);
+  }
+
   return (
     <AppShell
       title="Contenido"
-      subtitle="Calendario · briefs · Daniela (Growth)"
-    >
-      <p className="os-page-intro mb-4 max-w-3xl text-sm leading-6 text-[#4d5c55]">
-        Ustedes filman. Daniela propone la semana. El equipo ve el mismo
-        tablero: idea, aprobado, grabado, publicado. Un CTA de WhatsApp por
-        semana. Elija ver un día, la semana o el mes.{" "}
-        <Link href="/inteligencia?e=growth" className="font-medium text-[#1f6b45] underline">
-          Preguntas sueltas: Inteligencia → Lic. Daniela Ríos
-        </Link>
-        .
-      </p>
-
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-xl border border-[#d8d2c4] bg-white p-1">
-          {(
-            [
-              ["dia", "Día"],
-              ["semana", "Semana"],
-              ["mes", "Mes"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                view === id
-                  ? "bg-[#0f2a1f] text-white"
-                  : "text-[#4d5c55] hover:bg-[#f7f4ee]"
-              }`}
-              onClick={() => setViewPersist(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-2 text-sm"
-          onClick={shift}
-        >
-          Anterior
-        </button>
-        <p className="px-2 text-sm font-semibold capitalize">{heading}</p>
-        <button
-          type="button"
-          className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-2 text-sm"
-          onClick={shiftNext}
-        >
-          Siguiente
-        </button>
-        <button
-          type="button"
-          className="rounded-xl border border-[#d8d2c4] bg-white px-3 py-2 text-sm"
-          onClick={goToday}
-        >
-          Hoy
-        </button>
-        <span className="text-xs text-[#6d7c74]">
-          {visible.length} piezas · {pending} pendientes
-        </span>
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-2">
-        <input
-          className={`${field} max-w-md`}
-          placeholder="Pedido a Daniela (opcional): esta semana hay visita en Sopó…"
-          value={ask}
-          onChange={(e) => setAsk(e.target.value)}
-        />
-        <button
-          type="button"
-          disabled={busy}
-          className="rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-          onClick={() => void generarSemana(week.length === 0)}
-        >
-          {busy ? "Armando…" : week.length ? "Completar días vacíos" : "Pedir semana a Daniela"}
-        </button>
-        {week.length ? (
+      subtitle="Ustedes filman. Daniela propone la semana."
+      actions={
+        <>
+          <div className="os-seg" role="tablist" aria-label="Vista del calendario">
+            {(
+              [
+                ["dia", "Día"],
+                ["semana", "Semana"],
+                ["mes", "Mes"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                className="os-seg-btn"
+                aria-selected={view === id}
+                onClick={() => setViewPersist(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
+            className="os-btn os-btn-primary"
             disabled={busy}
-            className="rounded-xl border border-[#d4b46a] bg-[#fff8e8] px-4 py-2.5 text-sm font-semibold text-[#8a6b2a] disabled:opacity-60"
-            onClick={() => void generarSemana(true)}
+            onClick={() => void generarSemana(week.length === 0)}
           >
-            Regenerar ideas (conserva grabado/publicado)
+            <Sparkles size={16} />
+            {busy ? "Armando…" : week.length ? "Completar días" : "Pedir semana"}
           </button>
-        ) : null}
-      </div>
-      {note ? (
-        <p className="mb-3 rounded-xl bg-[#e8f6ee] px-3 py-2 text-sm text-[#244a38]">
-          {note}
-        </p>
-      ) : null}
-      {flash ? <p className="mb-3 text-sm text-[#1f6b45]">{flash}</p> : null}
+          <div className="os-menu print:hidden" ref={menuRef}>
+            <button
+              type="button"
+              className="os-btn os-btn-ghost"
+              aria-expanded={menu}
+              onClick={() => setMenu((open) => !open)}
+            >
+              Más
+              <ChevronDown size={15} />
+            </button>
+            {menu ? (
+              <div className="os-menu-pop" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={() => openPanel("link")}
+                >
+                  <Link2 size={15} />
+                  <span>Analizar enlace</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={() => openPanel("numbers")}
+                >
+                  <BarChart3 size={15} />
+                  <span>Números de la semana</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="os-menu-item"
+                  onClick={() => openPanel("bank")}
+                >
+                  <Library size={15} />
+                  <span>Banco</span>
+                </button>
+                {week.length ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="os-menu-item"
+                    disabled={busy}
+                    onClick={() => {
+                      setMenu(false);
+                      void generarSemana(true);
+                    }}
+                  >
+                    <RefreshCw size={15} />
+                    <span>Regenerar ideas</span>
+                  </button>
+                ) : null}
+                <Link
+                  href="/inteligencia?e=growth"
+                  className="os-menu-foot"
+                  onClick={() => setMenu(false)}
+                >
+                  Preguntar a Daniela
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        </>
+      }
+    >
 
-      <div className="os-panel mb-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">
-        <WorkFold
-          title="Enlace de redes · Daniela analiza"
-          open={linkOpen}
-          onToggle={() => setLinkOpen((v) => !v)}
-        >
+      <div className="os-cnt-split">
+        <div>
+          <section className="os-work os-file-panel os-cnt-board">
+            <div className="os-cnt-board-head">
+              <div className="min-w-0">
+                <p className="os-cnt-heading">{heading}</p>
+                <p className="os-board-hint">
+                  {visible.length} {visible.length === 1 ? "pieza" : "piezas"} · {pending}{" "}
+                  {pending === 1 ? "pendiente" : "pendientes"}
+                </p>
+              </div>
+              <div className="os-cnt-nav">
+                <button type="button" className="os-icon-btn" aria-label="Anterior" onClick={shift}>
+                  <ChevronLeft size={18} />
+                </button>
+                <button type="button" className="os-btn os-btn-ghost os-btn-sm" onClick={goToday}>
+                  Hoy
+                </button>
+                <button type="button" className="os-icon-btn" aria-label="Siguiente" onClick={shiftNext}>
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+              <input
+                className="os-cnt-ask"
+                placeholder="Pedido a Daniela (opcional): esta semana hay visita en Sopó…"
+                value={ask}
+                onChange={(e) => setAsk(e.target.value)}
+              />
+            </div>
+            {note ? <p className="os-cnt-note">{note}</p> : null}
+
+            {panel === "link" ? (
+              <>
+                <div className="os-drawer-backdrop" onClick={() => setPanel(null)} />
+                <aside className="os-drawer" data-open="true">
+                  <header className="os-drawer-head">
+                    <div>
+                      <p className="os-drawer-kicker">Daniela</p>
+                      <h2 className="os-drawer-title">Analizar enlace</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="os-icon-btn"
+                      aria-label="Cerrar"
+                      onClick={() => setPanel(null)}
+                    >
+                      <X size={18} />
+                    </button>
+                  </header>
+                  <div className="os-drawer-body">
           <p className="os-page-intro mb-3 text-sm">
             Solo el enlace. Daniela saca sola lo que se dice (subtítulos o voz
             a texto) y les devuelve crítica + guion Genera. No transcriban.
@@ -665,85 +756,81 @@ export default function ContenidoPage() {
               </div>
             </div>
           ) : null}
-        </WorkFold>
-      </div>
+                  </div>
+                </aside>
+              </>
+            ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-        <div>
-          {view === "dia" ? (
-            <section className="rounded-2xl border border-[#ddd6c8] bg-white p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold tracking-wide text-[#6d7c74] uppercase">
-                  {weekdayLong(cursor)}
-                  {cursor === today ? " · hoy" : ""}
-                </p>
-                <button
-                  type="button"
-                  className="text-xs text-[#1f6b45] underline"
-                  onClick={() => addEmpty(cursor)}
-                >
-                  + pieza
-                </button>
-              </div>
-              {dayPieces.length === 0 ? (
-                <p className="mt-4 text-sm text-[#8a7f70]">
-                  Libre. Descanso o grabar tanda.
-                </p>
-              ) : (
-                <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {dayPieces.map((p) => (
-                    <li key={p.id}>
-                      <PieceCard
-                        piece={p}
-                        selected={selectedId === p.id}
-                        onSelect={() => setSelectedId(p.id)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ) : null}
-
-          {view === "semana" ? (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
-              {days.map((date) => {
-                const items = week.filter((p) => p.date === date);
-                return (
-                  <section
-                    key={date}
-                    className={`rounded-2xl border bg-white p-3 ${
-                      date === today
-                        ? "border-[#1f6b45]"
-                        : "border-[#ddd6c8]"
-                    }`}
+            {view === "dia" ? (
+              <div className="os-cnt-daylist">
+                <div className="os-cnt-daylist-bar">
+                  <button
+                    type="button"
+                    className="os-btn os-btn-ghost os-btn-sm"
+                    onClick={() => addEmpty(cursor)}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        className="text-left text-xs font-semibold tracking-wide text-[#6d7c74] uppercase"
-                        onClick={() => {
-                          setCursor(date);
-                          setViewPersist("dia");
-                        }}
+                    <Plus size={14} />
+                    Pieza
+                  </button>
+                </div>
+                {dayPieces.length === 0 ? (
+                  <div className="os-empty">
+                    <p className="os-empty-title">Día libre</p>
+                    <p className="os-empty-hint">Descanso, o sume una pieza para grabar.</p>
+                  </div>
+                ) : (
+                  <ul>
+                    {dayPieces.map((p) => (
+                      <li key={p.id}>
+                        <PieceCard
+                          piece={p}
+                          selected={selectedId === p.id}
+                          onSelect={() => setSelectedId(p.id)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
+
+            {view === "semana" ? (
+              <div className="os-cnt-week-scroll">
+                <div className="os-cnt-week">
+                  {days.map((date, index) => {
+                    const items = week.filter((p) => p.date === date);
+                    return (
+                      <section
+                        key={date}
+                        className={`os-cnt-day${date === today ? " is-today" : ""}`}
                       >
-                        {weekdayLabel(date)}
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs text-[#1f6b45] underline"
-                        onClick={() => addEmpty(date)}
-                      >
-                        + pieza
-                      </button>
-                    </div>
-                    {items.length === 0 ? (
-                      <p className="mt-3 text-xs text-[#8a7f70]">Libre</p>
-                    ) : (
-                      <ul className="mt-2 space-y-2">
-                        {items.map((p) => (
-                          <li key={p.id}>
+                        <div className="os-cnt-day-head">
+                          <button
+                            type="button"
+                            className="text-left"
+                            onClick={() => {
+                              setCursor(date);
+                              setViewPersist("dia");
+                            }}
+                          >
+                            <span className="os-cnt-day-name">{WEEKDAY_NAMES[index]}</span>
+                            <span className="os-cnt-day-num">{Number(date.slice(8))}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="os-icon-btn is-sm"
+                            aria-label={`Sumar pieza el ${weekdayLabel(date)}`}
+                            onClick={() => addEmpty(date)}
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                        {items.length === 0 ? (
+                          <p className="os-cnt-free">Libre</p>
+                        ) : (
+                          items.map((p) => (
                             <PieceCard
+                              key={p.id}
                               piece={p}
                               selected={selectedId === p.id}
                               compact
@@ -752,100 +839,161 @@ export default function ContenidoPage() {
                                 setCursor(date);
                               }}
                             />
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {view === "mes" ? (
-            <div className="overflow-x-auto rounded-2xl border border-[#ddd6c8] bg-white p-3">
-              <div className="grid min-w-[640px] grid-cols-7 gap-px bg-[#eee8dc]">
-                {WEEKDAY_NAMES.map((name) => (
-                  <p
-                    key={name}
-                    className="bg-[#f7f4ee] px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-[#6d7c74]"
-                  >
-                    {name}
-                  </p>
-                ))}
-                {grid.map((date) => {
-                  const items = pieces.filter((p) => p.date === date);
-                  const inMonth = date.startsWith(monthStart.slice(0, 7));
-                  return (
-                    <div
-                      key={date}
-                      className={`min-h-[7.5rem] bg-white p-1.5 text-left align-top ${
-                        date === cursor ? "ring-2 ring-inset ring-[#1f6b45]" : ""
-                      } ${date === today ? "bg-[#e8f6ee]" : ""} ${
-                        inMonth ? "" : "bg-[#fbfaf6] text-[#b0a89c]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <button
-                          type="button"
-                          className="text-xs font-semibold"
-                          onClick={() => setCursor(date)}
-                        >
-                          {date.slice(8)}
-                        </button>
-                        <button
-                          type="button"
-                          className="text-[10px] text-[#1f6b45] underline"
-                          onClick={() => addEmpty(date)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <ul className="mt-1 space-y-1">
-                        {items.slice(0, 3).map((p) => (
-                          <li key={p.id}>
-                            <button
-                              type="button"
-                              className={`block w-full truncate rounded px-1 py-0.5 text-left text-[10px] leading-4 ${CONTENT_STATUS_TONE[p.status]}`}
-                              onClick={() => {
-                                setSelectedId(p.id);
-                                setCursor(date);
-                              }}
-                            >
-                              {p.title || "Sin título"}
-                            </button>
-                          </li>
-                        ))}
-                        {items.length > 3 ? (
-                          <li className="text-[10px] text-[#6d7c74]">
-                            +{items.length - 3}
-                          </li>
-                        ) : null}
-                      </ul>
-                    </div>
-                  );
-                })}
+                          ))
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
               </div>
-              <p className="mt-2 text-xs text-[#6d7c74]">
-                Pulse un día para enfocarlo. El + suma una pieza. Pulse el título
-                para abrir el brief.
-              </p>
-            </div>
+            ) : null}
+
+            {view === "mes" ? (
+              <div className="os-cnt-month-scroll">
+                <div className="os-cnt-month-names">
+                  {WEEKDAY_NAMES.map((name) => (
+                    <span key={name}>{name}</span>
+                  ))}
+                </div>
+                <div className="os-cnt-month">
+                  {grid.map((date) => {
+                    const items = pieces.filter((p) => p.date === date);
+                    const inMonth = date.startsWith(monthStart.slice(0, 7));
+                    return (
+                      <div
+                        key={date}
+                        className={`os-cnt-cell${date === today ? " is-today" : ""}${
+                          date === cursor ? " is-on" : ""
+                        }${inMonth ? "" : " is-out"}`}
+                      >
+                        <div className="os-cnt-cell-head">
+                          <button type="button" onClick={() => setCursor(date)}>
+                            {Number(date.slice(8))}
+                          </button>
+                          <button
+                            type="button"
+                            className="os-icon-btn is-sm"
+                            aria-label={`Sumar pieza el ${weekdayLabel(date)}`}
+                            onClick={() => addEmpty(date)}
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                        <ul>
+                          {items.slice(0, 3).map((p) => (
+                            <li key={p.id}>
+                              <button
+                                type="button"
+                                className="os-cnt-chip"
+                                data-tone={STATUS_TONE[p.status]}
+                                onClick={() => {
+                                  setSelectedId(p.id);
+                                  setCursor(date);
+                                }}
+                              >
+                                {p.title || "Sin título"}
+                              </button>
+                            </li>
+                          ))}
+                          {items.length > 3 ? (
+                            <li className="os-cnt-more">+{items.length - 3}</li>
+                          ) : null}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="os-board-hint os-cnt-month-hint">
+                  Pulse un día para enfocarlo. El + suma una pieza. Pulse el título para abrir el brief.
+                </p>
+              </div>
+            ) : null}
+          </section>
+
+          {batches.length > 0 ? (
+            <section className="os-work os-file-panel os-cnt-tanda">
+              <p className="os-cnt-tanda-kicker">Tanda de grabación</p>
+              <div className="os-cnt-batches">
+                {batches.map(([lugar, items]) => (
+                  <div key={lugar}>
+                    <p className="os-cnt-batch-place">
+                      {lugar} · {items.length}
+                    </p>
+                    {items.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedId(p.id);
+                          setCursor(p.date);
+                        }}
+                      >
+                        {p.title || "Sin título"}
+                        <span>
+                          {CONTENT_STATUS_LABELS[p.status]}
+                          {p.owner ? ` · ${p.owner}` : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </section>
           ) : null}
         </div>
 
-        <div>
+        <aside
+          className="os-drawer os-cnt-pane"
+          data-open={selected ? "true" : "false"}
+        >
+          <div className="os-cnt-pane-empty">
+            <p className="os-empty-title">El brief aparece aquí</p>
+            <p className="os-empty-hint">
+              Pulse una pieza o pida la semana a Daniela.
+            </p>
+          </div>
           {selected ? (
-            <WorkFold
-              title="Brief de la pieza"
-              open={briefOpen}
-              onToggle={() => setBriefOpen((v) => !v)}
-            >
-              <p className="mb-2 text-xs text-[#6d7c74]">
-                {weekdayLong(selected.date)}
-              </p>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">Título</span>
+            <>
+              <header className="os-drawer-head">
+                <div className="min-w-0">
+                  <p className="os-drawer-kicker">{weekdayLong(selected.date)}</p>
+                  <h2 className="os-drawer-title">{selected.title || "Sin título"}</h2>
+                  <span className="os-pill" data-tone={STATUS_TONE[selected.status]}>
+                    {CONTENT_STATUS_LABELS[selected.status]}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="os-icon-btn"
+                  aria-label="Cerrar brief"
+                  onClick={() => setSelectedId("")}
+                >
+                  <X size={18} />
+                </button>
+              </header>
+              <div className="os-drawer-actions">
+                {(
+                  [
+                    ["aprobado", "Aprobar"],
+                    ["grabado", "Ya grabado"],
+                    ["publicado", "Publicado"],
+                  ] as const
+                ).map(([status, label]) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`os-btn os-btn-sm ${
+                      selected.status === status ? "os-btn-primary" : "os-btn-ghost"
+                    }`}
+                    onClick={() => patchSelected({ status })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="os-drawer-body">
+              <label className="os-cnt-field">
+                <span>Título</span>
                 <input
                   className={field}
                   value={selected.title}
@@ -1095,93 +1243,50 @@ export default function ContenidoPage() {
                   ))}
                 </div>
               ) : null}
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(
-                  [
-                    ["aprobado", "Aprobar"],
-                    ["grabado", "Ya grabado"],
-                    ["publicado", "Publicado"],
-                  ] as const
-                ).map(([status, label]) => (
-                  <button
-                    key={status}
-                    type="button"
-                    className="rounded-xl border border-[#1f6b45] px-3 py-1.5 text-xs font-semibold text-[#1f6b45]"
-                    onClick={() => patchSelected({ status })}
-                  >
-                    {label}
-                  </button>
-                ))}
+              </div>
+              <footer className="os-drawer-foot">
                 <button
                   type="button"
-                  className="rounded-xl px-3 py-1.5 text-xs text-[#9b2c2c] underline"
+                  className="os-btn os-btn-ghost is-danger"
                   onClick={() => remove(selected.id)}
                 >
                   Quitar
                 </button>
+                <button
+                  type="button"
+                  className="os-btn os-btn-ghost"
+                  onClick={() => setSelectedId("")}
+                >
+                  Cerrar
+                </button>
+              </footer>
+            </>
+          ) : null}
+        </aside>
+        {selected ? (
+          <div className="os-drawer-backdrop" onClick={() => setSelectedId("")} />
+        ) : null}
+      </div>
+
+      {panel === "numbers" ? (
+        <>
+          <div className="os-drawer-backdrop" onClick={() => setPanel(null)} />
+          <aside className="os-drawer" data-open="true">
+            <header className="os-drawer-head">
+              <div>
+                <p className="os-drawer-kicker">{heading}</p>
+                <h2 className="os-drawer-title">Números de la semana</h2>
               </div>
-            </WorkFold>
-          ) : (
-            <p className="rounded-2xl border border-dashed border-[#ddd6c8] p-4 text-sm text-[#6d7c74]">
-              Pulse una pieza o pida la semana a Daniela para ver el guion.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="os-panel mt-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">
-        <WorkFold
-          title="Tanda de grabación (esta semana)"
-          open={tandaOpen}
-          onToggle={() => setTandaOpen((v) => !v)}
-        >
-          <p className="os-page-intro mb-3 text-sm">
-            Lo aprobado o ya grabado, agrupado por lugar. Una salida, varios
-            takes. Pulse la pieza para abrir el brief.
-          </p>
-          {batches.length === 0 ? (
-            <p className="text-sm text-[#6d7c74]">
-              Aprueben piezas y aparece el lote por oficina, visita o bodega.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {batches.map(([lugar, items]) => (
-                <li key={lugar}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6d7c74]">
-                    {lugar} · {items.length}
-                  </p>
-                  <ul className="mt-1 space-y-1">
-                    {items.map((p) => (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          className="w-full rounded-xl border border-[#eee8dc] bg-[#fbfaf6] px-3 py-2 text-left text-sm"
-                          onClick={() => {
-                            setSelectedId(p.id);
-                            setCursor(p.date);
-                          }}
-                        >
-                          <span className="font-semibold">{p.title || "Sin título"}</span>
-                          <span className="ml-2 text-xs text-[#6d7c74]">
-                            {CONTENT_STATUS_LABELS[p.status]} · {p.owner || "quién sale"}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          )}
-        </WorkFold>
-      </div>
-
-      <div className="os-panel mt-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">
-        <WorkFold
-          title="Cómo nos fue · números de la semana"
-          open={reportOpen}
-          onToggle={() => setReportOpen((v) => !v)}
-        >
+              <button
+                type="button"
+                className="os-icon-btn"
+                aria-label="Cerrar"
+                onClick={() => setPanel(null)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <div className="os-drawer-body">
           <p className="os-page-intro mb-3 text-sm">
             Los copian el viernes desde Instagram, TikTok o YouTube Studio.
             Daniela no entra sola a esas apps. El número que importa: recibos o
@@ -1280,7 +1385,7 @@ export default function ContenidoPage() {
           <button
             type="button"
             disabled={reportBusy}
-            className="mt-3 rounded-xl bg-[#0f2a1f] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            className="os-btn os-btn-primary mt-3"
             onClick={() => void danielaLeeSemana()}
           >
             {reportBusy ? "Leyendo…" : "Daniela lee la semana"}
@@ -1290,30 +1395,42 @@ export default function ContenidoPage() {
               {weekReport.analysis}
             </pre>
           ) : null}
-        </WorkFold>
-      </div>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
-      <div className="os-panel mt-6 rounded-2xl border border-[#ddd6c8] bg-white p-4">
-        <WorkFold
-          title="Banco que ya funciona"
-          open={bankOpen}
-          onToggle={() => setBankOpen((v) => !v)}
-        >
+      {panel === "bank" ? (
+        <>
+          <div className="os-drawer-backdrop" onClick={() => setPanel(null)} />
+          <aside className="os-drawer" data-open="true">
+            <header className="os-drawer-head">
+              <div>
+                <p className="os-drawer-kicker">Ideas que ya funcionan</p>
+                <h2 className="os-drawer-title">Banco</h2>
+              </div>
+              <button
+                type="button"
+                className="os-icon-btn"
+                aria-label="Cerrar"
+                onClick={() => setPanel(null)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <div className="os-drawer-body">
           <p className="os-page-intro mb-3 text-sm">
             Objeciones y momentos reales de venta. Daniela rota esto. Si ya
             están en visita, sumen la pieza al día enfocado.
           </p>
-          <ul className="grid gap-2 sm:grid-cols-2">
+          <ul className="os-cnt-bank">
             {CONTENT_BANK.map((idea) => (
-              <li
-                key={idea.id}
-                className="rounded-xl border border-[#eee8dc] bg-[#fbfaf6] px-3 py-2"
-              >
-                <div className="flex items-start justify-between gap-2">
+              <li key={idea.id}>
+                <div className="os-cnt-bank-top">
                   <p className="font-semibold leading-5">{idea.title}</p>
                   <button
                     type="button"
-                    className="shrink-0 text-xs text-[#1f6b45] underline"
+                    className="os-btn os-btn-ghost os-btn-sm"
                     onClick={() => addFromBank(idea.id)}
                   >
                     Sumar
@@ -1327,8 +1444,16 @@ export default function ContenidoPage() {
               </li>
             ))}
           </ul>
-        </WorkFold>
-      </div>
+            </div>
+          </aside>
+        </>
+      ) : null}
+
+      {flash ? (
+        <div className="os-toast" role="status">
+          {flash}
+        </div>
+      ) : null}
     </AppShell>
   );
 }
