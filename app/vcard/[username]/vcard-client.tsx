@@ -1,6 +1,7 @@
 "use client";
 
 import React, { use, useEffect, useState } from "react";
+import { GeneraCard } from "./genera-card";
 
 interface VCardData {
   firstName: string;
@@ -25,6 +26,7 @@ interface VCardData {
   linkedinUrl?: string;
   portfolioUrl?: string;
   websiteUrl?: string;
+  design?: "genera";
 }
 
 const GENERA_PUBLIC = {
@@ -67,10 +69,11 @@ const PROFILES_DB: Record<string, VCardData> = {
     department: "Dirección Ejecutiva",
     phone: "+573174553288",
     whatsappNumber: "573174553288",
-    email: "camilo@generasolutions.com",
+    email: "camilo.rendon@generasolutionsas.com",
     ...GENERA_PUBLIC,
-    avatarUrl: "/brand/camilo.jpg?v=2",
+    avatarUrl: "/brand/camilo.jpg?v=5",
     avatarSize: 128,
+    design: "genera",
     defaultWaMessage:
       "Hola Camilo, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: [
@@ -235,6 +238,10 @@ END:VCARD`;
       icon: <LinkedInIcon />,
     },
   ].filter((item) => Boolean(item.href));
+
+  if (profile.design === "genera") {
+    return <GeneraCard profile={profile} />;
+  }
 
   return (
     <main style={styles.container}>
