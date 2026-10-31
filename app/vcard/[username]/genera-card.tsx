@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 
 type GeneraProfile = {
   firstName: string;
@@ -131,10 +131,7 @@ END:VCARD`;
     profile.linkedinUrl
       ? { label: "LinkedIn", href: profile.linkedinUrl, icon: <LinkedInIcon /> }
       : null,
-  ].filter(
-    (item): item is { label: string; href: string; icon: ReactNode } =>
-      Boolean(item)
-  );
+  ].filter((item): item is NonNullable<typeof item> => item != null);
 
   return (
     <main className="gv">
