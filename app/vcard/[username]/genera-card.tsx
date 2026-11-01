@@ -398,8 +398,8 @@ const css = `
   overflow: hidden;
 }
 .gv-hex img {
-  width: 118%; height: 118%; object-fit: cover; object-position: center 16%;
-  display: block; position: absolute; left: 50%; top: 46%;
+  width: 108%; height: 108%; object-fit: cover; object-position: center 4%;
+  display: block; position: absolute; left: 50%; top: 56%;
   transform: translate(-50%, -50%);
 }
 .gv-id h1 {
