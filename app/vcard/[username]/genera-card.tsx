@@ -371,9 +371,9 @@ const css = `
   box-shadow: 0 0 10px var(--leaf);
   animation: gv-blink 2.2s ease-in-out infinite;
 }
-.gv-hero { display: grid; grid-template-columns: 168px 1fr; gap: 18px; align-items: center; }
+.gv-hero { display: grid; grid-template-columns: 196px 1fr; gap: 16px; align-items: center; }
 .gv-orbit {
-  width: 168px; height: 186px; position: relative;
+  width: 196px; height: 216px; position: relative;
   display: grid; place-items: center;
 }
 .gv-orbit::before {
@@ -391,13 +391,16 @@ const css = `
   box-shadow: 0 0 18px rgba(245,197,66,0.8);
 }
 .gv-hex {
-  width: 146px; height: 160px;
+  width: 174px; height: 190px;
   clip-path: polygon(50% 0, 96% 25%, 96% 75%, 50% 100%, 4% 75%, 4% 25%);
   box-shadow: 0 0 40px rgba(245,197,66,0.38);
   position: relative;
+  overflow: hidden;
 }
 .gv-hex img {
-  width: 100%; height: 100%; object-fit: cover; object-position: center 18%; display: block;
+  width: 118%; height: 118%; object-fit: cover; object-position: center 16%;
+  display: block; position: absolute; left: 50%; top: 46%;
+  transform: translate(-50%, -50%);
 }
 .gv-id h1 {
   margin: 0; font-size: 1.72rem; line-height: 1.02; letter-spacing: -0.035em; font-weight: 700;
