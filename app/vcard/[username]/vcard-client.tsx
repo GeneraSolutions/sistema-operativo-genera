@@ -27,6 +27,8 @@ interface VCardData {
   portfolioUrl?: string;
   websiteUrl?: string;
   design?: "genera";
+  avatarPosition?: string;
+  avatarTop?: string;
 }
 
 const GENERA_PUBLIC = {
@@ -39,6 +41,7 @@ const GENERA_PUBLIC = {
   facebookUrl: "https://www.facebook.com/share/1WTxZpzd4b/",
   bookingUrl: "https://calendly.com",
   logoUrl: "/brand/logo-genera.png?v=2",
+  design: "genera" as const,
 };
 
 const PROFILES_DB: Record<string, VCardData> = {
@@ -73,7 +76,8 @@ const PROFILES_DB: Record<string, VCardData> = {
     ...GENERA_PUBLIC,
     avatarUrl: "/brand/camilo.jpg?v=5",
     avatarSize: 128,
-    design: "genera",
+    avatarPosition: "center 4%",
+    avatarTop: "56%",
     defaultWaMessage:
       "Hola Camilo, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: [
@@ -90,7 +94,9 @@ const PROFILES_DB: Record<string, VCardData> = {
     phone: "+573142916848",
     whatsappNumber: "573142916848",
     ...GENERA_PUBLIC,
-    avatarUrl: "/brand/jhons.jpg?v=3",
+    avatarUrl: "/brand/jhons.jpg?v=4",
+    avatarPosition: "center 18%",
+    avatarTop: "52%",
     defaultWaMessage:
       "Hola Jhons, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: ["Sistemas Fotovoltaicos", "Instalación Solar"],
@@ -104,7 +110,9 @@ const PROFILES_DB: Record<string, VCardData> = {
     whatsappNumber: "573027460232",
     email: "tatiana.ospina@generasolutionsas.com",
     ...GENERA_PUBLIC,
-    avatarUrl: "/brand/tatiana.jpg?v=3",
+    avatarUrl: "/brand/tatiana.jpg?v=4",
+    avatarPosition: "center 14%",
+    avatarTop: "50%",
     defaultWaMessage:
       "Hola Tatiana, vi tu tarjeta digital y deseo consultar sobre un proyecto solar.",
     tags: ["Energía Solar", "Proyectos Fotovoltaicos", "Eficiencia Energética"],

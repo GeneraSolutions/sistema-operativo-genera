@@ -23,6 +23,8 @@ type GeneraProfile = {
   linkedinUrl?: string;
   portfolioUrl?: string;
   websiteUrl?: string;
+  avatarPosition?: string;
+  avatarTop?: string;
 };
 
 function displayHost(url: string): string {
@@ -158,7 +160,14 @@ END:VCARD`;
         <div className="gv-hero">
           <div className="gv-orbit">
             <div className="gv-hex">
-              <img src={profile.avatarUrl} alt={profile.fullName} />
+              <img
+                src={profile.avatarUrl}
+                alt={profile.fullName}
+                style={{
+                  objectPosition: profile.avatarPosition || "center 8%",
+                  top: profile.avatarTop || "54%",
+                }}
+              />
             </div>
           </div>
           <div className="gv-id">
@@ -398,8 +407,8 @@ const css = `
   overflow: hidden;
 }
 .gv-hex img {
-  width: 108%; height: 108%; object-fit: cover; object-position: center 4%;
-  display: block; position: absolute; left: 50%; top: 56%;
+  width: 108%; height: 108%; object-fit: cover;
+  display: block; position: absolute; left: 50%;
   transform: translate(-50%, -50%);
 }
 .gv-id h1 {
