@@ -183,7 +183,7 @@ function foldText(text: string): string {
     .trim();
 }
 
-function pickNamedInverter(items: InventoryItem[], folded: string): InventoryItem | null {
+function pickNamedInverter(items: InventoryItem[], folded: string): InventoryItem | undefined {
   let best: { item: InventoryItem; score: number } | null = null;
   for (const item of active(items, "inverter")) {
     const brand = foldText(item.brand || "");
@@ -195,7 +195,7 @@ function pickNamedInverter(items: InventoryItem[], folded: string): InventoryIte
     }
     if (score >= 3 && (!best || score > best.score)) best = { item, score };
   }
-  return best?.item ?? null;
+  return best?.item;
 }
 
 function readRevision(note: string, inventory: InventoryItem[]): Revision {
