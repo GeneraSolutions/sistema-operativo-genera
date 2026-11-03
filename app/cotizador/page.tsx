@@ -33,6 +33,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { ClientIdFields } from "@/components/ClientIdFields";
 import { ClientRutPanel } from "@/components/ClientRutPanel";
 import { EnergyBillPanel } from "@/components/EnergyBillPanel";
+import { RequirementBrief } from "@/components/cotizador/RequirementBrief";
 import { EpcProposalView } from "@/components/proposal/EpcProposalView";
 import { Toggle } from "@/components/Toggle";
 import {
@@ -77,6 +78,7 @@ import {
 } from "@/lib/quote-engine";
 import { IVA_RATE } from "@/lib/pricing";
 import { loadKits, type EquipmentKit } from "@/lib/kits";
+import type { BriefQuotePreview, RequirementDraft } from "@/lib/requirement-brief";
 import {
   matchStationByCity,
   resolveIdeamIrradiance,
@@ -87,6 +89,7 @@ import { FINANCED_MONTH_OPTIONS } from "@/lib/payment-schedule";
 import { ContractCedulaCheck } from "@/components/deliverables/ContractCedulaCheck";
 import { ParticularTermsEditor } from "@/components/deliverables/ParticularTermsEditor";
 import { buildEpcProposal } from "@/lib/proposal-builder";
+import { ColombiaSolarFinancials } from "@/types/financials";
 import { saveProposal } from "@/lib/proposal-store";
 import {
   clearActiveQuote,
@@ -1059,6 +1062,125 @@ function CotizadorInner() {
     setQuoteLines(next);
   }
 
+  function estimateRequirement(draft: RequirementDraft): BriefQuotePreview | null {
+    if (!draft.ok) return null;
+    const find = (id?: string) => inventory.find((i) => i.id === id) ?? null;
+    const sel: QuoteEquipmentSelection = {
+      panel: find(draft.panelId),
+      inverter: find(draft.inverterId),
+      battery: find(draft.batteryId),
+      structure: find(draft.structureId),
+      cabling: find(draft.cablingId),
+      protectionDc: find(draft.protectionDcId),
+      protectionAc: find(draft.protectionAcId),
+    };
+    const quantities = suggestQuantities(
+      draft.systemKwp,
+      sel,
+      draft.includeBattery,
+      draft.batteryKwh,
+      12
+    );
+    const lines: QuoteLineInput[] = [];
+    const add = (key: string, item: InventoryItem | null, n: number) => {
+      if (item && n > 0) lines.push(lineFromItem(key, item, n));
+    };
+    add("panel", sel.panel, quantities.panels);
+    add("inverter", sel.inverter, quantities.inverters);
+    add("structure", sel.structure, quantities.structure);
+    add("cabling", sel.cabling, quantities.cabling);
+    add("protection_dc", sel.protectionDc, quantities.protectionDc);
+    add("protection_ac", sel.protectionAc, quantities.protectionAc);
+    if (draft.includeBattery) add("battery", sel.battery, quantities.batteries);
+    const site =
+      draft.siteLat != null && draft.siteLon != null
+        ? resolveIdeamIrradiance(draft.siteLat, draft.siteLon)
+        : null;
+    const ghi = site ? scaleGhiToHsp(site.wh, draft.peakSunHours) : undefined;
+    const priced = calculateParametricQuote({
+      systemKwp: draft.systemKwp,
+      peakSunHours: draft.peakSunHours,
+      includeBattery: draft.includeBattery,
+      batteryKwh: draft.batteryKwh,
+      cableMetersPerKwp: 12,
+      mount: "cubierta",
+      energyTariffCOP: energyTariff,
+      selection: sel,
+      quantities,
+      quoteLines: lines,
+      inventory,
+      overheadPercent,
+      chargeIva,
+      engineeringSaleCOP,
+      engineeringCostCOP,
+      technicians: draft.systemKwp < 10 ? 2 : draft.systemKwp < 50 ? 3 : 4,
+      dailyWageCOP,
+      laborDays: executionDays,
+      laborSaleCOP,
+      laborMarginPercent,
+      targetNetProfitCOP,
+      clientWithholds,
+      clientGranContribuyente,
+      taxConfig,
+      monthlyGhiWh: ghi,
+      engAddons,
+      applyLey1715,
+      addonMarginPercent: laborMarginPercent,
+    });
+    const metrics = ColombiaSolarFinancials.calculate({
+      systemCostCOP: priced.totalCapexCOP,
+      annualGenerationKWh: priced.annualGenerationKWh,
+      currentEnergyTariffCOP: energyTariff,
+      energyTariffInflation: 0.05,
+      degradationRate: 0.005,
+      omCostAnnualCOP: Math.round(priced.totalCapexCOP * 0.01),
+      omInflation: 0.04,
+      discountRate: 0.12,
+      projectLifespanYears: 25,
+      companyTaxRate: 0.35,
+      applyTaxDeduction: applyLey1715 && toggles.showDeductionLey1715,
+      deductionYears: 15,
+      applyAcceleratedDepreciation: applyLey1715 && toggles.showDepreciacion,
+      depreciationYears: 3,
+    });
+    const year1 = metrics.cashFlows.find((row) => row.year === 1);
+    return {
+      totalClientCOP: priced.pl.totalClientCOP,
+      subtotalCOP: priced.saleSubtotalCOP,
+      ivaCOP: priced.ivaCOP,
+      monthlyGenKwh: Math.round(priced.annualGenerationKWh / 12),
+      annualSavingsCOP: year1?.energySavingsCOP ?? 0,
+      paybackYears: metrics.paybackYearsSimple,
+    };
+  }
+
+  function applyRequirement(draft: RequirementDraft) {
+    if (draft.cityName) setClientCity(draft.cityName);
+    if (draft.siteLat != null && draft.siteLon != null) {
+      applySiteCoords(draft.siteLat, draft.siteLon);
+    }
+    applyKit({
+      id: "requerimiento",
+      name: "Requerimiento",
+      hint: "Base armada desde el pedido y el inventario",
+      systemKwp: draft.systemKwp,
+      includeBattery: draft.includeBattery,
+      batteryKwh: draft.batteryKwh,
+      mount: "cubierta",
+      peakSunHours: draft.peakSunHours,
+      equipment: {
+        panel: draft.panelId,
+        inverter: draft.inverterId,
+        battery: draft.batteryId,
+        structure: draft.structureId,
+        cabling: draft.cablingId,
+        protectionDc: draft.protectionDcId,
+        protectionAc: draft.protectionAcId,
+      },
+    });
+    if (draft.monthlyKwh) setMonthlyConsumption(Math.round(draft.monthlyKwh));
+  }
+
   function withSuggestedQty(lines: QuoteLineInput[], kwp = systemKwp) {
     const sel = selectionFromLines(lines, inventory);
     const suggested = suggestQuantities(
@@ -1580,6 +1702,12 @@ function CotizadorInner() {
         </>
       }
     >
+      <RequirementBrief
+        inventory={inventory}
+        peakSunHours={peakSunHours}
+        onApply={applyRequirement}
+        estimate={estimateRequirement}
+      />
       {kits.length > 0 || !aliado ? (
         <section className="os-kits print:hidden">
           <div className="os-kits-head">

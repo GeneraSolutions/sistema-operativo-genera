@@ -16,6 +16,9 @@ import {
 import { IVA_RATE } from "@/lib/pricing";
 import type { InventoryItem } from "@/types/inventory";
 
+/** Misma relación de desempeño que usa la generación anual de la cotización. */
+export const QUOTE_PERFORMANCE_RATIO = 0.8;
+
 export type MountPreference = "cubierta" | "suelo" | "pergola";
 
 export interface QuoteEquipmentSelection {
@@ -474,7 +477,7 @@ export function calculateParametricQuote(params: QuoteParams): QuoteBreakdown {
     },
   ]);
 
-  const performanceRatio = 0.8;
+  const performanceRatio = QUOTE_PERFORMANCE_RATIO;
   const annualGenerationKWh = params.monthlyGhiWh?.length === 12
     ? Math.round(
         params.monthlyGhiWh.reduce((acc, wh, i) => {
