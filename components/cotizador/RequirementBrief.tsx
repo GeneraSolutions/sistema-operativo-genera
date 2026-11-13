@@ -1,12 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Check, Mic, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { BookOpen, Check, Mic, Sparkles, Trash2 } from "lucide-react";
 import {
   draftRequirement,
   type BriefQuotePreview,
   type RequirementDraft,
 } from "@/lib/requirement-brief";
+import {
+  addSizingLesson,
+  describeSizingPrefs,
+  loadSizingDoctrine,
+  removeSizingLesson,
+  type SizingDoctrine,
+} from "@/lib/sizing-doctrine";
 import type { InventoryItem } from "@/types/inventory";
 
 type Dictation = {
@@ -35,15 +42,28 @@ export function RequirementBrief({
 }) {
   const [open, setOpen] = useState(true);
   const [basisOpen, setBasisOpen] = useState(false);
+  const [teachOpen, setTeachOpen] = useState(false);
   const [text, setText] = useState("");
   const [opinion, setOpinion] = useState("");
+  const [lesson, setLesson] = useState("");
+  const [doctrine, setDoctrine] = useState<SizingDoctrine>({ lessons: [], prefs: {} });
   const [draft, setDraft] = useState<RequirementDraft | null>(null);
   const [applied, setApplied] = useState(false);
   const [miss, setMiss] = useState("");
-  const [hearing, setHearing] = useState<"pedido" | "opinion" | null>(null);
+  const [teachMiss, setTeachMiss] = useState("");
+  const [teachOk, setTeachOk] = useState("");
+  const [hearing, setHearing] = useState<"pedido" | "opinion" | "lesson" | null>(null);
   const recRef = useRef<{ stop: () => void } | null>(null);
 
-  function dictate(target: "pedido" | "opinion") {
+  useEffect(() => {
+    setDoctrine(loadSizingDoctrine());
+  }, []);
+
+  function prefs() {
+    return doctrine.prefs;
+  }
+
+  function dictate(target: "pedido" | "opinion" | "lesson") {
     if (hearing === target) {
       recRef.current?.stop();
       setHearing(null);
@@ -70,7 +90,8 @@ export function RequirementBrief({
         .join(" ")
         .trim();
       if (!chunk) return;
-      const write = target === "pedido" ? setText : setOpinion;
+      const write =
+        target === "pedido" ? setText : target === "opinion" ? setOpinion : setLesson;
       write((prev) => (prev.trim() ? `${prev.trim()} ${chunk}` : chunk));
       setApplied(false);
     };
@@ -98,11 +119,11 @@ export function RequirementBrief({
     setApplied(false);
     setMiss("");
     setBasisOpen(false);
-    setDraft(draftRequirement(text, inventory, peakSunHours));
+    setDraft(draftRequirement(text, inventory, peakSunHours, "", prefs()));
   }
 
   function correct() {
-    const next = draftRequirement(text, inventory, peakSunHours, opinion);
+    const next = draftRequirement(text, inventory, peakSunHours, opinion, prefs());
     if (!next.revisionHeard.length) {
       setMiss(
         "No cambié la base. Diga el consumo, los paneles, los kWp, la ciudad, el inversor o si va sin batería."
@@ -121,6 +142,38 @@ export function RequirementBrief({
     }
   }
 
+  function teach() {
+    const source = lesson.trim();
+    if (!source) return;
+    const result = addSizingLesson(source, inventory);
+    if (!result.heard.length || (result.heard.length === 1 && result.heard[0] === "nota guardada")) {
+      setTeachMiss(
+        "Guardé la nota. Para que cambie el armado, diga panel, marca de inversor, híbrido, batería, cobertura %, noche % o paneles de más."
+      );
+      setTeachOk("");
+    } else {
+      setTeachMiss("");
+      setTeachOk(`Quedó enseñado: ${result.heard.join("; ")}.`);
+    }
+    setDoctrine(result.doctrine);
+    setLesson("");
+    if (text.trim()) {
+      setDraft(draftRequirement(text, inventory, peakSunHours, opinion, result.doctrine.prefs));
+      setApplied(false);
+    }
+  }
+
+  function forget(id: string) {
+    const next = removeSizingLesson(id, inventory);
+    setDoctrine(next);
+    setTeachOk("");
+    setTeachMiss("");
+    if (text.trim()) {
+      setDraft(draftRequirement(text, inventory, peakSunHours, opinion, next.prefs));
+      setApplied(false);
+    }
+  }
+
   const preview = draft?.ok ? estimate(draft) : null;
   const money = new Intl.NumberFormat("es-CO", {
     style: "currency",
@@ -134,6 +187,7 @@ export function RequirementBrief({
         maximumFractionDigits: 2,
       })
     : "";
+  const doctrineLines = describeSizingPrefs(doctrine.prefs, inventory);
 
   return (
     <section className="os-brief print:hidden">
@@ -160,8 +214,8 @@ export function RequirementBrief({
       {open ? (
         <div className="os-brief-body">
           <p className="os-brief-lead">
-            Escriba qué hay que cubrir. El dictamen sale del inventario. Nada se guarda hasta
-            que usted lo deje en el borrador.
+            Escriba los kWh del mes. El sistema dimensiona paneles, inversor, batería y el resto
+            desde el inventario. Usted revisa y deja la cotización cuando esté de acuerdo.
           </p>
           <textarea
             className="os-brief-input"
@@ -183,7 +237,7 @@ export function RequirementBrief({
               {hearing === "pedido" ? "Escuchando…" : "Decirlo"}
             </button>
             <button type="button" className="os-btn os-btn-ghost" onClick={review} disabled={!text.trim()}>
-              Revisar con el inventario
+              Dimensionar con el inventario
             </button>
           </div>
           {draft ? (
@@ -204,10 +258,21 @@ export function RequirementBrief({
                   </p>
                   <strong>{money.format(preview.totalClientCOP)}</strong>
                   <p>
-                    Subtotal {money.format(preview.subtotalCOP)} · IVA {money.format(preview.ivaCOP)}.
+                    {draft.systemKwp.toLocaleString("es-CO")} kWp · Subtotal{" "}
+                    {money.format(preview.subtotalCOP)} · IVA {money.format(preview.ivaCOP)}.
                     Ahorro del primer año {money.format(preview.annualSavingsCOP)}. Retorno simple{" "}
                     {num.format(preview.paybackYears)} años, con la tarifa del cotizador.
                   </p>
+                  {draft.equipment.length ? (
+                    <ul className="os-brief-decision-gear">
+                      {draft.equipment.map((item) => (
+                        <li key={item.role}>
+                          {item.qty} × {item.label}
+                          <span>{item.role}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                   {draft.revisionHeard.length ? (
                     <p>Corregido: {draft.revisionHeard.join("; ")}.</p>
                   ) : null}
@@ -303,7 +368,7 @@ export function RequirementBrief({
                 <div className="os-brief-actions">
                   <button
                     type="button"
-                    className="os-btn os-btn-ghost"
+                    className="os-btn os-btn-primary"
                     onClick={() => {
                       onApply(draft);
                       setApplied(true);
@@ -319,6 +384,92 @@ export function RequirementBrief({
                     </p>
                   ) : null}
                 </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            className="os-brief-toggle os-brief-toggle-sub"
+            aria-expanded={teachOpen}
+            onClick={() => setTeachOpen((value) => !value)}
+          >
+            <span className="os-brief-teach-label">
+              <BookOpen size={15} />
+              Cómo debe armar
+            </span>
+            <span className="os-brief-sign" aria-hidden>
+              {teachOpen ? "−" : "+"}
+            </span>
+          </button>
+          {teachOpen ? (
+            <div className="os-brief-teach">
+              <p className="os-brief-lead">
+                Si el dictamen no quedó bien, enséñele a Genera Solutions SAS cómo dimensionar.
+                La lección queda para los siguientes pedidos.
+              </p>
+              {doctrineLines.length ? (
+                <ul className="os-brief-doctrine">
+                  {doctrineLines.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="os-brief-teach-empty">
+                  Aún no hay doctrina. Ejemplos: «Usa paneles Jinko 550 W», «Inversor Deye siempre
+                  híbrido», «Cobertura al 110%», «Noche al 40%», «Sin batería».
+                </p>
+              )}
+              <textarea
+                className="os-brief-input"
+                rows={2}
+                value={lesson}
+                placeholder="Prefiere inversor Deye híbrido. Cobertura al 110%. Un panel de más."
+                onChange={(event) => {
+                  setLesson(event.target.value);
+                  setTeachMiss("");
+                  setTeachOk("");
+                }}
+              />
+              <div className="os-brief-actions">
+                <button
+                  type="button"
+                  className={`os-btn os-btn-ghost${hearing === "lesson" ? " is-on" : ""}`}
+                  onClick={() => dictate("lesson")}
+                >
+                  <Mic size={16} />
+                  {hearing === "lesson" ? "Escuchando…" : "Decirlo"}
+                </button>
+                <button
+                  type="button"
+                  className="os-btn os-btn-ghost"
+                  onClick={teach}
+                  disabled={!lesson.trim()}
+                >
+                  Guardar lección
+                </button>
+              </div>
+              {teachOk ? <p className="os-brief-ok">{teachOk}</p> : null}
+              {teachMiss ? <p className="os-brief-miss">{teachMiss}</p> : null}
+              {doctrine.lessons.length ? (
+                <ul className="os-brief-lessons">
+                  {doctrine.lessons.map((row) => (
+                    <li key={row.id}>
+                      <div>
+                        <p>{row.text}</p>
+                        <span>{row.heard.join(" · ")}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="os-btn os-btn-ghost"
+                        title="Quitar lección"
+                        onClick={() => forget(row.id)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
             </div>
           ) : null}

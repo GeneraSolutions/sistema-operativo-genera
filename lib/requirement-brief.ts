@@ -1,5 +1,6 @@
 import { matchStationByCity } from "@/lib/ideam-irradiance";
 import { QUOTE_PERFORMANCE_RATIO } from "@/lib/quote-engine";
+import type { SizingPrefs } from "@/lib/sizing-doctrine";
 import type { InventoryItem } from "@/types/inventory";
 
 /** Franja nocturna sin medición: la mitad del día, porque el pedido dice que el uso es más de noche. */
@@ -112,21 +113,52 @@ function labelOf(item: InventoryItem): string {
   return `${item.brand} ${item.model || item.name}`.replace(/\s+/g, " ").trim();
 }
 
-function pickInverter(items: InventoryItem[], systemKwp: number, house: boolean): InventoryItem | null {
+function pickInverter(
+  items: InventoryItem[],
+  systemKwp: number,
+  house: boolean,
+  prefs: SizingPrefs = {}
+): InventoryItem | null {
   const pool = active(items, "inverter")
     .map((item) => ({ item, kw: inverterKw(item) }))
     .filter((row) => row.kw > 0);
-  const hybrid = pool.filter((row) => /h[ií]brid/i.test(`${row.item.name} ${row.item.model}`));
-  const source = house && hybrid.length ? hybrid : pool;
+  if (!pool.length) return null;
+
+  const isHybrid = (item: InventoryItem) => /h[ií]brid/i.test(`${item.name} ${item.model}`);
+  let source = pool;
+  if (prefs.preferInverterBrand) {
+    const brand = foldText(prefs.preferInverterBrand);
+    const branded = pool.filter((row) => foldText(row.item.brand || "").includes(brand));
+    if (branded.length) source = branded;
+  }
+  if (prefs.preferHybrid === true) {
+    const hybrid = source.filter((row) => isHybrid(row.item));
+    if (hybrid.length) source = hybrid;
+  } else if (prefs.preferHybrid === false) {
+    const plain = source.filter((row) => !isHybrid(row.item));
+    if (plain.length) source = plain;
+  } else if (house) {
+    const hybrid = source.filter((row) => isHybrid(row.item));
+    if (hybrid.length) source = hybrid;
+  }
+
   const covering = source.filter((row) => row.kw + 0.05 >= systemKwp);
   const list = (covering.length ? covering : source).slice().sort((a, b) => a.kw - b.kw);
   return list[0]?.item ?? null;
 }
 
-function pickBattery(items: InventoryItem[], neededKwh: number): { item: InventoryItem; count: number } | null {
-  const pool = active(items, "battery")
+function pickBattery(
+  items: InventoryItem[],
+  neededKwh: number,
+  prefs: SizingPrefs = {}
+): { item: InventoryItem; count: number } | null {
+  let pool = active(items, "battery")
     .map((item) => ({ item, kwh: batteryKwh(item) }))
     .filter((row) => row.kwh > 0);
+  if (prefs.preferBatteryId) {
+    const preferred = pool.filter((row) => row.item.id === prefs.preferBatteryId);
+    if (preferred.length) pool = preferred;
+  }
   if (!pool.length || neededKwh <= 0) return null;
   const ranked = pool
     .map((row) => {
@@ -137,6 +169,15 @@ function pickBattery(items: InventoryItem[], neededKwh: number): { item: Invento
     .sort((a, b) => a.count - b.count || a.spare - b.spare || Number(b.item.isDefault) - Number(a.item.isDefault));
   const best = ranked[0];
   return best ? { item: best.item, count: best.count } : null;
+}
+
+function pickPanel(items: InventoryItem[], prefs: SizingPrefs = {}): InventoryItem | null {
+  const pool = active(items, "panel");
+  if (prefs.preferPanelId) {
+    const preferred = pool.find((item) => item.id === prefs.preferPanelId);
+    if (preferred) return preferred;
+  }
+  return preferDefault(pool);
 }
 
 const CITY_SKIP = new Set([
@@ -313,7 +354,8 @@ export function draftRequirement(
   text: string,
   inventory: InventoryItem[],
   peakSunHours: number,
-  revision = ""
+  revision = "",
+  prefs: SizingPrefs = {}
 ): RequirementDraft {
   const source = text.replace(/\s+/g, " ").trim();
   const folded = source
@@ -398,30 +440,48 @@ export function draftRequirement(
     assumptions.push(`Su corrección: ${rev.heard.join("; ")}.`);
   }
 
-  const annualNeedKwh = monthlyKwh ? monthlyKwh * 12 : 0;
+  if (prefs.neverBattery) {
+    night = false;
+    statedNightKwh = null;
+  } else if (prefs.alwaysBattery && monthlyKwh) {
+    night = true;
+  }
+
+  const coverFactor = prefs.coverFactor && prefs.coverFactor > 0 ? prefs.coverFactor : 1;
+  const nightShare = prefs.nightShare && prefs.nightShare > 0 ? prefs.nightShare : NIGHT_SHARE;
+  const annualNeedKwh = monthlyKwh ? monthlyKwh * 12 * coverFactor : 0;
   const divisor = hsp * 365 * QUOTE_PERFORMANCE_RATIO;
   const rawKwp = annualNeedKwh > 0 ? annualNeedKwh / divisor : 0;
 
-  const panel = preferDefault(active(inventory, "panel"));
+  const panel = pickPanel(inventory, prefs);
   const panelWp = panel?.capacity && panel.capacity > 50 ? panel.capacity : 0;
   let panelCount =
     panel && panelWp > 0 && rawKwp > 0 ? Math.max(1, Math.ceil((rawKwp * 1000) / panelWp)) : 0;
   if (rev?.panels) panelCount = rev.panels;
   else if (rev?.panelDelta && panelCount) panelCount = Math.max(1, panelCount + rev.panelDelta);
   else if (rev?.kwp && panelWp > 0) panelCount = Math.max(1, Math.ceil((rev.kwp * 1000) / panelWp));
+  else if (prefs.extraPanels && panelCount) {
+    panelCount = Math.max(1, panelCount + prefs.extraPanels);
+  }
   const systemKwp = panelCount > 0 ? Math.round((panelCount * panelWp) / 10) / 100 : 0;
   const annualGenKwh =
     systemKwp > 0 ? Math.round(systemKwp * hsp * 365 * QUOTE_PERFORMANCE_RATIO) : 0;
 
   const inverter =
-    rev?.inverter ?? (systemKwp > 0 ? pickInverter(inventory, systemKwp, house || night) : null);
+    rev?.inverter ??
+    (systemKwp > 0 ? pickInverter(inventory, systemKwp, house || night, prefs) : null);
   if (monthlyKwh && !panel) gaps.push("El inventario no tiene un panel activo.");
   if (monthlyKwh && !inverter) gaps.push("El inventario no tiene un inversor que cubra esta potencia.");
 
   let includeBattery = false;
   let batteryNeed = 0;
   let batteryPick: { item: InventoryItem; count: number } | null = null;
-  if (night && (statedNightKwh || monthlyKwh)) {
+  const wantBattery =
+    !prefs.neverBattery &&
+    !rev?.dropBattery &&
+    (night || prefs.alwaysBattery) &&
+    Boolean(statedNightKwh || monthlyKwh);
+  if (wantBattery) {
     includeBattery = true;
     if (statedNightKwh && batteryAsInstalled) {
       batteryNeed = statedNightKwh;
@@ -435,16 +495,36 @@ export function draftRequirement(
       );
     } else if (monthlyKwh) {
       const daily = monthlyKwh / 30;
-      batteryNeed = (daily * NIGHT_SHARE) / BATTERY_USABLE;
+      batteryNeed = (daily * nightShare) / BATTERY_USABLE;
       assumptions.push(
-        `Uso nocturno: tomé el ${Math.round(NIGHT_SHARE * 100)}% del día en esa franja, porque dijo que el uso es más de noche. No es una medición.`
+        prefs.alwaysBattery && !night
+          ? `Doctrina: siempre batería. Tomé el ${Math.round(nightShare * 100)}% del día como respaldo. No es una medición.`
+          : `Uso nocturno: tomé el ${Math.round(nightShare * 100)}% del día en esa franja, porque dijo que el uso es más de noche. No es una medición.`
       );
       assumptions.push(
         `La batería se calcula al ${Math.round(BATTERY_USABLE * 100)}% utilizable, para no descargarla por completo.`
       );
     }
-    batteryPick = pickBattery(inventory, batteryNeed);
+    batteryPick = pickBattery(inventory, batteryNeed, prefs);
     if (!batteryPick) gaps.push("Pidió noche y el inventario no tiene batería activa.");
+  }
+
+  if (coverFactor !== 1 && monthlyKwh) {
+    assumptions.push(
+      `Doctrina: cobertura al ${Math.round(coverFactor * 100)}% del consumo del mes.`
+    );
+  }
+  if (prefs.preferPanelId && panel?.id === prefs.preferPanelId) {
+    assumptions.push(`Doctrina: panel ${labelOf(panel)}.`);
+  }
+  if (prefs.preferInverterBrand) {
+    assumptions.push(`Doctrina: inversor marca ${prefs.preferInverterBrand}.`);
+  }
+  if (prefs.extraPanels) {
+    assumptions.push(`Doctrina: ${prefs.extraPanels} paneles de más sobre el cálculo.`);
+  }
+  if (prefs.neverBattery) {
+    assumptions.push("Doctrina: sin batería.");
   }
 
   const structure = preferDefault(

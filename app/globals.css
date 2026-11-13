@@ -4282,6 +4282,105 @@ html[data-look="operativo"] .os-tile:hover {
   font-weight: 600;
 }
 
+.os-brief-decision-gear {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.os-brief-decision-gear li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  color: #f4f1e8;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.os-brief-decision-gear span {
+  color: #9cb5a6;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.os-brief-teach-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.os-brief-teach {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.35rem;
+  padding-top: 0.2rem;
+}
+
+.os-brief-teach-empty {
+  margin: 0;
+  color: #5c6b64;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.os-brief-doctrine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.os-brief-doctrine li {
+  padding: 0.28rem 0.55rem;
+  border: 1px solid #cfe0d4;
+  border-radius: 999px;
+  background: #eef6f0;
+  color: #1f6b45;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.os-brief-lessons {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.os-brief-lessons li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
+  align-items: start;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfaf6;
+}
+
+.os-brief-lessons p {
+  margin: 0;
+  color: #12241c;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.os-brief-lessons span {
+  display: block;
+  margin-top: 0.2rem;
+  color: #5c6b64;
+  font-size: 12px;
+}
+
 html[data-look="operativo"] :is(.os-kits, .os-brief, .os-alert, .os-menu-pop) {
   border-radius: 10px;
 }
