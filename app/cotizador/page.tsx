@@ -1558,11 +1558,16 @@ function CotizadorInner() {
     if (tariff > 0) setEnergyTariff(tariff);
     const stored = loadStoredSiteVisit();
     if (stored?.visit) {
-      saveStoredSiteVisit({
-        ...stored,
-        visit: { ...stored.visit, energyBill: bill },
-      });
-      setSiteVisit({ ...stored.visit, energyBill: bill });
+      const nextVisit = { ...stored.visit, energyBill: bill };
+      setSiteVisit(nextVisit);
+      try {
+        saveStoredSiteVisit({
+          ...stored,
+          visit: nextVisit,
+        });
+      } catch {
+        // El cupo del navegador no debe frenar el dimensionamiento.
+      }
     }
     const pedido = pedidoFromEnergyBill(bill);
     if (pedido) {

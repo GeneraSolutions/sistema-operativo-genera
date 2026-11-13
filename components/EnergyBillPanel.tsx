@@ -116,7 +116,12 @@ export function EnergyBillPanel({
         onApply(next);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al leer");
+      const raw = err instanceof Error ? err.message : "Error al leer";
+      setError(
+        /quota|setItem|Storage/i.test(raw)
+          ? "El navegador no pudo guardar las fotos del recibo. Los números sí quedaron: pulse Dimensionar desde el recibo."
+          : raw
+      );
     } finally {
       setReading(false);
     }

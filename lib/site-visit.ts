@@ -164,13 +164,52 @@ export function loadStoredSiteVisit(): StoredSiteVisit | null {
   }
 }
 
+function lightenEnergyBill(bill: EnergyBill | undefined): EnergyBill | undefined {
+  if (!bill) return bill;
+  return {
+    ...bill,
+    // Las fotos del recibo viven en memoria de la sesión; en disco solo quedan los números.
+    photos: bill.photos.map((photo) => ({
+      id: photo.id,
+      fileName: photo.fileName,
+      dataUrl: "",
+    })),
+    pdfText: (bill.pdfText || "").slice(0, 4000),
+  };
+}
+
+function lightenVisit(visit: SiteVisit, dropVisitPhotos: boolean): SiteVisit {
+  return {
+    ...visit,
+    photos: dropVisitPhotos
+      ? []
+      : visit.photos.map((photo) => ({
+          ...photo,
+          dataUrl: photo.dataUrl.length > 80_000 ? "" : photo.dataUrl,
+        })),
+    energyBill: lightenEnergyBill(visit.energyBill),
+  };
+}
+
 export function saveStoredSiteVisit(stored: StoredSiteVisit): void {
   if (typeof window === "undefined") return;
-  const payload: StoredSiteVisit = {
-    linked: stored.linked,
-    visit: { ...stored.visit, updatedAt: new Date().toISOString() },
+  const stamp = new Date().toISOString();
+  const write = (visit: SiteVisit) => {
+    const payload: StoredSiteVisit = {
+      linked: stored.linked,
+      visit: { ...visit, updatedAt: stamp },
+    };
+    localStorage.setItem(SITE_VISIT_STORAGE_KEY, JSON.stringify(payload));
   };
-  localStorage.setItem(SITE_VISIT_STORAGE_KEY, JSON.stringify(payload));
+  try {
+    write(lightenVisit(stored.visit, false));
+  } catch {
+    try {
+      write(lightenVisit(stored.visit, true));
+    } catch {
+      // El cupo del navegador está lleno. La visita sigue en memoria de esta sesión.
+    }
+  }
 }
 
 export function mountFromRoof(roof: RoofCoverType): MountPreference {
