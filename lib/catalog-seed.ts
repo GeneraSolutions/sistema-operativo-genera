@@ -70,6 +70,16 @@ export const SEED_INVENTORY: InventoryItem[] = [
     notes: "Híbrido bifásico ES-LD · 127/220 V · complete el precio de compra",
   }),
   item({
+    id: "inve-goodwe-gw12k-et-ll-g10",
+    category: "inverter",
+    name: "GW12K-ET-LL-G10",
+    brand: "GoodWe",
+    model: "GW12K-ET-LL-G10",
+    priceCOP: 0,
+    capacity: 12,
+    notes: "Híbrido trifásico ET-LV · 208/220 V · complete el precio de compra",
+  }),
+  item({
     id: "battery-1792542380274",
     category: "battery",
     name: "LX A5.0-30",
