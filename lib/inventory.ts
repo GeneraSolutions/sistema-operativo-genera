@@ -75,7 +75,10 @@ export function loadInventory(): InventoryItem[] {
     if (raw) {
       const parsed = JSON.parse(raw) as InventoryItem[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(normalizeItem);
+        const merged = mergeWithSeed(parsed);
+        // Nuevos del catálogo oficial (p. ej. GoodWe) entran sin borrar lo que ya tiene.
+        if (merged.length !== parsed.length) saveInventory(merged);
+        return merged;
       }
     }
     const legacy = localStorage.getItem(LEGACY_KEY);
