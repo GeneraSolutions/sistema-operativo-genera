@@ -126,6 +126,7 @@ import {
 import {
   consumptionForQuote,
   emptyEnergyBill,
+  pedidoFromEnergyBill,
   tariffForQuote,
   type EnergyBill,
 } from "@/lib/energy-bill";
@@ -341,6 +342,11 @@ function CotizadorInner() {
     bonos: false,
     recibo: false,
   });
+  const [billSeed, setBillSeed] = useState<{
+    key: number;
+    text: string;
+    source: string;
+  } | null>(null);
   const [quoteStep, setQuoteStep] = useState<QuoteStep | null>(1);
   const stepsRef = useRef<HTMLDivElement>(null);
   const [recentOpen, setRecentOpen] = useState(false);
@@ -1558,6 +1564,15 @@ function CotizadorInner() {
       });
       setSiteVisit({ ...stored.visit, energyBill: bill });
     }
+    const pedido = pedidoFromEnergyBill(bill);
+    if (pedido) {
+      setBillSeed({
+        key: Date.now(),
+        text: pedido,
+        source: "recibo de energía",
+      });
+      setOpenFolds((s) => ({ ...s, recibo: false }));
+    }
   }
 
   function changeMount(value: MountPreference) {
@@ -1707,6 +1722,7 @@ function CotizadorInner() {
         peakSunHours={peakSunHours}
         onApply={applyRequirement}
         estimate={estimateRequirement}
+        seed={billSeed}
       />
       {kits.length > 0 || !aliado ? (
         <section className="os-kits print:hidden">
@@ -2356,7 +2372,7 @@ function CotizadorInner() {
             <EnergyBillPanel
               bill={energyBill}
               peakSunHours={peakSunHours}
-              applyLabel="Pasar consumo y tarifa a esta cotización"
+              applyLabel="Dimensionar desde el recibo"
               onChange={setEnergyBill}
               onApply={applyEnergyBill}
             />

@@ -34,11 +34,14 @@ export function RequirementBrief({
   peakSunHours,
   onApply,
   estimate,
+  seed,
 }: {
   inventory: InventoryItem[];
   peakSunHours: number;
   onApply: (draft: RequirementDraft) => void;
   estimate: (draft: RequirementDraft) => BriefQuotePreview | null;
+  /** Pedido sembrado desde el recibo u otra fuente. Cambia `key` para reaplicar. */
+  seed?: { key: number; text: string; source?: string } | null;
 }) {
   const [open, setOpen] = useState(true);
   const [basisOpen, setBasisOpen] = useState(false);
@@ -52,12 +55,37 @@ export function RequirementBrief({
   const [miss, setMiss] = useState("");
   const [teachMiss, setTeachMiss] = useState("");
   const [teachOk, setTeachOk] = useState("");
+  const [seedNote, setSeedNote] = useState("");
   const [hearing, setHearing] = useState<"pedido" | "opinion" | "lesson" | null>(null);
   const recRef = useRef<{ stop: () => void } | null>(null);
+  const rootRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     setDoctrine(loadSizingDoctrine());
   }, []);
+
+  useEffect(() => {
+    if (!seed?.text?.trim()) return;
+    const nextDoctrine = loadSizingDoctrine();
+    setDoctrine(nextDoctrine);
+    setText(seed.text);
+    setOpinion("");
+    setMiss("");
+    setApplied(false);
+    setBasisOpen(false);
+    setOpen(true);
+    setSeedNote(
+      seed.source
+        ? `Pedido tomado del ${seed.source}. Revise el dictamen y déjelo en el cotizador cuando esté de acuerdo.`
+        : "Pedido sembrado. Revise el dictamen y déjelo en el cotizador cuando esté de acuerdo."
+    );
+    setDraft(
+      draftRequirement(seed.text, inventory, peakSunHours, "", nextDoctrine.prefs)
+    );
+    requestAnimationFrame(() => {
+      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [seed?.key, seed?.text, seed?.source, inventory, peakSunHours]);
 
   function prefs() {
     return doctrine.prefs;
@@ -190,7 +218,7 @@ export function RequirementBrief({
   const doctrineLines = describeSizingPrefs(doctrine.prefs, inventory);
 
   return (
-    <section className="os-brief print:hidden">
+    <section className="os-brief print:hidden" ref={rootRef}>
       <button
         type="button"
         className="os-brief-toggle"
@@ -214,9 +242,11 @@ export function RequirementBrief({
       {open ? (
         <div className="os-brief-body">
           <p className="os-brief-lead">
-            Escriba los kWh del mes. El sistema dimensiona paneles, inversor, batería y el resto
-            desde el inventario. Usted revisa y deja la cotización cuando esté de acuerdo.
+            Escriba los kWh del mes, o súbalos desde el recibo de energía. El sistema dimensiona
+            paneles, inversor, batería y el resto desde el inventario. Usted revisa y deja la
+            cotización cuando esté de acuerdo.
           </p>
+          {seedNote ? <p className="os-brief-ok">{seedNote}</p> : null}
           <textarea
             className="os-brief-input"
             rows={3}
@@ -225,6 +255,7 @@ export function RequirementBrief({
             onChange={(event) => {
               setText(event.target.value);
               setApplied(false);
+              setSeedNote("");
             }}
           />
           <div className="os-brief-actions">

@@ -105,12 +105,16 @@ export function EnergyBillPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo leer el recibo");
       setOffline(Boolean(data.offline));
-      onChange({
+      const next = {
         ...value,
         ...data.bill,
         photos: value.photos,
         pdfText: value.pdfText,
-      });
+      };
+      onChange(next);
+      if (onApply && consumptionForQuote(next) > 0) {
+        onApply(next);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al leer");
     } finally {
@@ -122,8 +126,8 @@ export function EnergyBillPanel({
     <div className="space-y-3">
       <p className="os-page-intro text-xs leading-5 text-[#6d7c74]">
         Suba foto o PDF del recibo (frente, reverso e histórico). La lectura
-        extrae transformador, circuito, kWh, $/kWh y si hay reactiva. Revise
-        los números antes de cotizar.
+        extrae kWh, $/kWh, dirección y demás. Con el consumo del mes basta para
+        dimensionar desde el inventario: revise los números y pulse dimensionar.
       </p>
       <input
         ref={fileRef}

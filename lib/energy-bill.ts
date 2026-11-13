@@ -1,3 +1,5 @@
+import { matchStationByCity } from "@/lib/ideam-irradiance";
+
 export const MAX_BILL_PHOTOS = 6;
 
 export interface EnergyBillPhoto {
@@ -170,6 +172,48 @@ export function suggestedKwpFromBill(bill: EnergyBill, hsp: number) {
   const sun = hsp > 0 ? hsp : 4.5;
   if (kwh <= 0) return 0;
   return Math.round((kwh / (sun * 30 * 0.8)) * 10) / 10;
+}
+
+/** Ciudad del predio si la dirección del recibo coincide con el atlas IDEAM. */
+export function cityFromEnergyBill(bill: EnergyBill): string | null {
+  const address = (bill.address || "").trim();
+  if (!address) return null;
+  const named = address.match(/ciudad\s+de\s+([A-Za-zÁÉÍÓÚáéíóúñÑ]+)/i);
+  if (named?.[1] && matchStationByCity(named[1])) {
+    return named[1].charAt(0).toUpperCase() + named[1].slice(1).toLowerCase();
+  }
+  const tokens = address
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^A-Za-zñÑ]+/)
+    .filter((token) => token.length >= 4);
+  for (const token of tokens.reverse()) {
+    if (matchStationByCity(token)) {
+      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+    }
+  }
+  return null;
+}
+
+/**
+ * Texto de pedido a partir del recibo: kWh del mes (promedio si existe) y ciudad si aparece.
+ * Basta para dimensionar; la noche/batería queda a la doctrina o a su corrección.
+ */
+export function pedidoFromEnergyBill(bill: EnergyBill): string | null {
+  const kwh = consumptionForQuote(bill);
+  if (kwh <= 0) return null;
+  const fromAverage = bill.average6MonthsKWh > 0 && bill.average6MonthsKWh === kwh;
+  const parts: string[] = [
+    fromAverage
+      ? `Consumo promedio de ${kwh} kWh mes según el recibo de energía`
+      : `Consumo de ${kwh} kWh mes según el recibo de energía`,
+  ];
+  const city = cityFromEnergyBill(bill);
+  if (city) parts.push(`ciudad de ${city}`);
+  if (bill.utility) parts.push(`comercializador ${bill.utility}`);
+  if (bill.stratum) parts.push(`estrato ${bill.stratum}`);
+  parts.push("Armado desde el recibo. Sin noche salvo que la doctrina o usted lo pidan.");
+  return `${parts.join(". ")}.`;
 }
 
 export const ENERGY_BILL_SYSTEM = `Eres un analista de facturas de energía eléctrica de Colombia (EPM, Enel, Celsia, Air-e, Afinia, CEO, Electrohuila, etc.).
