@@ -59,6 +59,8 @@ export function RequirementBrief({
   const [hearing, setHearing] = useState<"pedido" | "opinion" | "lesson" | null>(null);
   const recRef = useRef<{ stop: () => void } | null>(null);
   const rootRef = useRef<HTMLElement | null>(null);
+  const onApplyRef = useRef(onApply);
+  onApplyRef.current = onApply;
 
   useEffect(() => {
     setDoctrine(loadSizingDoctrine());
@@ -74,14 +76,30 @@ export function RequirementBrief({
     setApplied(false);
     setBasisOpen(false);
     setOpen(true);
-    setSeedNote(
-      seed.source
-        ? `Pedido tomado del ${seed.source}. Revise el dictamen y déjelo en el cotizador cuando esté de acuerdo.`
-        : "Pedido sembrado. Revise el dictamen y déjelo en el cotizador cuando esté de acuerdo."
+    const next = draftRequirement(
+      seed.text,
+      inventory,
+      peakSunHours,
+      "",
+      nextDoctrine.prefs
     );
-    setDraft(
-      draftRequirement(seed.text, inventory, peakSunHours, "", nextDoctrine.prefs)
-    );
+    setDraft(next);
+    if (next.ok) {
+      onApplyRef.current(next);
+      setApplied(true);
+      setSeedNote(
+        seed.source
+          ? `Tomado del ${seed.source}. Los equipos ya quedaron en Equipos e instalación con sus cantidades.`
+          : "Los equipos ya quedaron en Equipos e instalación con sus cantidades."
+      );
+    } else {
+      setApplied(false);
+      setSeedNote(
+        seed.source
+          ? `Pedido tomado del ${seed.source}. Revise el dictamen: faltan datos para armar los equipos.`
+          : "Revise el dictamen: faltan datos para armar los equipos."
+      );
+    }
     requestAnimationFrame(() => {
       rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -144,10 +162,17 @@ export function RequirementBrief({
   }
 
   function review() {
-    setApplied(false);
     setMiss("");
     setBasisOpen(false);
-    setDraft(draftRequirement(text, inventory, peakSunHours, "", prefs()));
+    setSeedNote("");
+    const next = draftRequirement(text, inventory, peakSunHours, "", prefs());
+    setDraft(next);
+    if (next.ok) {
+      onApply(next);
+      setApplied(true);
+    } else {
+      setApplied(false);
+    }
   }
 
   function correct() {
@@ -186,8 +211,20 @@ export function RequirementBrief({
     setDoctrine(result.doctrine);
     setLesson("");
     if (text.trim()) {
-      setDraft(draftRequirement(text, inventory, peakSunHours, opinion, result.doctrine.prefs));
-      setApplied(false);
+      const sized = draftRequirement(
+        text,
+        inventory,
+        peakSunHours,
+        opinion,
+        result.doctrine.prefs
+      );
+      setDraft(sized);
+      if (sized.ok) {
+        onApply(sized);
+        setApplied(true);
+      } else {
+        setApplied(false);
+      }
     }
   }
 
@@ -197,8 +234,14 @@ export function RequirementBrief({
     setTeachOk("");
     setTeachMiss("");
     if (text.trim()) {
-      setDraft(draftRequirement(text, inventory, peakSunHours, opinion, next.prefs));
-      setApplied(false);
+      const sized = draftRequirement(text, inventory, peakSunHours, opinion, next.prefs);
+      setDraft(sized);
+      if (sized.ok) {
+        onApply(sized);
+        setApplied(true);
+      } else {
+        setApplied(false);
+      }
     }
   }
 
@@ -410,8 +453,8 @@ export function RequirementBrief({
                   </button>
                   {applied ? (
                     <p className="os-brief-ok">
-                      Quedó en el borrador, a la derecha. Siga con la cotización. Aún no está
-                      guardada ni enviada.
+                      Equipos e instalación ya tiene los ítems del inventario con sus
+                      cantidades. Revise el paso 2. Aún no está guardada ni enviada.
                     </p>
                   ) : null}
                 </div>

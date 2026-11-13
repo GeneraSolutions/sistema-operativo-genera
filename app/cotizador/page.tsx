@@ -1165,26 +1165,56 @@ function CotizadorInner() {
     if (draft.siteLat != null && draft.siteLon != null) {
       applySiteCoords(draft.siteLat, draft.siteLon);
     }
-    applyKit({
-      id: "requerimiento",
-      name: "Requerimiento",
-      hint: "Base armada desde el pedido y el inventario",
-      systemKwp: draft.systemKwp,
-      includeBattery: draft.includeBattery,
-      batteryKwh: draft.batteryKwh,
-      mount: "cubierta",
-      peakSunHours: draft.peakSunHours,
-      equipment: {
-        panel: draft.panelId,
-        inverter: draft.inverterId,
-        battery: draft.batteryId,
-        structure: draft.structureId,
-        cabling: draft.cablingId,
-        protectionDc: draft.protectionDcId,
-        protectionAc: draft.protectionAcId,
-      },
-    });
+    setSystemKwp(draft.systemKwp);
+    setPeakSunHours(draft.peakSunHours);
+    setIncludeBattery(draft.includeBattery);
+    setBatteryKwh(draft.batteryKwh);
+    setMount("cubierta");
+    setTechnicians(draft.systemKwp < 10 ? 2 : draft.systemKwp < 50 ? 3 : 4);
     if (draft.monthlyKwh) setMonthlyConsumption(Math.round(draft.monthlyKwh));
+
+    const roleKey: Record<string, string> = {
+      Paneles: "panel",
+      Inversor: "inverter",
+      Batería: "battery",
+      Estructura: "structure",
+      Cable: "cabling",
+      "Protección DC": "protection_dc",
+      "Protección AC": "protection_ac",
+    };
+    const next: QuoteLineInput[] = [];
+    for (const row of draft.equipment) {
+      const key = roleKey[row.role];
+      const item = inventory.find((entry) => entry.id === row.id) ?? null;
+      if (!key || !item || row.qty <= 0) continue;
+      next.push(lineFromItem(key, item, row.qty));
+    }
+    // Si el dictamen no listó algo, completa con la sugerencia del motor.
+    if (!next.length) {
+      applyKit({
+        id: "requerimiento",
+        name: "Requerimiento",
+        hint: "Base armada desde el pedido y el inventario",
+        systemKwp: draft.systemKwp,
+        includeBattery: draft.includeBattery,
+        batteryKwh: draft.batteryKwh,
+        mount: "cubierta",
+        peakSunHours: draft.peakSunHours,
+        equipment: {
+          panel: draft.panelId,
+          inverter: draft.inverterId,
+          battery: draft.batteryId,
+          structure: draft.structureId,
+          cabling: draft.cablingId,
+          protectionDc: draft.protectionDcId,
+          protectionAc: draft.protectionAcId,
+        },
+      });
+    } else {
+      lockQuantities(false);
+      setQuoteLines(next);
+    }
+    goToStep(2);
   }
 
   function withSuggestedQty(lines: QuoteLineInput[], kwp = systemKwp) {
