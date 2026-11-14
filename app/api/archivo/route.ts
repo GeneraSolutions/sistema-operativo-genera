@@ -5,6 +5,7 @@ import {
   loadArchivoPlants,
   loadArchivoQuotes,
   loadArchivoReports,
+  loadArchivoSizingDoctrine,
   loadArchivoVisits,
   removeArchivoLead,
   removeArchivoObra,
@@ -19,6 +20,7 @@ import {
   upsertArchivoQuotes,
   upsertArchivoReport,
   upsertArchivoReports,
+  upsertArchivoSizingDoctrine,
   upsertArchivoVisit,
   upsertArchivoVisits,
 } from "@/lib/archivo-server";
@@ -30,6 +32,7 @@ import type { CommercialLead } from "@/lib/pipeline";
 import type { SavedQuote } from "@/lib/saved-quotes";
 import type { SavedVisit } from "@/lib/saved-visits";
 import type { PlantProfile, SavedReport } from "@/lib/technical-reports";
+import type { SizingDoctrine } from "@/lib/sizing-doctrine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +71,7 @@ async function payload(session: { id: string; username: string }, aliado: boolea
       plants: [],
       obras: [],
       leads: [],
+      sizingDoctrine: null,
     };
   }
   return {
@@ -77,6 +81,7 @@ async function payload(session: { id: string; username: string }, aliado: boolea
     plants: await loadArchivoPlants(),
     obras: await loadArchivoObras(),
     leads: await loadArchivoLeads(),
+    sizingDoctrine: await loadArchivoSizingDoctrine(),
   };
 }
 
@@ -101,6 +106,7 @@ export async function POST(req: NextRequest) {
     plants?: PlantProfile[];
     obras?: ObraJob[];
     leads?: CommercialLead[];
+    sizingDoctrine?: SizingDoctrine;
   };
   const stampQuote = (q: SavedQuote): SavedQuote => ({
     ...q,
@@ -109,13 +115,25 @@ export async function POST(req: NextRequest) {
     savedByName: q.savedByName || gate.session.name,
   });
   if (gate.aliado) {
-    if (body.visit || body.visits || body.report || body.reports || body.plants || body.obras || body.leads) {
+    if (
+      body.visit ||
+      body.visits ||
+      body.report ||
+      body.reports ||
+      body.plants ||
+      body.obras ||
+      body.leads ||
+      body.sizingDoctrine
+    ) {
       return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
     }
   }
   if (body.quote?.id) await upsertArchivoQuote(stampQuote(body.quote));
   if (body.quotes?.length) {
     await upsertArchivoQuotes(body.quotes.map(stampQuote));
+  }
+  if (body.sizingDoctrine && !gate.aliado) {
+    await upsertArchivoSizingDoctrine(body.sizingDoctrine);
   }
   if (body.visit?.id) await upsertArchivoVisit(body.visit);
   if (body.visits?.length) await upsertArchivoVisits(body.visits);

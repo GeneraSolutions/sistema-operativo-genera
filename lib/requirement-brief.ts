@@ -509,6 +509,29 @@ export function draftRequirement(
     if (!batteryPick) gaps.push("Pidió noche y el inventario no tiene batería activa.");
   }
 
+  const structurePool = active(inventory, "structure").filter(
+    (item) => !item.mountType || item.mountType === "cubierta"
+  );
+  const structure =
+    (prefs.preferStructureId
+      ? structurePool.find((item) => item.id === prefs.preferStructureId)
+      : null) ?? preferDefault(structurePool);
+  const cablingPool = active(inventory, "cabling");
+  const cabling =
+    (prefs.preferCablingId
+      ? cablingPool.find((item) => item.id === prefs.preferCablingId)
+      : null) ?? preferDefault(cablingPool);
+  const protectionDcPool = active(inventory, "protection_dc");
+  const protectionDc =
+    (prefs.preferProtectionDcId
+      ? protectionDcPool.find((item) => item.id === prefs.preferProtectionDcId)
+      : null) ?? preferDefault(protectionDcPool);
+  const protectionAcPool = active(inventory, "protection_ac");
+  const protectionAc =
+    (prefs.preferProtectionAcId
+      ? protectionAcPool.find((item) => item.id === prefs.preferProtectionAcId)
+      : null) ?? preferDefault(protectionAcPool);
+
   if (coverFactor !== 1 && monthlyKwh) {
     assumptions.push(
       `Doctrina: cobertura al ${Math.round(coverFactor * 100)}% del consumo del mes.`
@@ -520,19 +543,24 @@ export function draftRequirement(
   if (prefs.preferInverterBrand) {
     assumptions.push(`Doctrina: inversor marca ${prefs.preferInverterBrand}.`);
   }
+  if (prefs.preferStructureId && structure?.id === prefs.preferStructureId) {
+    assumptions.push(`Doctrina: estructura ${labelOf(structure)}.`);
+  }
+  if (prefs.preferCablingId && cabling?.id === prefs.preferCablingId) {
+    assumptions.push(`Doctrina: cableado ${labelOf(cabling)}.`);
+  }
+  if (prefs.preferProtectionDcId && protectionDc?.id === prefs.preferProtectionDcId) {
+    assumptions.push(`Doctrina: protección DC ${labelOf(protectionDc)}.`);
+  }
+  if (prefs.preferProtectionAcId && protectionAc?.id === prefs.preferProtectionAcId) {
+    assumptions.push(`Doctrina: protección AC ${labelOf(protectionAc)}.`);
+  }
   if (prefs.extraPanels) {
     assumptions.push(`Doctrina: ${prefs.extraPanels} paneles de más sobre el cálculo.`);
   }
   if (prefs.neverBattery) {
     assumptions.push("Doctrina: sin batería.");
   }
-
-  const structure = preferDefault(
-    active(inventory, "structure").filter((item) => !item.mountType || item.mountType === "cubierta")
-  );
-  const cabling = preferDefault(active(inventory, "cabling"));
-  const protectionDc = preferDefault(active(inventory, "protection_dc"));
-  const protectionAc = preferDefault(active(inventory, "protection_ac"));
 
   if (readKwAsKwh && monthlyKwh) {
     assumptions.push(

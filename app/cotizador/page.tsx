@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
   createContext,
@@ -92,6 +92,7 @@ import { buildEpcProposal } from "@/lib/proposal-builder";
 import { ColombiaSolarFinancials } from "@/types/financials";
 import { saveProposal } from "@/lib/proposal-store";
 import {
+  ACTIVE_QUOTE_KEY,
   clearActiveQuote,
   deleteSavedQuote,
   getStoredQuoteLines,
@@ -107,6 +108,12 @@ import {
   type SavedQuote,
 } from "@/lib/saved-quotes";
 import { OPEN_QUOTE_KEY } from "@/lib/saved-visits";
+import {
+  loadSizingDoctrine,
+  mergeSizingDoctrine,
+  writeSizingDoctrine,
+  type SizingDoctrine,
+} from "@/lib/sizing-doctrine";
 import {
   OPEN_LEAD_KEY,
   attachQuoteToLead,
@@ -227,6 +234,7 @@ const DEFAULT_TOGGLES: ProposalToggles = {
 
 function CotizadorInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [sessionUser, setSessionUser] = useState<{
     id: string;
     username: string;
@@ -278,11 +286,11 @@ function CotizadorInner() {
 
   function pinQuoteInUrl(id: string) {
     pinActiveQuote(id);
-    sessionStorage.removeItem(OPEN_QUOTE_KEY);
+    sessionStorage.setItem(OPEN_QUOTE_KEY, id);
     const url = new URL(window.location.href);
     url.searchParams.delete("nueva");
     url.searchParams.set("quote", id);
-    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    router.replace(`${url.pathname}${url.search}`, { scroll: false });
   }
   const [addItemId, setAddItemId] = useState("");
   const [addItemQuery, setAddItemQuery] = useState("");
@@ -430,7 +438,9 @@ function CotizadorInner() {
     }
     const openId = forceNew
       ? null
-      : searchParams.get("quote") || sessionStorage.getItem(OPEN_QUOTE_KEY);
+      : searchParams.get("quote") ||
+        sessionStorage.getItem(OPEN_QUOTE_KEY) ||
+        sessionStorage.getItem(ACTIVE_QUOTE_KEY);
     const bootKey = openId || (forceNew ? "new" : "new");
     if (bootedKey.current === bootKey) return;
     bootedKey.current = bootKey;
@@ -511,6 +521,18 @@ function CotizadorInner() {
     void fetch("/api/archivo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
+        if (data?.sizingDoctrine && !aliado) {
+          try {
+            const mergedDoctrine = mergeSizingDoctrine(
+              loadSizingDoctrine(),
+              data.sizingDoctrine as SizingDoctrine,
+              items
+            );
+            writeSizingDoctrine(mergedDoctrine);
+          } catch {
+            /* quota */
+          }
+        }
         if (!data?.quotes) return;
         const merged = mergeQuotes(loadSavedQuotes(), data.quotes);
         merged.forEach((row) => {
@@ -1342,7 +1364,10 @@ function CotizadorInner() {
               /* quota */
             }
           });
-          setSavedQuotes(merged);
+          // La versión a la que se dio Guardar gana al merge con la nube.
+          saveQuoteSnapshot(saved, { replaceLines: true });
+          putQuoteLines(saved.id, saved.quoteLines ?? []);
+          setSavedQuotes(loadSavedQuotes());
         }
         setSaveFlash(
           aliado

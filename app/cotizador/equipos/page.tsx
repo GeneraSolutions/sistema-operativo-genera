@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ClientIdFields } from "@/components/ClientIdFields";
@@ -50,6 +50,7 @@ import {
 } from "@/lib/proposal-bonuses";
 import { lineFromItem, type QuoteLineInput } from "@/lib/quote-engine";
 import {
+  ACTIVE_QUOTE_KEY,
   getStoredQuoteLines,
   loadSavedQuotes,
   mergeQuotes,
@@ -59,6 +60,7 @@ import {
   saveQuoteSnapshot,
   type SavedQuote,
 } from "@/lib/saved-quotes";
+import { OPEN_QUOTE_KEY } from "@/lib/saved-visits";
 import type { CustomCategory, InventoryItem } from "@/types/inventory";
 import type {
   ParticularTerm,
@@ -81,6 +83,7 @@ const cop = new Intl.NumberFormat("es-CO", {
 
 function CotizadorEquiposInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [sessionUser, setSessionUser] = useState<{
     username: string;
     name: string;
@@ -171,7 +174,8 @@ function CotizadorEquiposInner() {
     const openId =
       searchParams.get("quote") ||
       (typeof window !== "undefined"
-        ? sessionStorage.getItem("genera.open-quote")
+        ? sessionStorage.getItem(OPEN_QUOTE_KEY) ||
+          sessionStorage.getItem(ACTIVE_QUOTE_KEY)
         : null);
     const localQuotes = loadSavedQuotes();
     for (const q of localQuotes) {
@@ -425,15 +429,32 @@ function CotizadorEquiposInner() {
       const saved = saveQuoteSnapshot({ ...q, qtyLocked: true }, { replaceLines: true });
       putQuoteLines(saved.id, saved.quoteLines ?? []);
       pinActiveQuote(saved.id);
+      sessionStorage.setItem(OPEN_QUOTE_KEY, saved.id);
       const url = new URL(window.location.href);
       url.searchParams.set("quote", saved.id);
-      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      router.replace(`${url.pathname}${url.search}`, { scroll: false });
       setSavedQuotes(loadSavedQuotes());
       const res = await fetch("/api/archivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quote: saved }),
       });
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.quotes) {
+          const merged = mergeQuotes(loadSavedQuotes(), data.quotes);
+          merged.forEach((row) => {
+            try {
+              saveQuoteSnapshot(row, { replaceLines: false });
+            } catch {
+              /* quota */
+            }
+          });
+          saveQuoteSnapshot(saved, { replaceLines: true });
+          putQuoteLines(saved.id, saved.quoteLines ?? []);
+          setSavedQuotes(loadSavedQuotes());
+        }
+      }
       setSaveFlash(
         res.ok
           ? "Cotización de equipos guardada."

@@ -9,6 +9,10 @@ import type { CommercialLead } from "@/lib/pipeline";
 import { mergeLeads } from "@/lib/pipeline";
 import type { PlantProfile, SavedReport } from "@/lib/technical-reports";
 import { mergePlants, mergeReports } from "@/lib/technical-reports";
+import {
+  mergeSizingDoctrine,
+  type SizingDoctrine,
+} from "@/lib/sizing-doctrine";
 
 const QUOTES_KEY = "genera:archivo-quotes";
 const VISITS_KEY = "genera:archivo-visits";
@@ -19,6 +23,7 @@ const REPORTS_KEY = "genera:archivo-reports";
 const PLANTS_KEY = "genera:archivo-plants";
 const OBRAS_KEY = "genera:archivo-obras";
 const LEADS_KEY = "genera:archivo-leads";
+const DOCTRINE_KEY = "genera:archivo-sizing-doctrine";
 
 function quoteItemKey(id: string) {
   return `genera:archivo-quote:${id}`;
@@ -252,4 +257,44 @@ export async function removeArchivoLead(id: string): Promise<CommercialLead[]> {
   const next = (await loadArchivoLeads()).filter((l) => l.id !== id);
   await persistSet(LEADS_KEY, next);
   return next;
+}
+
+function asDoctrine(raw: unknown): SizingDoctrine | null {
+  if (!raw || typeof raw !== "object") return null;
+  const src = raw as { lessons?: unknown; prefs?: unknown };
+  const lessons = Array.isArray(src.lessons)
+    ? src.lessons.filter(
+        (row): row is SizingDoctrine["lessons"][number] =>
+          Boolean(
+            row &&
+              typeof row === "object" &&
+              typeof (row as { id?: unknown }).id === "string" &&
+              typeof (row as { text?: unknown }).text === "string"
+          )
+      )
+    : [];
+  return {
+    lessons: lessons.slice(0, 80),
+    prefs:
+      src.prefs && typeof src.prefs === "object"
+        ? (src.prefs as SizingDoctrine["prefs"])
+        : {},
+  };
+}
+
+export async function loadArchivoSizingDoctrine(): Promise<SizingDoctrine | null> {
+  const stored = await persistGet<unknown>(DOCTRINE_KEY);
+  return asDoctrine(stored);
+}
+
+export async function upsertArchivoSizingDoctrine(
+  incoming: SizingDoctrine
+): Promise<SizingDoctrine> {
+  const current = (await loadArchivoSizingDoctrine()) ?? {
+    lessons: [],
+    prefs: {},
+  };
+  const merged = mergeSizingDoctrine(incoming, current);
+  await persistSet(DOCTRINE_KEY, merged);
+  return merged;
 }

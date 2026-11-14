@@ -11,7 +11,10 @@ import {
   addSizingLesson,
   describeSizingPrefs,
   loadSizingDoctrine,
+  mergeSizingDoctrine,
+  persistSizingDoctrineCloud,
   removeSizingLesson,
+  writeSizingDoctrine,
   type SizingDoctrine,
 } from "@/lib/sizing-doctrine";
 import type { InventoryItem } from "@/types/inventory";
@@ -64,6 +67,21 @@ export function RequirementBrief({
 
   useEffect(() => {
     setDoctrine(loadSizingDoctrine());
+    void fetch("/api/archivo", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.sizingDoctrine) return;
+        const merged = mergeSizingDoctrine(
+          loadSizingDoctrine(),
+          data.sizingDoctrine as SizingDoctrine,
+          inventory
+        );
+        writeSizingDoctrine(merged);
+        setDoctrine(merged);
+      })
+      .catch(() => undefined);
+    // inventory solo para recompilar prefs al bajar la nube
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -201,7 +219,7 @@ export function RequirementBrief({
     const result = addSizingLesson(source, inventory);
     if (!result.heard.length || (result.heard.length === 1 && result.heard[0] === "nota guardada")) {
       setTeachMiss(
-        "Guardé la nota. Para que cambie el armado, diga panel, marca de inversor, híbrido, batería, cobertura %, noche % o paneles de más."
+        "Guardé la nota. Para que cambie el armado, diga panel, marca de inversor, híbrido, batería, estructura, cableado, protección DC/AC, cobertura %, noche % o paneles de más."
       );
       setTeachOk("");
     } else {
@@ -209,6 +227,7 @@ export function RequirementBrief({
       setTeachOk(`Quedó enseñado: ${result.heard.join("; ")}.`);
     }
     setDoctrine(result.doctrine);
+    void persistSizingDoctrineCloud(result.doctrine);
     setLesson("");
     if (text.trim()) {
       const sized = draftRequirement(
@@ -231,6 +250,7 @@ export function RequirementBrief({
   function forget(id: string) {
     const next = removeSizingLesson(id, inventory);
     setDoctrine(next);
+    void persistSizingDoctrineCloud(next);
     setTeachOk("");
     setTeachMiss("");
     if (text.trim()) {

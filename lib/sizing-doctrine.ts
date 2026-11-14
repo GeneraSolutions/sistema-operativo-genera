@@ -11,6 +11,14 @@ export interface SizingPrefs {
   preferHybrid?: boolean;
   /** Id de batería del inventario. */
   preferBatteryId?: string;
+  /** Id de estructura del inventario. */
+  preferStructureId?: string;
+  /** Id de cableado del inventario. */
+  preferCablingId?: string;
+  /** Id de protección DC del inventario. */
+  preferProtectionDcId?: string;
+  /** Id de protección AC del inventario. */
+  preferProtectionAcId?: string;
   /** Multiplicador sobre el consumo (1.1 = 10% más). */
   coverFactor?: number;
   /** Fracción del día para noche sin medición (0–1). */
@@ -74,6 +82,18 @@ function asPrefs(raw: unknown): SizingPrefs {
   if (typeof src.preferBatteryId === "string" && src.preferBatteryId) {
     next.preferBatteryId = src.preferBatteryId;
   }
+  if (typeof src.preferStructureId === "string" && src.preferStructureId) {
+    next.preferStructureId = src.preferStructureId;
+  }
+  if (typeof src.preferCablingId === "string" && src.preferCablingId) {
+    next.preferCablingId = src.preferCablingId;
+  }
+  if (typeof src.preferProtectionDcId === "string" && src.preferProtectionDcId) {
+    next.preferProtectionDcId = src.preferProtectionDcId;
+  }
+  if (typeof src.preferProtectionAcId === "string" && src.preferProtectionAcId) {
+    next.preferProtectionAcId = src.preferProtectionAcId;
+  }
   if (typeof src.coverFactor === "number" && src.coverFactor > 0 && src.coverFactor <= 2) {
     next.coverFactor = src.coverFactor;
   }
@@ -111,8 +131,53 @@ function saveDoctrine(doctrine: SizingDoctrine): SizingDoctrine {
     lessons: doctrine.lessons.slice(0, 80),
     prefs: asPrefs(doctrine.prefs),
   };
-  localStorage.setItem(KEY, JSON.stringify(next));
+  if (typeof window !== "undefined") {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  }
   return next;
+}
+
+/** Une doctrinas local y remota; la lección más reciente por id gana. */
+export function mergeSizingDoctrine(
+  local: SizingDoctrine,
+  remote: SizingDoctrine,
+  inventory: InventoryItem[] = []
+): SizingDoctrine {
+  const byId = new Map<string, SizingLesson>();
+  for (const lesson of [...(remote.lessons ?? []), ...(local.lessons ?? [])]) {
+    if (!lesson?.id || !lesson?.text) continue;
+    const prev = byId.get(lesson.id);
+    if (!prev || Date.parse(lesson.createdAt) >= Date.parse(prev.createdAt)) {
+      byId.set(lesson.id, lesson);
+    }
+  }
+  const lessons = [...byId.values()]
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .slice(0, 80);
+  const prefs = inventory.length
+    ? recompilePrefs(lessons, inventory)
+    : mergePrefs(asPrefs(remote.prefs), asPrefs(local.prefs));
+  return { lessons, prefs };
+}
+
+/** Escribe doctrina en este equipo (tras merge o lección). */
+export function writeSizingDoctrine(doctrine: SizingDoctrine): SizingDoctrine {
+  return saveDoctrine(doctrine);
+}
+
+/** Sube la doctrina a Archivo para que no se pierda entre equipos. */
+export async function persistSizingDoctrineCloud(
+  doctrine: SizingDoctrine
+): Promise<void> {
+  try {
+    await fetch("/api/archivo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sizingDoctrine: doctrine }),
+    });
+  } catch {
+    /* local ya quedó; la nube se intenta de nuevo al próximo boot */
+  }
 }
 
 /** Convierte una lección en preferencias concretas del inventario. */
@@ -255,6 +320,48 @@ export function parseSizingLesson(
     heard.push("sin paneles de más");
   }
 
+  function scoreCatalog(items: InventoryItem[]): { item: InventoryItem; score: number } | null {
+    let best: { item: InventoryItem; score: number } | null = null;
+    for (const item of items) {
+      const brand = foldText(item.brand || "");
+      const model = foldText(item.model || item.name || "");
+      let score = 0;
+      if (brand.length > 2 && folded.includes(brand)) score += 2;
+      if (model.length > 2 && folded.includes(model)) score += 3;
+      if (score >= 3 && (!best || score > best.score)) best = { item, score };
+    }
+    return best;
+  }
+
+  if (/estructura|riel|rail|montaje|cubierta/.test(folded)) {
+    const best = scoreCatalog(active(inventory, "structure"));
+    if (best) {
+      patch.preferStructureId = best.item.id;
+      heard.push(`estructura ${labelOf(best.item)}`);
+    }
+  }
+  if (/cableado|cable\b|conductor/.test(folded)) {
+    const best = scoreCatalog(active(inventory, "cabling"));
+    if (best) {
+      patch.preferCablingId = best.item.id;
+      heard.push(`cableado ${labelOf(best.item)}`);
+    }
+  }
+  if (/proteccion(?:es)?\s*dc|protector(?:es)?\s*dc|fusible(?:s)?\s*dc|string\s*box/.test(folded)) {
+    const best = scoreCatalog(active(inventory, "protection_dc"));
+    if (best) {
+      patch.preferProtectionDcId = best.item.id;
+      heard.push(`protección DC ${labelOf(best.item)}`);
+    }
+  }
+  if (/proteccion(?:es)?\s*ac|protector(?:es)?\s*ac|breaker|tablero\s*ac/.test(folded)) {
+    const best = scoreCatalog(active(inventory, "protection_ac"));
+    if (best) {
+      patch.preferProtectionAcId = best.item.id;
+      heard.push(`protección AC ${labelOf(best.item)}`);
+    }
+  }
+
   return { heard, patch };
 }
 
@@ -313,6 +420,22 @@ export function describeSizingPrefs(prefs: SizingPrefs, inventory: InventoryItem
   if (prefs.preferBatteryId) {
     const battery = inventory.find((item) => item.id === prefs.preferBatteryId);
     lines.push(battery ? `Batería ${labelOf(battery)}` : "Batería fija del inventario");
+  }
+  if (prefs.preferStructureId) {
+    const row = inventory.find((item) => item.id === prefs.preferStructureId);
+    lines.push(row ? `Estructura ${labelOf(row)}` : "Estructura fija del inventario");
+  }
+  if (prefs.preferCablingId) {
+    const row = inventory.find((item) => item.id === prefs.preferCablingId);
+    lines.push(row ? `Cableado ${labelOf(row)}` : "Cableado fijo del inventario");
+  }
+  if (prefs.preferProtectionDcId) {
+    const row = inventory.find((item) => item.id === prefs.preferProtectionDcId);
+    lines.push(row ? `Protección DC ${labelOf(row)}` : "Protección DC fija");
+  }
+  if (prefs.preferProtectionAcId) {
+    const row = inventory.find((item) => item.id === prefs.preferProtectionAcId);
+    lines.push(row ? `Protección AC ${labelOf(row)}` : "Protección AC fija");
   }
   if (prefs.coverFactor && prefs.coverFactor !== 1) {
     lines.push(`Cobertura ${Math.round(prefs.coverFactor * 100)}%`);
