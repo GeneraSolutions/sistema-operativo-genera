@@ -115,6 +115,10 @@ import {
   type SizingDoctrine,
 } from "@/lib/sizing-doctrine";
 import {
+  isHybridInverter,
+  upsertBosKitLines,
+} from "@/lib/bos-kit";
+import {
   OPEN_LEAD_KEY,
   attachQuoteToLead,
   persistLeadsCloud,
@@ -1087,7 +1091,14 @@ function CotizadorInner() {
     add("protection_ac", sel.protectionAc, suggested.protectionAc);
     if (kit.includeBattery) add("battery", sel.battery, suggested.batteries);
     lockQuantities(false);
-    setQuoteLines(next);
+    setQuoteLines(
+      upsertBosKitLines(next, {
+        panelCount: suggested.panels,
+        inverter: sel.inverter,
+        hybrid: isHybridInverter(sel.inverter),
+        inventory,
+      })
+    );
   }
 
   function estimateRequirement(draft: RequirementDraft): BriefQuotePreview | null {
@@ -1120,6 +1131,12 @@ function CotizadorInner() {
     add("protection_dc", sel.protectionDc, quantities.protectionDc);
     add("protection_ac", sel.protectionAc, quantities.protectionAc);
     if (draft.includeBattery) add("battery", sel.battery, quantities.batteries);
+    const pricedLines = upsertBosKitLines(lines, {
+      panelCount: draft.panelCount || quantities.panels,
+      inverter: sel.inverter,
+      hybrid: isHybridInverter(sel.inverter),
+      inventory,
+    });
     const site =
       draft.siteLat != null && draft.siteLon != null
         ? resolveIdeamIrradiance(draft.siteLat, draft.siteLon)
@@ -1135,7 +1152,7 @@ function CotizadorInner() {
       energyTariffCOP: energyTariff,
       selection: sel,
       quantities,
-      quoteLines: lines,
+      quoteLines: pricedLines,
       inventory,
       overheadPercent,
       chargeIva,
@@ -1234,7 +1251,16 @@ function CotizadorInner() {
       });
     } else {
       lockQuantities(false);
-      setQuoteLines(next);
+      const inverterItem =
+        inventory.find((entry) => entry.id === draft.inverterId) ?? null;
+      setQuoteLines(
+        upsertBosKitLines(next, {
+          panelCount: draft.panelCount,
+          inverter: inverterItem,
+          hybrid: isHybridInverter(inverterItem),
+          inventory,
+        })
+      );
     }
     goToStep(2);
   }
@@ -1248,8 +1274,14 @@ function CotizadorInner() {
       batteryKwh,
       12
     );
-    return applySuggestedQuantities(lines, suggested, {
+    const core = applySuggestedQuantities(lines, suggested, {
       preserveKeys: visitLinked ? ["cabling"] : [],
+    });
+    return upsertBosKitLines(core, {
+      panelCount: suggested.panels,
+      inverter: sel.inverter,
+      hybrid: isHybridInverter(sel.inverter),
+      inventory,
     });
   }
 

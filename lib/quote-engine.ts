@@ -139,11 +139,13 @@ export function suggestQuantities(
     batteries = Math.max(1, Math.ceil(batteryKwh / Math.max(batKwh, 0.1)));
   }
   const protKits = Math.max(1, Math.ceil(systemKwp / 50));
+  // Doctrina Genera: grupo de 4 paneles → 2 rieles de 4.80 (no 1 riel por panel).
+  const rails = Math.max(2, Math.ceil(panels / 4) * 2);
   return {
     panels,
     inverters,
     batteries,
-    structure: panels,
+    structure: rails,
     cabling: Math.ceil(systemKwp * cableMetersPerKwp),
     protectionDc: protKits,
     protectionAc: protKits,

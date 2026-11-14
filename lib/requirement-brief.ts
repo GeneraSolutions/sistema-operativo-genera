@@ -1,3 +1,8 @@
+import {
+  buildBosKit,
+  isHybridInverter,
+  railCountForPanels,
+} from "@/lib/bos-kit";
 import { matchStationByCity } from "@/lib/ideam-irradiance";
 import { QUOTE_PERFORMANCE_RATIO } from "@/lib/quote-engine";
 import type { SizingPrefs } from "@/lib/sizing-doctrine";
@@ -672,31 +677,13 @@ export function draftRequirement(
       detail: `${batteryKwh(batteryPick.item).toLocaleString("es-CO")} kWh c/u`,
     });
   }
-  if (structure && panelCount) {
-    equipment.push({
-      id: structure.id,
-      role: "Estructura",
-      label: labelOf(structure),
-      qty: panelCount,
-      detail: "Cubierta, predeterminada",
-    });
-  }
-  if (cabling && systemKwp > 0) {
-    equipment.push({
-      id: cabling.id,
-      role: "Cable",
-      label: labelOf(cabling),
-      qty: Math.ceil(systemKwp * 12),
-      detail: "12 m por kWp, como el cotizador",
-    });
-  }
   if (protectionDc && systemKwp > 0) {
     equipment.push({
       id: protectionDc.id,
       role: "Protección DC",
       label: labelOf(protectionDc),
       qty: Math.max(1, Math.ceil(systemKwp / 50)),
-      detail: "Predeterminada",
+      detail: "YRO / DC predeterminada",
     });
   }
   if (protectionAc && systemKwp > 0) {
@@ -707,6 +694,40 @@ export function draftRequirement(
       qty: Math.max(1, Math.ceil(systemKwp / 50)),
       detail: "Predeterminada",
     });
+  }
+  if (cabling && systemKwp > 0) {
+    equipment.push({
+      id: cabling.id,
+      role: "Cable",
+      label: labelOf(cabling),
+      qty: Math.ceil(systemKwp * 12),
+      detail: "Cable solar · 12 m por kWp",
+    });
+  }
+
+  const bos = buildBosKit({
+    panelCount,
+    inverter,
+    hybrid: isHybridInverter(inverter),
+    inventory,
+    preferStructureId: structure?.id,
+  });
+  for (const row of bos) {
+    equipment.push({
+      id: row.item.id,
+      role: row.role,
+      label: labelOf(row.item),
+      qty: row.qty,
+      detail: row.detail,
+    });
+  }
+  if (bos.length) {
+    assumptions.push(
+      "Doctrina Genera Solutions SAS: clamps, lugs, DPS DC, cajas DC/AC, puesta a tierra, cable AC #8, canaleta 8×4, corazas y terminales entran solos en toda cotización."
+    );
+    assumptions.push(
+      `Estructura: ${railCountForPanels(panelCount)} rieles de 4.80 (grupo de 4 paneles → 2 rieles; lugs = rieles).`
+    );
   }
 
   return {
