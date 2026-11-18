@@ -30,6 +30,7 @@ const NAV: {
   { href: "/pipeline", label: "Pipeline", hint: "Leads y cierre", group: "comercial", module: "pipeline" },
   { href: "/cotizador", label: "Cotizador", hint: "Paramétrico", group: "comercial", module: "cotizador" },
   { href: "/cotizador/equipos", label: "Solo equipos", hint: "Hasta 12 ítems", group: "comercial", module: "cotizador" },
+  { href: "/cotizador/servicios", label: "Servicios", hint: "Instalación y otros", group: "comercial", module: "cotizador" },
   { href: "/visita-tecnica", label: "Visitas", hint: "Levantamiento", group: "operacion", module: "visita" },
   { href: "/informes", label: "Informes", hint: "Inspección y O&M", group: "operacion", module: "informes" },
   { href: "/om", label: "O&M", hint: "Plantas y calendario", group: "operacion", module: "om" },
@@ -184,6 +185,16 @@ export function AppShell({
               }`}
             >
               Solo equipos
+            </Link>
+            <Link
+              href="/cotizador/servicios"
+              className={`os-subtab rounded-lg px-4 py-2 text-sm font-semibold ${
+                pathname.startsWith("/cotizador/servicios")
+                  ? "is-active bg-[#1f6b45] text-white"
+                  : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
+              }`}
+            >
+              Servicios
             </Link>
           </div>
         ) : null}

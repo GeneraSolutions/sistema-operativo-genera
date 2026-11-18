@@ -603,6 +603,12 @@ export default function InicioPage() {
             Cotizar solo equipos
           </Link>
         ) : null}
+        {can("cotizador") ? (
+          <Link href="/cotizador/servicios" className="os-quick-item">
+            <FileSpreadsheet size={16} />
+            Cotizar servicios
+          </Link>
+        ) : null}
         {can("visita") ? (
           <Link href="/visita-tecnica" className="os-quick-item">
             <ClipboardCheck size={16} />

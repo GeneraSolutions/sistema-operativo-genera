@@ -66,6 +66,8 @@ export function EpcProposalView({
   const warrantyItems = visibleWarrantyItems(warranties, p.includeBattery);
   const clientDocs = resolveClientDeliverables(p.toggles);
   const isEquipos = p.kind === "equipos";
+  const isServicios = p.kind === "servicios";
+  const isSimpleOffer = isEquipos || isServicios;
   const nitLabel = formatClientDocument(
     p.clientIdType,
     p.clientNit || "",
@@ -79,7 +81,7 @@ export function EpcProposalView({
   );
   const pulse: { label: string; value: string; hint: string }[] = [];
   const ledger: { label: string; value: string; hint?: string }[] = [];
-  if (!isEquipos) {
+  if (!isSimpleOffer) {
     if (p.toggles.showRoiPayback) {
       pulse.push({
         label: "ROI 25 años",
@@ -157,10 +159,10 @@ export function EpcProposalView({
     );
   }
   const chapters = [
-    !isEquipos ? { id: "gq-sistema", label: "Sistema" } : null,
+    !isSimpleOffer ? { id: "gq-sistema", label: "Sistema" } : null,
     { id: "gq-inversion", label: "Inversión" },
-    !isEquipos ? { id: "gq-cifras", label: "Cifras" } : null,
-    !isEquipos && bonuses.length ? { id: "gq-planta", label: "Planta" } : null,
+    !isSimpleOffer ? { id: "gq-cifras", label: "Cifras" } : null,
+    !isSimpleOffer && bonuses.length ? { id: "gq-planta", label: "Planta" } : null,
     { id: "gq-cierre", label: "Cierre" },
   ].filter((item): item is { id: string; label: string } => Boolean(item));
   const index = (id: string) =>
@@ -230,9 +232,9 @@ export function EpcProposalView({
                 {[
                   p.clientCity,
                   nitLabel,
-                  isEquipos ? p.clientEmail : "",
-                  isEquipos ? p.clientPhone : "",
-                  isEquipos ? p.clientAddress : "",
+                  isSimpleOffer ? p.clientEmail : "",
+                  isSimpleOffer ? p.clientPhone : "",
+                  isSimpleOffer ? p.clientAddress : "",
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -250,14 +252,18 @@ export function EpcProposalView({
               </div>
             </div>
 
-            {isEquipos ? (
+            {isSimpleOffer ? (
               <div className="gq-stack">
-                <p>Suministro</p>
+                <p>{isServicios ? "Servicios" : "Suministro"}</p>
                 <strong>
                   {p.commercialLines.length}
                   <small>{p.commercialLines.length === 1 ? " ítem" : " ítems"}</small>
                 </strong>
-                <span>Sin instalación · sin obra</span>
+                <span>
+                  {isServicios
+                    ? "Instalación u otros · con o sin equipos"
+                    : "Sin instalación · sin obra"}
+                </span>
               </div>
             ) : (
               <div className="gq-stack">
@@ -290,7 +296,7 @@ export function EpcProposalView({
           </div>
         </section>
 
-        {!isEquipos ? (
+        {!isSimpleOffer ? (
           <Chapter id="gq-sistema" n={index("gq-sistema")} title="El sistema">
             <div className="gq-split">
               <div>
@@ -332,11 +338,18 @@ export function EpcProposalView({
           n={index("gq-inversion")}
           title="La inversión"
           hint={
-            isEquipos
-              ? "Suministro de equipos · sin instalación"
-              : "Suministros y servicios integrales · 8 categorías"
+            isServicios
+              ? "Servicios e ítems · alcance según descripción"
+              : isEquipos
+                ? "Suministro de equipos · sin instalación"
+                : "Suministros y servicios integrales · 8 categorías"
           }
         >
+          {isServicios && (p.serviceDescription || p.roofType) ? (
+            <p className="gq-hint" style={{ marginBottom: "1rem", whiteSpace: "pre-wrap" }}>
+              {p.serviceDescription || p.roofType}
+            </p>
+          ) : null}
           <div className="gq-lines">
             {p.commercialLines.map((line) => (
               <article key={line.index}>
@@ -353,9 +366,11 @@ export function EpcProposalView({
             ))}
           </div>
           <p className="gq-hint">
-            {isEquipos
-              ? "Suministro de equipos. No incluye instalación, ingeniería, visita técnica ni obra civil."
-              : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera Solutions SAS."}
+            {isServicios
+              ? "Cotización de servicios Genera Solutions SAS. Los equipos del inventario, si aparecen, se facturan junto con el alcance descrito."
+              : isEquipos
+                ? "Suministro de equipos. No incluye instalación, ingeniería, visita técnica ni obra civil."
+                : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera Solutions SAS."}
           </p>
           {p.withholdingsNote ? <p className="gq-note">{p.withholdingsNote}</p> : null}
           <div className="gq-settle">
@@ -413,7 +428,7 @@ export function EpcProposalView({
           ) : null}
         </Chapter>
 
-        {!isEquipos ? (
+        {!isSimpleOffer ? (
           <Chapter id="gq-cifras" n={index("gq-cifras")} title="Las cifras">
             <div className="gq-pulse">
               {pulse.map((item) => (
@@ -443,7 +458,7 @@ export function EpcProposalView({
           </Chapter>
         ) : null}
 
-        {!isEquipos && bonuses.length ? (
+        {!isSimpleOffer && bonuses.length ? (
           <Chapter
             id="gq-planta"
             n={index("gq-planta")}
@@ -476,16 +491,17 @@ export function EpcProposalView({
 
         <Chapter id="gq-cierre" n={index("gq-cierre")} title="Cierre" hint="">
           <div className="gq-ledger">
-            {isEquipos ? (
+            {isSimpleOffer ? (
               <div className="is-wide">
                 <span>
                   Alcance
                   <em>
-                    Equipos listados, con ficha de fábrica cuando exista. No incluye
-                    instalación, tableros, cableado de obra, RETIE ni trámites UPME.
+                    {isServicios
+                      ? "Según la descripción de esta oferta. Puede incluir mano de obra, instalación y equipos del inventario."
+                      : "Equipos listados, con ficha de fábrica cuando exista. No incluye instalación, tableros, cableado de obra, RETIE ni trámites UPME."}
                   </em>
                 </span>
-                <b>Suministro</b>
+                <b>{isServicios ? "Servicios" : "Suministro"}</b>
               </div>
             ) : (
               <div className="is-wide">
@@ -517,17 +533,25 @@ export function EpcProposalView({
           ) : null}
           <div className="gq-close-grid">
             <div>
-              <h3>{isEquipos ? "Facturación" : "Marco legal"}</h3>
+              <h3>{isSimpleOffer ? "Facturación" : "Marco legal"}</h3>
               <ul>
-                {isEquipos ? (
+                {isSimpleOffer ? (
                   <>
-                    <li>Factura de venta de equipos · IVA según ítem</li>
+                    <li>
+                      {isServicios
+                        ? "Factura de servicios y/o equipos · IVA según ítem"
+                        : "Factura de venta de equipos · IVA según ítem"}
+                    </li>
                     {p.withholdingsNote ? (
                       <li>{p.withholdingsNote}</li>
                     ) : (
                       <li>Retenciones según RUT del cliente al momento de facturar</li>
                     )}
-                    <li>Garantía de fábrica, no de instalación</li>
+                    <li>
+                      {isServicios
+                        ? "Garantías según ítems y alcance pactado"
+                        : "Garantía de fábrica, no de instalación"}
+                    </li>
                   </>
                 ) : (
                   <>
@@ -544,9 +568,11 @@ export function EpcProposalView({
                 <li>Cotización válida por {p.validUntilDays} días calendario</li>
                 <li>Precios sujetos a disponibilidad de equipos</li>
                 <li>
-                  {isEquipos
-                    ? "No incluye instalación, ingeniería ni adecuaciones de sitio"
-                    : "No incluye obras civiles ni adecuaciones MT salvo mención expresa"}
+                  {isServicios
+                    ? "Lo no escrito en el alcance no está incluido"
+                    : isEquipos
+                      ? "No incluye instalación, ingeniería ni adecuaciones de sitio"
+                      : "No incluye obras civiles ni adecuaciones MT salvo mención expresa"}
                 </li>
               </ul>
             </div>

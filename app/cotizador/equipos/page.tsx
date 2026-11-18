@@ -184,6 +184,12 @@ function CotizadorEquiposInner() {
     setSavedQuotes(localQuotes);
     if (openId) {
       const q = localQuotes.find((row) => row.id === openId);
+      if (q?.kind === "servicios") {
+        window.location.replace(
+          `/cotizador/servicios?quote=${encodeURIComponent(openId)}`
+        );
+        return;
+      }
       if (q?.kind === "epc" || (q && q.kind !== "equipos" && q.systemKwp)) {
         window.location.replace(`/cotizador?quote=${encodeURIComponent(openId)}`);
         return;

@@ -175,9 +175,11 @@ export function OsCommand({
             sub: [
               q.kind === "equipos"
                 ? "Solo equipos"
-                : q.systemKwp && !/kwp/i.test(q.name || "")
-                  ? `${q.systemKwp} kWp`
-                  : "",
+                : q.kind === "servicios"
+                  ? "Servicios"
+                  : q.systemKwp && !/kwp/i.test(q.name || "")
+                    ? `${q.systemKwp} kWp`
+                    : "",
               q.clientCity,
               q.savedAt ? new Date(q.savedAt).toLocaleDateString("es-CO") : "",
             ]

@@ -557,6 +557,12 @@ function CotizadorInner() {
       );
       return;
     }
+    if (saved?.kind === "servicios") {
+      window.location.replace(
+        `/cotizador/servicios?quote=${encodeURIComponent(saved.id)}`
+      );
+      return;
+    }
     if (saved) {
       loadQuote(saved, items);
     } else if (openId) {
@@ -1443,6 +1449,12 @@ function CotizadorInner() {
     if (q.kind === "equipos") {
       window.location.replace(
         `/cotizador/equipos?quote=${encodeURIComponent(q.id)}`
+      );
+      return;
+    }
+    if (q.kind === "servicios") {
+      window.location.replace(
+        `/cotizador/servicios?quote=${encodeURIComponent(q.id)}`
       );
       return;
     }

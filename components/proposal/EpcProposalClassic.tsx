@@ -90,6 +90,9 @@ export function EpcProposalClassic({
   const warrantyItems = visibleWarrantyItems(warranties, p.includeBattery);
   const clientDocs = resolveClientDeliverables(p.toggles);
   const isEquipos = p.kind === "equipos";
+  const isServicios = p.kind === "servicios";
+  const isSimpleOffer = isEquipos || isServicios;
+  // isSimpleOffer: equipos o servicios (sin planta kWp)
   const nitLabel = formatClientDocument(
     p.clientIdType,
     p.clientNit || "",
@@ -113,7 +116,12 @@ export function EpcProposalClassic({
           ) : (
             <BrandLogo height={32} />
           )}
-          {p.companyName} · {isEquipos ? "Cotización de equipos" : "Cotización"}
+          {p.companyName} ·{" "}
+          {isServicios
+            ? "Cotización de servicios"
+            : isEquipos
+              ? "Cotización de equipos"
+              : "Cotización"}
         </div>
         <div className="flex items-center gap-2 print:hidden">
           {clientDocs.contrato ? (
@@ -157,7 +165,7 @@ export function EpcProposalClassic({
             Fecha: {formatProposalDate(p.createdAt)} · Vigencia: {p.validUntilDays}{" "}
             días
           </p>
-          {isEquipos ? (
+          {isSimpleOffer ? (
             <p className="mt-2 text-sm text-[#8aa0c2]">
               {[
                 nitLabel || "",
@@ -187,7 +195,7 @@ export function EpcProposalClassic({
             value={p.clientName}
             hint={[nitLabel, p.clientCity].filter(Boolean).join(" · ")}
           />
-          {isEquipos ? (
+          {isSimpleOffer ? (
             <>
               <InfoTile
                 label="Contacto"
@@ -217,7 +225,7 @@ export function EpcProposalClassic({
           )}
         </div>
 
-        {!isEquipos ? (
+        {!isSimpleOffer ? (
         <>
         <section className="mt-12">
           <SectionHead
@@ -314,18 +322,31 @@ export function EpcProposalClassic({
 
         <section className="mt-12">
           <SectionHead
-            n={isEquipos ? 1 : 2}
-            title={isEquipos ? "Equipos cotizados" : "Equipos y servicios"}
+            n={isSimpleOffer ? 1 : 2}
+            title={
+              isServicios
+                ? "Ítems cotizados"
+                : isSimpleOffer
+                  ? "Equipos cotizados"
+                  : "Equipos y servicios"
+            }
             subtitle={
-              isEquipos
-                ? "Suministro de equipos · sin instalación"
-                : "Technical Bundling · 8 categorías comerciales"
+              isServicios
+                ? "Servicios e ítems · alcance según descripción"
+                : isEquipos
+                  ? "Suministro de equipos · sin instalación"
+                  : "Technical Bundling · 8 categorías comerciales"
             }
           />
+          {isServicios && (p.serviceDescription || p.roofType) ? (
+            <p className="mb-4 whitespace-pre-wrap text-sm leading-6 text-[#c5d4ea]">
+              {p.serviceDescription || p.roofType}
+            </p>
+          ) : null}
           <div className="overflow-hidden rounded-2xl border border-[#1e2d4a] bg-[#10182c]">
             <div className="border-b border-[#1e2d4a] px-4 py-3 text-xs font-semibold tracking-[0.16em] text-[#8aa0c2] uppercase">
-              {isEquipos
-                ? `${p.commercialLines.length} equipo${p.commercialLines.length === 1 ? "" : "s"}`
+              {isSimpleOffer
+                ? `${p.commercialLines.length} ítem${p.commercialLines.length === 1 ? "" : "s"}`
                 : "Suministros y servicios integrales · 8 categorías"}
             </div>
             <table className="w-full text-left text-sm">
@@ -373,9 +394,11 @@ export function EpcProposalClassic({
               />
               <Row k="Valor total" v={cop.format(p.totalCOP)} strong />
               <p className="pt-1 text-xs text-[#6b7c99]">
-                {isEquipos
-                  ? "Suministro de equipos. No incluye instalación, ingeniería, visita técnica ni obra civil."
-                  : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera Solutions SAS."}
+                {isServicios
+                  ? "Cotización de servicios Genera Solutions SAS."
+                  : isEquipos
+                    ? "Suministro de equipos. No incluye instalación, ingeniería, visita técnica ni obra civil."
+                    : "Inversión llave en mano. El desglose de costos unitarios es interno de Genera Solutions SAS."}
               </p>
               {p.withholdingsNote ? (
                 <p className="pt-1 text-xs text-[#5eead4]">{p.withholdingsNote}</p>
@@ -384,7 +407,7 @@ export function EpcProposalClassic({
           </div>
         </section>
 
-        {!isEquipos ? (
+        {!isSimpleOffer ? (
         <section className="mt-12">
           <SectionHead
             n={3}
@@ -441,7 +464,7 @@ export function EpcProposalClassic({
 
         <section className="mt-12">
           <SectionHead
-            n={isEquipos ? 2 : 4}
+            n={isSimpleOffer ? 2 : 4}
             title="Forma de pago"
             subtitle={`Modalidad: ${p.payment.modality}`}
           />
@@ -493,7 +516,7 @@ export function EpcProposalClassic({
           ) : null}
         </section>
 
-        {!isEquipos ? (
+        {!isSimpleOffer ? (
         <section className="mt-12">
           <SectionHead
             n={5}
@@ -545,7 +568,7 @@ export function EpcProposalClassic({
         </section>
         ) : null}
 
-        {!isEquipos && p.bonuses.filter(
+        {!isSimpleOffer && p.bonuses.filter(
           (b) => b.id !== "ev-charger" && !/cargador\s*ev/i.test(b.title)
         ).length ? (
         <section className="mt-12">
@@ -588,7 +611,7 @@ export function EpcProposalClassic({
         </section>
         ) : null}
 
-        {!isEquipos ? (
+        {!isSimpleOffer ? (
         <section className="mt-12">
           <SectionHead
             n={7}
@@ -619,12 +642,14 @@ export function EpcProposalClassic({
         <section className="mt-12 grid gap-6 md:grid-cols-2">
           <div>
             <h2 className="text-lg font-semibold text-white">
-              {isEquipos ? "Alcance" : "Mantenimiento"}
+              {isSimpleOffer ? "Alcance" : "Mantenimiento"}
             </h2>
             <p className="mt-2 text-sm leading-6 text-[#c5d4ea]">
-              {isEquipos
-                ? "Esta oferta cubre únicamente los equipos listados, con fichas de fábrica cuando estén disponibles. Entrega en las condiciones comerciales de esta cotización. No incluye instalación, tableros, cableado de obra, RETIE ni tramites UPME."
-                : "Mantenimiento preventivo anual recomendado: limpieza de paneles, inspección de estructura y conexiones, revisión de inversores y monitoreo. Primer mantenimiento incluido el primer año posterior a la puesta en marcha."}
+              {isServicios
+                ? "Según la descripción de esta oferta. Puede incluir mano de obra, instalación y equipos del inventario."
+                : isEquipos
+                  ? "Esta oferta cubre únicamente los equipos listados, con fichas de fábrica cuando estén disponibles. Entrega en las condiciones comerciales de esta cotización. No incluye instalación, tableros, cableado de obra, RETIE ni tramites UPME."
+                  : "Mantenimiento preventivo anual recomendado: limpieza de paneles, inspección de estructura y conexiones, revisión de inversores y monitoreo. Primer mantenimiento incluido el primer año posterior a la puesta en marcha."}
             </p>
           </div>
           <div>
@@ -655,10 +680,10 @@ export function EpcProposalClassic({
         <section className="mt-12 grid gap-6 md:grid-cols-2">
           <div>
             <h2 className="text-lg font-semibold text-white">
-              {isEquipos ? "Facturación" : "Marco legal"}
+              {isSimpleOffer ? "Facturación" : "Marco legal"}
             </h2>
             <ul className="mt-2 space-y-1 text-sm text-[#c5d4ea]">
-              {isEquipos ? (
+              {isSimpleOffer ? (
                 <>
                   <li>Factura de venta de equipos · IVA según ítem</li>
                   {p.withholdingsNote ? (
@@ -683,9 +708,11 @@ export function EpcProposalClassic({
               <li>Cotización válida por {p.validUntilDays} días calendario</li>
               <li>Precios sujetos a disponibilidad de equipos</li>
               <li>
-                {isEquipos
-                  ? "No incluye instalación, ingeniería ni adecuaciones de sitio"
-                  : "No incluye obras civiles ni adecuaciones MT salvo mención expresa"}
+                {isServicios
+                  ? "Lo no escrito en el alcance no está incluido"
+                  : isEquipos
+                    ? "No incluye instalación, ingeniería ni adecuaciones de sitio"
+                    : "No incluye obras civiles ni adecuaciones MT salvo mención expresa"}
               </li>
             </ul>
           </div>

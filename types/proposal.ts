@@ -104,7 +104,7 @@ export interface ProposalToggles {
   deliverables?: Partial<ClientDeliverables>;
 }
 
-export type ProposalKind = "epc" | "equipos";
+export type ProposalKind = "epc" | "equipos" | "servicios";
 
 export interface ParticularTerm {
   id: string;
@@ -114,8 +114,10 @@ export interface ParticularTerm {
 
 export interface EpcProposal {
   id: string;
-  /** epc = planta llave en mano; equipos = suministro de SKUs sin obra. */
+  /** epc = planta; equipos = SKUs; servicios = instalación u otros (texto libre + ítems). */
   kind?: ProposalKind;
+  /** Alcance escrito a mano (cotizador de servicios). */
+  serviceDescription?: string;
   createdAt: string;
   validUntilDays: number;
   siteImageDataUrl?: string;

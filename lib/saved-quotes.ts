@@ -25,6 +25,8 @@ export interface SavedQuote {
   name: string;
   savedAt: string;
   kind?: ProposalKind;
+  /** Texto libre del alcance (servicios / instalación / otros). */
+  serviceDescription?: string;
   clientName: string;
   clientCity: string;
   clientEmail?: string;
@@ -259,17 +261,20 @@ export function quotesForCotizador(
   if (opts.kind === "equipos") {
     return channel.filter((q) => q.kind === "equipos");
   }
+  if (opts.kind === "servicios") {
+    return channel.filter((q) => q.kind === "servicios");
+  }
   if (opts.kind === "epc") {
-    return channel.filter((q) => q.kind !== "equipos");
+    return channel.filter((q) => !q.kind || q.kind === "epc");
   }
   return channel;
 }
 
 export function quoteDeskPath(quote: SavedQuote): string {
   const q = encodeURIComponent(quote.id);
-  return quote.kind === "equipos"
-    ? `/cotizador/equipos?quote=${q}`
-    : `/cotizador?quote=${q}`;
+  if (quote.kind === "equipos") return `/cotizador/equipos?quote=${q}`;
+  if (quote.kind === "servicios") return `/cotizador/servicios?quote=${q}`;
+  return `/cotizador?quote=${q}`;
 }
 
 export function loadSavedQuotes(): SavedQuote[] {

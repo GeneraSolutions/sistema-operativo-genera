@@ -35,6 +35,7 @@ export function CommercialContract({
   tools?: ReactNode;
 }) {
   const equipos = p.kind === "equipos";
+  const servicios = p.kind === "servicios";
   const idDoc = formatClientDocument(
     p.clientIdType,
     p.clientNit || "",
@@ -45,10 +46,12 @@ export function CommercialContract({
     p.includeBattery
   );
   const particularTerms = cleanParticularTerms(p.particularTerms);
-  const particularNo = equipos ? 15 : 19;
+  const particularNo = equipos || servicios ? 15 : 19;
   const title = equipos
     ? "Contrato de suministro de equipos"
-    : "Contrato de suministro, instalación y puesta en marcha de sistema fotovoltaico";
+    : servicios
+      ? "Contrato de servicios"
+      : "Contrato de suministro, instalación y puesta en marcha de sistema fotovoltaico";
   const idLabel = idDoc
     ? `identificado con ${idDoc}`
     : "identificado según la cotización anexa";

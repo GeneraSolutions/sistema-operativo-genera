@@ -51,6 +51,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/pipeline": SquareKanban,
   "/cotizador": Calculator,
   "/cotizador/equipos": PackageOpen,
+  "/cotizador/servicios": Wrench,
   "/visita-tecnica": ClipboardCheck,
   "/informes": FileText,
   "/om": Wrench,

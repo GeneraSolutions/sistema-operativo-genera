@@ -358,7 +358,13 @@ export default function ArchivoPage() {
               icon={Calculator}
               title={q.clientName || q.name || "Sin cliente"}
               meta={[
-                q.kind === "equipos" ? "Solo equipos" : q.systemKwp ? `${q.systemKwp} kWp` : "",
+                q.kind === "equipos"
+                  ? "Solo equipos"
+                  : q.kind === "servicios"
+                    ? "Servicios"
+                    : q.systemKwp
+                      ? `${q.systemKwp} kWp`
+                      : "",
                 q.clientCity,
                 q.savedByName || q.savedBy,
                 when(q.savedAt),
@@ -366,7 +372,9 @@ export default function ArchivoPage() {
               pill={
                 q.kind === "equipos"
                   ? { tone: "info", text: "Solo equipos" }
-                  : undefined
+                  : q.kind === "servicios"
+                    ? { tone: "info", text: "Servicios" }
+                    : undefined
               }
               onOpen={() => openQuote(q)}
               onDelete={() => removeQuote(q.id)}
@@ -472,7 +480,13 @@ export default function ArchivoPage() {
               title={q.clientName || q.name || "Sin cliente"}
               meta={[
                 q.partnerCompanyName || q.savedByName || q.savedBy,
-                q.kind === "equipos" ? "Solo equipos" : q.systemKwp ? `${q.systemKwp} kWp` : "",
+                q.kind === "equipos"
+                  ? "Solo equipos"
+                  : q.kind === "servicios"
+                    ? "Servicios"
+                    : q.systemKwp
+                      ? `${q.systemKwp} kWp`
+                      : "",
                 when(q.savedAt),
               ]}
               onOpen={() => openQuote(q)}
