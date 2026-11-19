@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  loadArchivoGastos,
   loadArchivoLeads,
   loadArchivoObras,
   loadArchivoPlants,
@@ -13,6 +14,7 @@ import {
   removeArchivoQuote,
   removeArchivoReport,
   removeArchivoVisit,
+  upsertArchivoGastos,
   upsertArchivoLeads,
   upsertArchivoObras,
   upsertArchivoPlants,
@@ -33,6 +35,7 @@ import type { SavedQuote } from "@/lib/saved-quotes";
 import type { SavedVisit } from "@/lib/saved-visits";
 import type { PlantProfile, SavedReport } from "@/lib/technical-reports";
 import type { SizingDoctrine } from "@/lib/sizing-doctrine";
+import type { GastoBundle } from "@/lib/gastos";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,6 +75,7 @@ async function payload(session: { id: string; username: string }, aliado: boolea
       obras: [],
       leads: [],
       sizingDoctrine: null,
+      gastos: null,
     };
   }
   return {
@@ -82,6 +86,7 @@ async function payload(session: { id: string; username: string }, aliado: boolea
     obras: await loadArchivoObras(),
     leads: await loadArchivoLeads(),
     sizingDoctrine: await loadArchivoSizingDoctrine(),
+    gastos: await loadArchivoGastos(),
   };
 }
 
@@ -107,6 +112,7 @@ export async function POST(req: NextRequest) {
     obras?: ObraJob[];
     leads?: CommercialLead[];
     sizingDoctrine?: SizingDoctrine;
+    gastos?: GastoBundle;
   };
   const stampQuote = (q: SavedQuote): SavedQuote => ({
     ...q,
@@ -123,7 +129,8 @@ export async function POST(req: NextRequest) {
       body.plants ||
       body.obras ||
       body.leads ||
-      body.sizingDoctrine
+      body.sizingDoctrine ||
+      body.gastos
     ) {
       return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
     }
@@ -134,6 +141,9 @@ export async function POST(req: NextRequest) {
   }
   if (body.sizingDoctrine && !gate.aliado) {
     await upsertArchivoSizingDoctrine(body.sizingDoctrine);
+  }
+  if (body.gastos && !gate.aliado) {
+    await upsertArchivoGastos(body.gastos);
   }
   if (body.visit?.id) await upsertArchivoVisit(body.visit);
   if (body.visits?.length) await upsertArchivoVisits(body.visits);

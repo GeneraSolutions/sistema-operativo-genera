@@ -32,6 +32,7 @@ export type AppModule =
   | "informes"
   | "om"
   | "obra"
+  | "gastos"
   | "inventario"
   | "inteligencia"
   | "contenido"
@@ -45,6 +46,7 @@ export const APP_MODULES: { id: AppModule; label: string }[] = [
   { id: "informes", label: "Informes técnicos" },
   { id: "om", label: "O&M" },
   { id: "obra", label: "Obra" },
+  { id: "gastos", label: "Gastos" },
   { id: "archivo", label: "Archivo" },
   { id: "inventario", label: "Inventario" },
   { id: "inteligencia", label: "Inteligencia" },
@@ -87,6 +89,14 @@ const MODULE_ROLES: Record<AppModule, string[]> = {
     "ingenieria",
     "sst",
     "comercial",
+  ],
+  gastos: [
+    "ceo",
+    "gerente",
+    "compras",
+    "contabilidad",
+    "operaciones",
+    "ingenieria",
   ],
   inventario: ["ceo", "gerente", "compras", "ingenieria", "contabilidad"],
   inteligencia: [
@@ -132,6 +142,7 @@ export const ROLE_PRESETS: { label: string; modules: AppModule[] }[] = [
       "informes",
       "om",
       "obra",
+      "gastos",
       "inteligencia",
       "contenido",
       "inventario",
@@ -233,6 +244,7 @@ export function moduleFromPath(pathname: string): AppModule | null {
   if (pathname.startsWith("/informes")) return "informes";
   if (pathname.startsWith("/om")) return "om";
   if (pathname.startsWith("/obra")) return "obra";
+  if (pathname.startsWith("/gastos")) return "gastos";
   if (pathname.startsWith("/inventario")) return "inventario";
   if (pathname.startsWith("/inteligencia")) return "inteligencia";
   if (pathname.startsWith("/contenido")) return "contenido";

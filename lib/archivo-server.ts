@@ -13,6 +13,10 @@ import {
   mergeSizingDoctrine,
   type SizingDoctrine,
 } from "@/lib/sizing-doctrine";
+import {
+  mergeGastoBundle,
+  type GastoBundle,
+} from "@/lib/gastos";
 
 const QUOTES_KEY = "genera:archivo-quotes";
 const VISITS_KEY = "genera:archivo-visits";
@@ -24,6 +28,7 @@ const PLANTS_KEY = "genera:archivo-plants";
 const OBRAS_KEY = "genera:archivo-obras";
 const LEADS_KEY = "genera:archivo-leads";
 const DOCTRINE_KEY = "genera:archivo-sizing-doctrine";
+const GASTOS_KEY = "genera:archivo-gastos";
 
 function quoteItemKey(id: string) {
   return `genera:archivo-quote:${id}`;
@@ -297,4 +302,40 @@ export async function upsertArchivoSizingDoctrine(
   const merged = mergeSizingDoctrine(incoming, current);
   await persistSet(DOCTRINE_KEY, merged);
   return merged;
+}
+
+export async function loadArchivoGastos(): Promise<GastoBundle | null> {
+  const stored = await persistGet<GastoBundle>(GASTOS_KEY);
+  if (!stored || typeof stored !== "object") return null;
+  return {
+    projects: Array.isArray(stored.projects) ? stored.projects : [],
+    compras: Array.isArray(stored.compras) ? stored.compras : [],
+    pagos: Array.isArray(stored.pagos) ? stored.pagos : [],
+    precios: Array.isArray(stored.precios) ? stored.precios : [],
+  };
+}
+
+export async function upsertArchivoGastos(
+  incoming: GastoBundle
+): Promise<GastoBundle> {
+  const current = (await loadArchivoGastos()) ?? {
+    projects: [],
+    compras: [],
+    pagos: [],
+    precios: [],
+  };
+  const merged = mergeGastoBundle(incoming, current);
+  // Strip huge invoice data URLs from cloud copy
+  const slim: GastoBundle = {
+    ...merged,
+    compras: merged.compras.map((c) => ({
+      ...c,
+      invoiceDataUrl:
+        c.invoiceDataUrl && c.invoiceDataUrl.length > 80_000
+          ? undefined
+          : c.invoiceDataUrl,
+    })),
+  };
+  await persistSet(GASTOS_KEY, slim);
+  return slim;
 }

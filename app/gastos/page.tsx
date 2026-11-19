@@ -1,0 +1,971 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  Building2,
+  Plus,
+  Receipt,
+  Trash2,
+  Upload,
+  Users,
+  Wallet,
+} from "lucide-react";
+import { AppShell } from "@/components/AppShell";
+import {
+  applyCompraLinesToInventory,
+  applyGastoBundle,
+  blankCompra,
+  blankCompraLine,
+  blankPago,
+  cheapestByProduct,
+  deleteCompra,
+  deletePago,
+  getActiveGastoProjectId,
+  loadGastoBundle,
+  mergeGastoBundle,
+  persistGastosCloud,
+  pinActiveGastoProject,
+  projectTotals,
+  recordPreciosFromCompra,
+  upsertCompra,
+  upsertGastoProject,
+  upsertPago,
+  type CompraGasto,
+  type CompraLine,
+  type GastoProject,
+  type PagoGasto,
+} from "@/lib/gastos";
+import {
+  loadCustomCategories,
+  loadInventory,
+  saveCustomCategories,
+  saveInventory,
+} from "@/lib/inventory";
+import { loadObras, obraLabel, type ObraJob } from "@/lib/obra";
+import { BUILTIN_CATEGORIES, slugCategory } from "@/types/inventory";
+
+const cop = new Intl.NumberFormat("es-CO", {
+  style: "currency",
+  currency: "COP",
+  maximumFractionDigits: 0,
+});
+
+const field =
+  "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
+
+type Tab = "compras" | "pagos" | "precios";
+
+function lineTotal(l: CompraLine) {
+  return Math.round((Number(l.qty) || 0) * (Number(l.unitPriceCOP) || 0));
+}
+
+export default function GastosPage() {
+  const [projects, setProjects] = useState<GastoProject[]>([]);
+  const [obras, setObras] = useState<ObraJob[]>([]);
+  const [projectId, setProjectId] = useState<string>("");
+  const [tab, setTab] = useState<Tab>("compras");
+  const [compras, setCompras] = useState<CompraGasto[]>([]);
+  const [pagos, setPagos] = useState<PagoGasto[]>([]);
+  const [draftCompra, setDraftCompra] = useState<CompraGasto | null>(null);
+  const [draftPago, setDraftPago] = useState<PagoGasto | null>(null);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [pickObraId, setPickObraId] = useState("");
+  const [flash, setFlash] = useState("");
+  const [reading, setReading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  const active = projects.find((p) => p.id === projectId) || null;
+  const totals = useMemo(
+    () => (projectId ? projectTotals(projectId) : { comprasCOP: 0, pagosCOP: 0, totalCOP: 0 }),
+    [projectId, compras, pagos]
+  );
+  const projectCompras = useMemo(
+    () => compras.filter((c) => c.projectId === projectId),
+    [compras, projectId]
+  );
+  const projectPagos = useMemo(
+    () => pagos.filter((p) => p.projectId === projectId),
+    [pagos, projectId]
+  );
+  const priceBoard = useMemo(() => cheapestByProduct(), [compras]);
+
+  const categoryOptions = useMemo(() => {
+    const custom = loadCustomCategories();
+    return [
+      ...BUILTIN_CATEGORIES.map((c) => ({ id: c.id, label: c.label })),
+      ...custom.map((c) => ({ id: c.id, label: c.label })),
+    ];
+  }, [draftCompra, flash]);
+
+  useEffect(() => {
+    setObras(loadObras());
+    const local = loadGastoBundle();
+    applyGastoBundle(local);
+    setProjects(local.projects);
+    setCompras(local.compras);
+    setPagos(local.pagos);
+    const pinned = getActiveGastoProjectId();
+    if (pinned && local.projects.some((p) => p.id === pinned)) {
+      setProjectId(pinned);
+    } else if (local.projects[0]) {
+      setProjectId(local.projects[0].id);
+      pinActiveGastoProject(local.projects[0].id);
+    }
+    setHydrated(true);
+    void fetch("/api/archivo", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.gastos) return;
+        const merged = mergeGastoBundle(loadGastoBundle(), data.gastos);
+        applyGastoBundle(merged);
+        setProjects(merged.projects);
+        setCompras(merged.compras);
+        setPagos(merged.pagos);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  function syncCloud() {
+    void persistGastosCloud(loadGastoBundle());
+  }
+
+  function selectProject(id: string) {
+    setProjectId(id);
+    pinActiveGastoProject(id);
+    setDraftCompra(null);
+    setDraftPago(null);
+  }
+
+  function createLibreProject() {
+    const name = newProjectName.trim();
+    if (!name) return;
+    const now = new Date().toISOString();
+    const project: GastoProject = {
+      id: crypto.randomUUID(),
+      name,
+      source: "libre",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const next = upsertGastoProject(project);
+    setProjects(next);
+    selectProject(project.id);
+    setNewProjectName("");
+    syncCloud();
+    setFlash("Proyecto creado.");
+  }
+
+  function createFromObra() {
+    const obra = obras.find((o) => o.id === pickObraId);
+    if (!obra) return;
+    const existing = projects.find((p) => p.obraId === obra.id);
+    if (existing) {
+      selectProject(existing.id);
+      setFlash("Esa obra ya tenía control de gastos.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const project: GastoProject = {
+      id: crypto.randomUUID(),
+      name: obraLabel(obra),
+      source: "obra",
+      obraId: obra.id,
+      clientName: obra.clientName,
+      city: obra.city,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const next = upsertGastoProject(project);
+    setProjects(next);
+    selectProject(project.id);
+    setPickObraId("");
+    syncCloud();
+    setFlash("Proyecto amarrado a la obra.");
+  }
+
+  function openNewCompra() {
+    if (!projectId) return;
+    setDraftCompra(blankCompra(projectId));
+  }
+
+  function openNewPago() {
+    if (!projectId) return;
+    setDraftPago(blankPago(projectId));
+  }
+
+  function saveDraftCompra(toInventory: boolean) {
+    if (!draftCompra || !projectId) return;
+    const lines = draftCompra.lines
+      .map((l) => ({
+        ...l,
+        name: l.name.trim(),
+        addToInventory: toInventory ? Boolean(l.addToInventory) : false,
+      }))
+      .filter((l) => l.name);
+    if (!lines.length) {
+      setFlash("Agregue al menos un ítem con nombre.");
+      return;
+    }
+    const compra: CompraGasto = {
+      ...draftCompra,
+      projectId,
+      supplier: draftCompra.supplier.trim() || "Sin proveedor",
+      lines,
+      totalCOP: lines.reduce((s, l) => s + lineTotal(l), 0),
+    };
+    const next = upsertCompra(compra);
+    setCompras(next);
+    recordPreciosFromCompra(compra);
+
+    if (toInventory) {
+      const marked = lines.filter((l) => l.addToInventory);
+      if (marked.length) {
+        const result = applyCompraLinesToInventory(
+          marked,
+          loadInventory(),
+          loadCustomCategories()
+        );
+        saveInventory(result.inventory);
+        saveCustomCategories(result.customCats);
+        setFlash(
+          `Compra guardada. ${marked.length} ítem(s) pasaron al inventario.`
+        );
+      } else {
+        setFlash("Compra guardada (sin ítems al inventario).");
+      }
+    } else {
+      setFlash("Compra guardada.");
+    }
+    setDraftCompra(null);
+    syncCloud();
+  }
+
+  function saveDraftPago() {
+    if (!draftPago || !projectId) return;
+    if (!draftPago.person.trim() || draftPago.amountCOP <= 0) {
+      setFlash("Indique persona y monto.");
+      return;
+    }
+    const next = upsertPago({
+      ...draftPago,
+      projectId,
+      person: draftPago.person.trim(),
+    });
+    setPagos(next);
+    setDraftPago(null);
+    setFlash("Pago registrado.");
+    syncCloud();
+  }
+
+  async function onInvoiceFile(file: File | null) {
+    if (!file || !draftCompra) return;
+    if (file.size > 4_500_000) {
+      setFlash("Archivo muy pesado (máx. ~4.5 MB).");
+      return;
+    }
+    setReading(true);
+    setFlash("Leyendo factura…");
+    try {
+      let imageDataUrl = "";
+      let pdfText = "";
+      if (file.type === "application/pdf") {
+        pdfText = await file.text().catch(() => "");
+        if (!pdfText || pdfText.length < 20) {
+          // PDF binario: pedimos convertir a imagen; aún así enviamos nombre
+          pdfText = `(PDF binario: ${file.name}. Si no hay texto embebido, tome foto de la factura.)`;
+        }
+      } else {
+        imageDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("read"));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      const res = await fetch("/api/gastos/factura", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageDataUrl: imageDataUrl || undefined,
+          pdfText: pdfText || undefined,
+          fileName: file.name,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFlash(data.error || "No se pudo leer la factura.");
+        return;
+      }
+      const reading = data.reading as {
+        supplier?: string;
+        place?: string;
+        date?: string;
+        notes?: string;
+        lines?: {
+          name: string;
+          qty: number;
+          unitPriceCOP: number;
+          unit?: string;
+          categoryLabel?: string;
+        }[];
+        totalCOP?: number;
+      };
+      const lines: CompraLine[] = (reading.lines || []).map((l) => ({
+        id: `ln-${crypto.randomUUID().slice(0, 8)}`,
+        name: l.name,
+        qty: l.qty || 1,
+        unitPriceCOP: l.unitPriceCOP || 0,
+        unit: l.unit || "und",
+        categoryLabel: l.categoryLabel || "Compras",
+        categoryId: slugCategory(l.categoryLabel || "Compras"),
+        addToInventory: true,
+      }));
+      setDraftCompra({
+        ...draftCompra,
+        supplier: reading.supplier || draftCompra.supplier,
+        place: reading.place || draftCompra.place,
+        date: reading.date || draftCompra.date,
+        notes: reading.notes || draftCompra.notes,
+        lines: lines.length ? lines : draftCompra.lines,
+        invoiceName: file.name,
+        invoiceDataUrl: imageDataUrl || undefined,
+        totalCOP: reading.totalCOP || 0,
+      });
+      setFlash(
+        data.offline
+          ? "Sin clave OpenAI: complete a mano."
+          : "Factura leída. Revise ítems y confirme."
+      );
+    } catch {
+      setFlash("Error al leer el archivo.");
+    } finally {
+      setReading(false);
+    }
+  }
+
+  function patchLine(id: string, patch: Partial<CompraLine>) {
+    if (!draftCompra) return;
+    setDraftCompra({
+      ...draftCompra,
+      lines: draftCompra.lines.map((l) =>
+        l.id === id ? { ...l, ...patch } : l
+      ),
+    });
+  }
+
+  if (!hydrated) {
+    return (
+      <AppShell title="Gastos" subtitle="Cargando…">
+        <p className="text-sm text-[#6d7c74]">Cargando…</p>
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell
+      title="Gastos"
+      subtitle="Compras a proveedores y pagos a trabajadores, por proyecto"
+      actions={
+        active ? (
+          <span className="os-btn os-btn-ghost pointer-events-none">
+            <Wallet size={16} />
+            {active.name}
+          </span>
+        ) : null
+      }
+    >
+      {flash ? (
+        <p className="mb-3 text-sm text-[#1f6b45]">{flash}</p>
+      ) : null}
+
+      <section className="os-panel mb-5 rounded-2xl border border-[#ddd6c8] bg-white p-5">
+        <h2 className="font-semibold">Proyecto</h2>
+        <p className="mt-1 text-sm text-[#4d5c55]">
+          Elija el proyecto donde quiere llevar el control. Puede amarrarlo a una
+          obra o crear uno con nombre libre.
+        </p>
+        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+          <label className="block text-sm lg:col-span-1">
+            <span className="mb-1 block font-medium">Proyecto activo</span>
+            <select
+              className={field}
+              value={projectId}
+              onChange={(e) => selectProject(e.target.value)}
+            >
+              <option value="">Seleccionar…</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.source === "obra" ? " · obra" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap items-end gap-2 lg:col-span-1">
+            <label className="min-w-[160px] flex-1 text-sm">
+              <span className="mb-1 block font-medium">Desde obra</span>
+              <select
+                className={field}
+                value={pickObraId}
+                onChange={(e) => setPickObraId(e.target.value)}
+              >
+                <option value="">Elegir obra…</option>
+                {obras.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {obraLabel(o)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="rounded-xl bg-[#0f3d2e] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              disabled={!pickObraId}
+              onClick={createFromObra}
+            >
+              Usar obra
+            </button>
+          </div>
+          <div className="flex flex-wrap items-end gap-2 lg:col-span-1">
+            <label className="min-w-[160px] flex-1 text-sm">
+              <span className="mb-1 block font-medium">Proyecto libre</span>
+              <input
+                className={field}
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="Ej. Bodega · stock abril"
+              />
+            </label>
+            <button
+              type="button"
+              className="rounded-xl border border-[#0f3d2e] px-3 py-2.5 text-sm font-semibold text-[#0f3d2e]"
+              onClick={createLibreProject}
+            >
+              Crear
+            </button>
+          </div>
+        </div>
+
+        {active ? (
+          <dl className="os-quote-sum mt-4">
+            <div>
+              <dt>Compras</dt>
+              <dd>{cop.format(totals.comprasCOP)}</dd>
+            </div>
+            <div>
+              <dt>Pagos</dt>
+              <dd>{cop.format(totals.pagosCOP)}</dd>
+            </div>
+            <div data-tone="ok">
+              <dt>Total proyecto</dt>
+              <dd>{cop.format(totals.totalCOP)}</dd>
+            </div>
+          </dl>
+        ) : null}
+      </section>
+
+      {!projectId ? (
+        <p className="text-sm text-[#6d7c74]">
+          Seleccione o cree un proyecto para registrar compras y pagos.
+        </p>
+      ) : (
+        <>
+          <div className="os-subtabs mb-5 flex flex-wrap gap-1 rounded-xl bg-[#0f2a1f] p-1">
+            {(
+              [
+                ["compras", "Compras", Receipt],
+                ["pagos", "Pagos", Users],
+                ["precios", "Dónde es más barato", Building2],
+              ] as const
+            ).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                type="button"
+                className={`os-subtab flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${
+                  tab === id
+                    ? "is-active bg-[#1f6b45] text-white"
+                    : "text-[#c9d7cf] hover:bg-[#143528] hover:text-white"
+                }`}
+                onClick={() => setTab(id)}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "compras" ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="os-btn os-btn-primary"
+                  onClick={openNewCompra}
+                >
+                  <Plus size={16} />
+                  Nueva compra
+                </button>
+              </div>
+
+              {draftCompra ? (
+                <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+                  <h3 className="font-semibold">Registrar compra</h3>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm">
+                      Proveedor
+                      <input
+                        className={`${field} mt-1`}
+                        value={draftCompra.supplier}
+                        onChange={(e) =>
+                          setDraftCompra({
+                            ...draftCompra,
+                            supplier: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Lugar / sucursal
+                      <input
+                        className={`${field} mt-1`}
+                        value={draftCompra.place || ""}
+                        onChange={(e) =>
+                          setDraftCompra({
+                            ...draftCompra,
+                            place: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Fecha
+                      <input
+                        type="date"
+                        className={`${field} mt-1`}
+                        value={draftCompra.date}
+                        onChange={(e) =>
+                          setDraftCompra({
+                            ...draftCompra,
+                            date: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Foto o PDF de factura
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className={`${field} mt-1`}
+                        disabled={reading}
+                        onChange={(e) =>
+                          void onInvoiceFile(e.target.files?.[0] || null)
+                        }
+                      />
+                    </label>
+                    <label className="text-sm sm:col-span-2">
+                      Notas
+                      <input
+                        className={`${field} mt-1`}
+                        value={draftCompra.notes || ""}
+                        onChange={(e) =>
+                          setDraftCompra({
+                            ...draftCompra,
+                            notes: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold">Ítems</h4>
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-[#0f3d2e] underline"
+                        onClick={() =>
+                          setDraftCompra({
+                            ...draftCompra,
+                            lines: [...draftCompra.lines, blankCompraLine()],
+                          })
+                        }
+                      >
+                        + Ítem
+                      </button>
+                    </div>
+                    {draftCompra.lines.map((line) => (
+                      <div
+                        key={line.id}
+                        className="rounded-xl border border-[#eee8dc] p-3"
+                      >
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                          <label className="text-xs sm:col-span-2 lg:col-span-2">
+                            Nombre
+                            <input
+                              className={`${field} mt-1`}
+                              value={line.name}
+                              onChange={(e) =>
+                                patchLine(line.id, { name: e.target.value })
+                              }
+                            />
+                          </label>
+                          <label className="text-xs">
+                            Cant.
+                            <input
+                              type="number"
+                              className={`${field} mt-1`}
+                              value={line.qty}
+                              onChange={(e) =>
+                                patchLine(line.id, {
+                                  qty: Number(e.target.value) || 0,
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="text-xs">
+                            Precio und.
+                            <input
+                              type="number"
+                              className={`${field} mt-1`}
+                              value={line.unitPriceCOP}
+                              onChange={(e) =>
+                                patchLine(line.id, {
+                                  unitPriceCOP: Number(e.target.value) || 0,
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="text-xs lg:col-span-2">
+                            Grupo inventario
+                            <input
+                              className={`${field} mt-1`}
+                              list="gasto-cats"
+                              value={line.categoryLabel || ""}
+                              onChange={(e) => {
+                                const label = e.target.value;
+                                patchLine(line.id, {
+                                  categoryLabel: label,
+                                  categoryId: slugCategory(label || "compras"),
+                                });
+                              }}
+                              placeholder="Ej. Ferretería"
+                            />
+                          </label>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <label className="flex items-center gap-2 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(line.addToInventory)}
+                              onChange={(e) =>
+                                patchLine(line.id, {
+                                  addToInventory: e.target.checked,
+                                })
+                              }
+                            />
+                            Pasar al inventario
+                          </label>
+                          <span className="text-xs font-semibold">
+                            {cop.format(lineTotal(line))}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-[#9b2c2c] underline"
+                            onClick={() =>
+                              setDraftCompra({
+                                ...draftCompra,
+                                lines: draftCompra.lines.filter(
+                                  (l) => l.id !== line.id
+                                ),
+                              })
+                            }
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <datalist id="gasto-cats">
+                      {categoryOptions.map((c) => (
+                        <option key={c.id} value={c.label} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  <p className="mt-3 text-sm font-semibold">
+                    Total:{" "}
+                    {cop.format(
+                      draftCompra.lines.reduce((s, l) => s + lineTotal(l), 0)
+                    )}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="os-btn os-btn-primary"
+                      disabled={reading}
+                      onClick={() => saveDraftCompra(true)}
+                    >
+                      <Upload size={16} />
+                      Guardar y pasar al inventario
+                    </button>
+                    <button
+                      type="button"
+                      className="os-btn os-btn-ghost"
+                      disabled={reading}
+                      onClick={() => saveDraftCompra(false)}
+                    >
+                      Guardar solo el gasto
+                    </button>
+                    <button
+                      type="button"
+                      className="os-btn os-btn-ghost"
+                      onClick={() => setDraftCompra(null)}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+
+              <div className="space-y-2">
+                {projectCompras.length === 0 ? (
+                  <p className="text-sm text-[#6d7c74]">
+                    Aún no hay compras en este proyecto.
+                  </p>
+                ) : (
+                  projectCompras.map((c) => (
+                    <article
+                      key={c.id}
+                      className="rounded-2xl border border-[#ddd6c8] bg-white p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold">{c.supplier}</p>
+                          <p className="text-xs text-[#6d7c74]">
+                            {c.date}
+                            {c.place ? ` · ${c.place}` : ""} · {c.lines.length}{" "}
+                            ítem(s)
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <p className="font-semibold">{cop.format(c.totalCOP)}</p>
+                          <button
+                            type="button"
+                            className="text-[#9b2c2c]"
+                            aria-label="Eliminar compra"
+                            onClick={() => {
+                              if (!confirm("¿Eliminar esta compra?")) return;
+                              setCompras(deleteCompra(c.id));
+                              syncCloud();
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      <ul className="mt-2 space-y-1 text-xs text-[#4d5c55]">
+                        {c.lines.slice(0, 6).map((l) => (
+                          <li key={l.id}>
+                            {l.qty} × {l.name} · {cop.format(l.unitPriceCOP)}
+                          </li>
+                        ))}
+                      </ul>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "pagos" ? (
+            <div className="space-y-4">
+              <button
+                type="button"
+                className="os-btn os-btn-primary"
+                onClick={openNewPago}
+              >
+                <Plus size={16} />
+                Nuevo pago
+              </button>
+
+              {draftPago ? (
+                <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+                  <h3 className="font-semibold">Registrar pago</h3>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm">
+                      Persona / proveedor de servicio
+                      <input
+                        className={`${field} mt-1`}
+                        value={draftPago.person}
+                        onChange={(e) =>
+                          setDraftPago({ ...draftPago, person: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Rol / concepto
+                      <input
+                        className={`${field} mt-1`}
+                        value={draftPago.role}
+                        onChange={(e) =>
+                          setDraftPago({ ...draftPago, role: e.target.value })
+                        }
+                        placeholder="Técnico, transporte, viáticos…"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Fecha
+                      <input
+                        type="date"
+                        className={`${field} mt-1`}
+                        value={draftPago.date}
+                        onChange={(e) =>
+                          setDraftPago({ ...draftPago, date: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Monto COP
+                      <input
+                        type="number"
+                        className={`${field} mt-1`}
+                        value={draftPago.amountCOP}
+                        onChange={(e) =>
+                          setDraftPago({
+                            ...draftPago,
+                            amountCOP: Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Método
+                      <input
+                        className={`${field} mt-1`}
+                        value={draftPago.method || ""}
+                        onChange={(e) =>
+                          setDraftPago({ ...draftPago, method: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Notas
+                      <input
+                        className={`${field} mt-1`}
+                        value={draftPago.notes || ""}
+                        onChange={(e) =>
+                          setDraftPago({ ...draftPago, notes: e.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="os-btn os-btn-primary"
+                      onClick={saveDraftPago}
+                    >
+                      Guardar pago
+                    </button>
+                    <button
+                      type="button"
+                      className="os-btn os-btn-ghost"
+                      onClick={() => setDraftPago(null)}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+
+              <div className="space-y-2">
+                {projectPagos.length === 0 ? (
+                  <p className="text-sm text-[#6d7c74]">
+                    Aún no hay pagos en este proyecto.
+                  </p>
+                ) : (
+                  projectPagos.map((p) => (
+                    <article
+                      key={p.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#ddd6c8] bg-white p-4"
+                    >
+                      <div>
+                        <p className="font-semibold">{p.person}</p>
+                        <p className="text-xs text-[#6d7c74]">
+                          {p.date} · {p.role}
+                          {p.method ? ` · ${p.method}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-semibold">{cop.format(p.amountCOP)}</p>
+                        <button
+                          type="button"
+                          className="text-[#9b2c2c]"
+                          aria-label="Eliminar pago"
+                          onClick={() => {
+                            if (!confirm("¿Eliminar este pago?")) return;
+                            setPagos(deletePago(p.id));
+                            syncCloud();
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "precios" ? (
+            <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+              <h3 className="font-semibold">Dónde sale más barato</h3>
+              <p className="mt-1 text-sm text-[#4d5c55]">
+                Compara precios unitarios vistos en facturas (todos los
+                proyectos). El más bajo aparece primero.
+              </p>
+              {priceBoard.length === 0 ? (
+                <p className="mt-4 text-sm text-[#6d7c74]">
+                  Guarde compras con ítems para llenar este tablero.
+                </p>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {priceBoard.slice(0, 40).map((row) => (
+                    <li
+                      key={row.productKey}
+                      className="rounded-xl border border-[#eee8dc] p-3 text-sm"
+                    >
+                      <p className="font-semibold">{row.productName}</p>
+                      <p className="text-[#1f6b45]">
+                        Mejor: {cop.format(row.best.unitPriceCOP)} en{" "}
+                        {row.best.place || row.best.supplier}
+                        <span className="text-[#6d7c74]">
+                          {" "}
+                          · {row.best.date}
+                        </span>
+                      </p>
+                      {row.others.length ? (
+                        <p className="mt-1 text-xs text-[#6d7c74]">
+                          Otros:{" "}
+                          {row.others
+                            .map(
+                              (o) =>
+                                `${cop.format(o.unitPriceCOP)} (${o.place || o.supplier})`
+                            )
+                            .join(" · ")}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
+        </>
+      )}
+    </AppShell>
+  );
+}
