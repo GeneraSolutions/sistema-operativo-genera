@@ -3,15 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
   PackagePlus,
   Plus,
   Receipt,
+  Send,
   Trash2,
   Upload,
   Users,
   Wallet,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import {
   applyCompraLinesToInventory,
@@ -26,7 +30,6 @@ import {
   deletePresupuestoDoc,
   deleteSubItem,
   deleteSubItems,
-  duplicateProductKeys,
   getActiveGastoProjectId,
   importLinesToSubInventario,
   loadGastoBundle,
@@ -41,6 +44,7 @@ import {
   upsertCompra,
   upsertGastoProject,
   upsertPago,
+  upsertPresupuestoDoc,
   upsertSubItem,
   type CompraGasto,
   type CompraLine,
@@ -49,6 +53,7 @@ import {
   type PresupuestoDoc,
   type SubInventarioItem,
 } from "@/lib/gastos";
+import { isPdfFile, renderBillPdf } from "@/lib/bill-pdf";
 import {
   loadCustomCategories,
   loadInventory,
@@ -56,6 +61,7 @@ import {
   saveInventory,
 } from "@/lib/inventory";
 import { loadObras, obraLabel, type ObraJob } from "@/lib/obra";
+import { sendSubItemsToCotizador } from "@/lib/subinv-to-quote";
 import { BUILTIN_CATEGORIES, slugCategory } from "@/types/inventory";
 
 const cop = new Intl.NumberFormat("es-CO", {
@@ -74,6 +80,7 @@ function lineTotal(l: CompraLine) {
 }
 
 export default function GastosPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<GastoProject[]>([]);
   const [obras, setObras] = useState<ObraJob[]>([]);
   const [projectId, setProjectId] = useState<string>("");
@@ -85,6 +92,8 @@ export default function GastosPage() {
   const [draftCompra, setDraftCompra] = useState<CompraGasto | null>(null);
   const [draftPago, setDraftPago] = useState<PagoGasto | null>(null);
   const [docKind, setDocKind] = useState<"cotizacion" | "factura">("cotizacion");
+  const [expandedSub, setExpandedSub] = useState<Record<string, boolean>>({});
+  const [expandedDocs, setExpandedDocs] = useState<Record<string, boolean>>({});
   const [newProjectName, setNewProjectName] = useState("");
   const [pickObraId, setPickObraId] = useState("");
   const [flash, setFlash] = useState("");
@@ -110,17 +119,82 @@ export default function GastosPage() {
     [subItems, projectId]
   );
   const projectDocs = useMemo(
-    () => presupDocs.filter((d) => d.projectId === projectId),
+    () =>
+      presupDocs
+        .filter((d) => d.projectId === projectId)
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
     [presupDocs, projectId]
   );
-  const dupKeys = useMemo(
-    () => (projectId ? duplicateProductKeys(projectId) : new Set<string>()),
-    [projectId, subItems]
-  );
+  /** Cada cotización/factura es un bloque independiente; manual aparte. */
+  const subGroups = useMemo(() => {
+    const itemsByDoc = new Map<string, SubInventarioItem[]>();
+    const manual: SubInventarioItem[] = [];
+    for (const row of projectSub) {
+      if (row.sourceDocId) {
+        const list = itemsByDoc.get(row.sourceDocId) || [];
+        list.push(row);
+        itemsByDoc.set(row.sourceDocId, list);
+      } else {
+        manual.push(row);
+      }
+    }
+    type SubGroup = {
+      key: string;
+      doc: PresupuestoDoc | null;
+      items: SubInventarioItem[];
+      totalCOP: number;
+    };
+    const docs: SubGroup[] = projectDocs.map((doc) => {
+      const items = (itemsByDoc.get(doc.id) || []).sort((a, b) =>
+        a.name.localeCompare(b.name, "es")
+      );
+      itemsByDoc.delete(doc.id);
+      const totalCOP = items.reduce(
+        (s, r) =>
+          s + Math.round((Number(r.qty) || 0) * (Number(r.unitPriceCOP) || 0)),
+        0
+      );
+      return { key: doc.id, doc, items, totalCOP };
+    });
+    // Ítems huérfanos (doc borrado a medias)
+    for (const [docId, items] of itemsByDoc) {
+      const totalCOP = items.reduce(
+        (s, r) =>
+          s + Math.round((Number(r.qty) || 0) * (Number(r.unitPriceCOP) || 0)),
+        0
+      );
+      docs.push({
+        key: docId,
+        doc: null,
+        items: items.sort((a, b) => a.name.localeCompare(b.name, "es")),
+        totalCOP,
+      });
+    }
+    const manualTotal = manual.reduce(
+      (s, r) =>
+        s + Math.round((Number(r.qty) || 0) * (Number(r.unitPriceCOP) || 0)),
+      0
+    );
+    return {
+      docs,
+      manual: manual.sort((a, b) => a.name.localeCompare(b.name, "es")),
+      manualTotal,
+    };
+  }, [projectDocs, projectSub]);
   const subBudgetCOP = useMemo(
     () => (projectId ? subInventarioTotalCOP(projectId) : 0),
     [projectId, subItems]
   );
+
+  function dupKeysIn(items: SubInventarioItem[]): Set<string> {
+    const counts = new Map<string, number>();
+    for (const row of items) {
+      counts.set(row.productKey, (counts.get(row.productKey) || 0) + 1);
+    }
+    return new Set(
+      [...counts.entries()].filter(([, n]) => n > 1).map(([k]) => k)
+    );
+  }
 
   const categoryOptions = useMemo(() => {
     const custom = loadCustomCategories();
@@ -294,38 +368,47 @@ export default function GastosPage() {
     syncCloud();
   }
 
+  async function prepareDocForOcr(file: File): Promise<{
+    imageDataUrl: string;
+    pdfText: string;
+  }> {
+    if (isPdfFile(file)) {
+      const rendered = await renderBillPdf(file, 3);
+      return {
+        imageDataUrl: rendered.pages[0]?.dataUrl || "",
+        pdfText: rendered.text || "",
+      };
+    }
+    const imageDataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("read"));
+      reader.readAsDataURL(file);
+    });
+    return { imageDataUrl, pdfText: "" };
+  }
+
   async function onInvoiceFile(file: File | null) {
     if (!file || !draftCompra) return;
-    if (file.size > 4_500_000) {
-      setFlash("Archivo muy pesado (máx. ~4.5 MB).");
+    if (file.size > 12_000_000) {
+      setFlash("Archivo muy pesado (máx. ~12 MB).");
       return;
     }
     setReading(true);
     setFlash("Leyendo factura…");
     try {
-      let imageDataUrl = "";
-      let pdfText = "";
-      if (file.type === "application/pdf") {
-        pdfText = await file.text().catch(() => "");
-        if (!pdfText || pdfText.length < 20) {
-          // PDF binario: pedimos convertir a imagen; aún así enviamos nombre
-          pdfText = `(PDF binario: ${file.name}. Si no hay texto embebido, tome foto de la factura.)`;
-        }
-      } else {
-        imageDataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ""));
-          reader.onerror = () => reject(new Error("read"));
-          reader.readAsDataURL(file);
-        });
+      const prepared = await prepareDocForOcr(file);
+      if (!prepared.imageDataUrl && !prepared.pdfText) {
+        setFlash("No se pudo leer el archivo. Pruebe una foto o PDF.");
+        return;
       }
 
       const res = await fetch("/api/gastos/factura", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: imageDataUrl || undefined,
-          pdfText: pdfText || undefined,
+          imageDataUrl: prepared.imageDataUrl || undefined,
+          pdfText: prepared.pdfText || undefined,
           fileName: file.name,
         }),
       });
@@ -348,16 +431,18 @@ export default function GastosPage() {
         }[];
         totalCOP?: number;
       };
-      const lines: CompraLine[] = (reading.lines || []).map((l) => ({
-        id: `ln-${crypto.randomUUID().slice(0, 8)}`,
-        name: l.name,
-        qty: l.qty || 1,
-        unitPriceCOP: l.unitPriceCOP || 0,
-        unit: l.unit || "und",
-        categoryLabel: l.categoryLabel || "Compras",
-        categoryId: slugCategory(l.categoryLabel || "Compras"),
-        addToInventory: true,
-      }));
+      const lines: CompraLine[] = (reading.lines || [])
+        .filter((l) => String(l.name || "").trim())
+        .map((l) => ({
+          id: `ln-${crypto.randomUUID().slice(0, 8)}`,
+          name: l.name,
+          qty: l.qty || 1,
+          unitPriceCOP: l.unitPriceCOP || 0,
+          unit: l.unit || "und",
+          categoryLabel: l.categoryLabel || "Compras",
+          categoryId: slugCategory(l.categoryLabel || "Compras"),
+          addToInventory: true,
+        }));
       setDraftCompra({
         ...draftCompra,
         supplier: reading.supplier || draftCompra.supplier,
@@ -366,13 +451,15 @@ export default function GastosPage() {
         notes: reading.notes || draftCompra.notes,
         lines: lines.length ? lines : draftCompra.lines,
         invoiceName: file.name,
-        invoiceDataUrl: imageDataUrl || undefined,
+        invoiceDataUrl: prepared.imageDataUrl || undefined,
         totalCOP: reading.totalCOP || 0,
       });
       setFlash(
         data.offline
           ? "Sin clave OpenAI: complete a mano."
-          : "Factura leída. Revise ítems y confirme."
+          : lines.length
+            ? `Factura leída: ${lines.length} ítem(s). Revise y confirme.`
+            : "Factura leída sin ítems claros. Complete a mano."
       );
     } catch {
       setFlash("Error al leer el archivo.");
@@ -393,8 +480,8 @@ export default function GastosPage() {
 
   async function onPresupuestoFile(file: File | null) {
     if (!file || !projectId) return;
-    if (file.size > 4_500_000) {
-      setFlash("Archivo muy pesado (máx. ~4.5 MB).");
+    if (file.size > 12_000_000) {
+      setFlash("Archivo muy pesado (máx. ~12 MB).");
       return;
     }
     setReading(true);
@@ -404,28 +491,18 @@ export default function GastosPage() {
         : "Leyendo factura de presupuesto…"
     );
     try {
-      let imageDataUrl = "";
-      let pdfText = "";
-      if (file.type === "application/pdf") {
-        pdfText = await file.text().catch(() => "");
-        if (!pdfText || pdfText.length < 20) {
-          pdfText = `(PDF binario: ${file.name}. Si no hay texto embebido, tome foto.)`;
-        }
-      } else {
-        imageDataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ""));
-          reader.onerror = () => reject(new Error("read"));
-          reader.readAsDataURL(file);
-        });
+      const prepared = await prepareDocForOcr(file);
+      if (!prepared.imageDataUrl && !prepared.pdfText) {
+        setFlash("No se pudo leer el archivo. Pruebe una foto o PDF.");
+        return;
       }
 
       const res = await fetch("/api/gastos/factura", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageDataUrl: imageDataUrl || undefined,
-          pdfText: pdfText || undefined,
+          imageDataUrl: prepared.imageDataUrl || undefined,
+          pdfText: prepared.pdfText || undefined,
           fileName: file.name,
         }),
       });
@@ -459,45 +536,107 @@ export default function GastosPage() {
         createdAt: now,
         updatedAt: now,
       };
-      const lines = reading.lines || [];
-      if (!lines.length) {
+      const lines = (reading.lines || []).filter((l) =>
+        String(l.name || "").trim()
+      );
+
+      if (lines.length) {
+        const next = importLinesToSubInventario({
+          projectId,
+          doc,
+          lines,
+        });
+        setSubItems(next);
+        setPresupDocs(loadGastoBundle().presupuestoDocs);
+        setExpandedDocs((prev) => ({ ...prev, [doc.id]: true }));
         setFlash(
           data.offline
-            ? "Sin clave OpenAI: agregue ítems a mano al Sub inventario."
-            : "Documento leído sin ítems detectables. Agregue a mano."
+            ? `Sin OpenAI: ${lines.length} ítem(s) en cotización aparte (revise precios).`
+            : `${lines.length} ítem(s) en cotización independiente · ${
+                doc.supplier || file.name
+              }.`
         );
-        return;
+      } else {
+        // Documento queda registrado + un ítem editable para que sí “pase algo”
+        const blank = blankSubItem(projectId);
+        blank.name = "Ítem por completar";
+        blank.productKey = productKey(blank.name);
+        blank.supplier = doc.supplier;
+        blank.sourceDocId = doc.id;
+        blank.sourceLabel = `${
+          doc.kind === "cotizacion" ? "Cotización" : "Factura"
+        } · ${doc.supplier}`;
+        upsertPresupuestoDoc(doc);
+        const next = upsertSubItem(blank);
+        setSubItems(next);
+        setPresupDocs(loadGastoBundle().presupuestoDocs);
+        setExpandedDocs((prev) => ({ ...prev, [doc.id]: true }));
+        setFlash(
+          data.offline
+            ? "Sin clave OpenAI: cotización guardada aparte. Complete los ítems a mano."
+            : "Cotización guardada aparte, pero no se detectaron ítems. Complete a mano o adjunte una foto más clara."
+        );
       }
-      const next = importLinesToSubInventario({
-        projectId,
-        doc,
-        lines,
-      });
-      setSubItems(next);
-      setPresupDocs(loadGastoBundle().presupuestoDocs);
-      setFlash(
-        data.offline
-          ? `Sin OpenAI: ${lines.length} ítem(s) cargados (revise precios).`
-          : `${lines.length} ítem(s) al Sub inventario desde ${
-              docKind === "cotizacion" ? "cotización" : "factura"
-            }.`
-      );
+      setTab("sub");
       syncCloud();
-    } catch {
-      setFlash("Error al leer el archivo.");
+    } catch (err) {
+      console.error(err);
+      setFlash(
+        "Error al leer el archivo. Si es PDF escaneado, pruebe una foto de la hoja."
+      );
     } finally {
       setReading(false);
     }
   }
 
-  function addManualSubItem() {
+  function toggleSubExpanded(id: string) {
+    setExpandedSub((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function toggleDocExpanded(key: string) {
+    setExpandedDocs((prev) => ({
+      ...prev,
+      // default abierto si no está definido
+      [key]: prev[key] === undefined ? false : !prev[key],
+    }));
+  }
+
+  function isDocOpen(key: string) {
+    return expandedDocs[key] !== false;
+  }
+
+  function setAllSubExpanded(open: boolean) {
+    const nextItems: Record<string, boolean> = {};
+    for (const row of projectSub) nextItems[row.id] = open;
+    setExpandedSub(nextItems);
+    const nextDocs: Record<string, boolean> = {};
+    for (const g of subGroups.docs) nextDocs[g.key] = open;
+    nextDocs.__manual__ = open;
+    setExpandedDocs(nextDocs);
+  }
+
+  function addManualSubItem(docId?: string) {
     if (!projectId) return;
     const row = blankSubItem(projectId);
     row.name = "Nuevo material";
     row.productKey = productKey(row.name);
+    if (docId) {
+      const doc = presupDocs.find((d) => d.id === docId);
+      row.sourceDocId = docId;
+      row.supplier = doc?.supplier;
+      row.sourceLabel = doc
+        ? `${doc.kind === "cotizacion" ? "Cotización" : "Factura"} · ${doc.supplier}`
+        : undefined;
+      setExpandedDocs((prev) => ({ ...prev, [docId]: true }));
+    }
     const next = upsertSubItem(row);
     setSubItems(next);
-    setFlash("Ítem agregado. Edite nombre, unidades y precio.");
+    setExpandedSub((prev) => ({ ...prev, [row.id]: true }));
+    setFlash(
+      docId
+        ? "Ítem agregado a esa cotización. Edite nombre, unidades y precio."
+        : "Ítem manual agregado. Edite nombre, unidades y precio."
+    );
     syncCloud();
   }
 
@@ -517,11 +656,18 @@ export default function GastosPage() {
     syncCloud();
   }
 
-  function removeDupGroup(key: string) {
-    const ids = projectSub.filter((r) => r.productKey === key).map((r) => r.id);
-    if (ids.length < 2) return;
-    // Keep newest (first by updatedAt), delete the rest
-    const sorted = [...projectSub.filter((r) => r.productKey === key)].sort(
+  function removeDupGroup(key: string, withinDocId?: string | null) {
+    const pool = projectSub.filter(
+      (r) =>
+        r.productKey === key &&
+        (withinDocId === undefined
+          ? true
+          : withinDocId
+            ? r.sourceDocId === withinDocId
+            : !r.sourceDocId)
+    );
+    if (pool.length < 2) return;
+    const sorted = [...pool].sort(
       (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
     );
     const drop = sorted.slice(1).map((r) => r.id);
@@ -546,6 +692,22 @@ export default function GastosPage() {
       `${rows.length} ítem(s) pasaron al inventario principal y salieron del Sub inventario.`
     );
     syncCloud();
+  }
+
+  function sendToCotizador(
+    rows: SubInventarioItem[],
+    sourceLabel?: string
+  ) {
+    const result = sendSubItemsToCotizador(rows, {
+      sourceLabel,
+      projectName: active?.name,
+    });
+    if (!result.ok) {
+      setFlash(result.message);
+      return;
+    }
+    setFlash(result.message);
+    if (result.href) router.push(result.href);
   }
 
   function removeDoc(id: string) {
@@ -1132,9 +1294,9 @@ export default function GastosPage() {
               <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
                 <h3 className="font-semibold">Sub inventario · presupuesto de materiales</h3>
                 <p className="mt-1 text-sm text-[#4d5c55]">
-                  Adjunte cotizaciones o facturas del próximo proyecto. Los
-                  ítems quedan aquí con precio y unidades; usted decide cuáles
-                  pasan al inventario principal.
+                  Cada cotización o factura queda en su propio bloque, sin
+                  mezclar equipos. Usted decide qué pasa al inventario
+                  principal.
                 </p>
                 <div className="mt-4 flex flex-wrap items-end gap-3">
                   <label className="text-sm">
@@ -1167,196 +1329,510 @@ export default function GastosPage() {
                   <button
                     type="button"
                     className="os-btn os-btn-ghost"
-                    onClick={addManualSubItem}
+                    onClick={() => addManualSubItem()}
                   >
                     <Plus size={16} />
-                    Agregar ítem a mano
+                    Ítem manual (sin cotización)
                   </button>
                 </div>
-                {projectDocs.length ? (
-                  <ul className="mt-4 space-y-2">
-                    {projectDocs.map((d) => (
-                      <li
-                        key={d.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#eee8dc] px-3 py-2 text-sm"
-                      >
-                        <span>
-                          <span className="font-semibold">
-                            {d.kind === "cotizacion" ? "Cotización" : "Factura"}
-                          </span>
-                          {" · "}
-                          {d.supplier}
-                          {d.fileName ? (
-                            <span className="text-[#6d7c74]"> · {d.fileName}</span>
-                          ) : null}
-                        </span>
-                        <button
-                          type="button"
-                          className="os-btn os-btn-ghost text-[#9b3b2e]"
-                          onClick={() => removeDoc(d.id)}
-                        >
-                          <Trash2 size={14} />
-                          Quitar
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                <p className="mt-4 text-sm font-semibold text-[#1f6b45]">
-                  Presupuesto materiales: {cop.format(subBudgetCOP)}
-                  {dupKeys.size ? (
-                    <span className="ml-2 font-normal text-[#9b6b2e]">
-                      · {dupKeys.size} producto(s) repetido(s)
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-[#1f6b45]">
+                    Presupuesto total materiales: {cop.format(subBudgetCOP)}
+                    <span className="ml-2 font-normal text-[#6d7c74]">
+                      · {subGroups.docs.length} documento(s)
                     </span>
-                  ) : null}
-                </p>
-              </section>
-
-              <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-semibold">Ítems del Sub inventario</h3>
+                  </p>
                   {projectSub.length ? (
-                    <button
-                      type="button"
-                      className="os-btn os-btn-primary"
-                      onClick={() =>
-                        promoteSub(projectSub.map((r) => r.id))
-                      }
-                    >
-                      <PackagePlus size={16} />
-                      Pasar todos al inventario
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="os-btn os-btn-ghost text-sm"
+                        onClick={() => setAllSubExpanded(true)}
+                      >
+                        Desplegar todos
+                      </button>
+                      <button
+                        type="button"
+                        className="os-btn os-btn-ghost text-sm"
+                        onClick={() => setAllSubExpanded(false)}
+                      >
+                        Esconder todos
+                      </button>
+                    </div>
                   ) : null}
                 </div>
-                {projectSub.length === 0 ? (
-                  <p className="mt-4 text-sm text-[#6d7c74]">
-                    Aún no hay materiales presupuestados. Adjunte una
-                    cotización o agregue un ítem a mano.
+              </section>
+
+              {subGroups.docs.length === 0 && subGroups.manual.length === 0 ? (
+                <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+                  <p className="text-sm text-[#6d7c74]">
+                    Aún no hay cotizaciones. Adjunte un documento: cada uno
+                    creará su propio grupo de equipos.
                   </p>
-                ) : (
-                  <ul className="mt-4 space-y-3">
-                    {projectSub.map((row) => {
-                      const isDup = dupKeys.has(row.productKey);
-                      const lineCOP = Math.round(
-                        (Number(row.qty) || 0) * (Number(row.unitPriceCOP) || 0)
-                      );
-                      return (
-                        <li
-                          key={row.id}
-                          className={`rounded-xl border p-3 ${
-                            isDup
-                              ? "border-[#e8c48a] bg-[#fff9ef]"
-                              : "border-[#eee8dc]"
-                          }`}
-                        >
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-                            <label className="text-xs text-[#6d7c74] lg:col-span-2">
-                              Elemento / equipo
-                              <input
-                                className={`${field} mt-1`}
-                                value={row.name}
-                                onChange={(e) =>
-                                  patchSub(row.id, { name: e.target.value })
+                </section>
+              ) : null}
+
+              {subGroups.docs.map((group) => {
+                const docOpen = isDocOpen(group.key);
+                const dups = dupKeysIn(group.items);
+                const kindLabel =
+                  group.doc?.kind === "factura" ? "Factura" : "Cotización";
+                const title = group.doc
+                  ? `${kindLabel} · ${group.doc.supplier || "Sin proveedor"}`
+                  : group.items[0]?.sourceLabel || "Documento";
+                return (
+                  <section
+                    key={group.key}
+                    className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-4"
+                  >
+                    <div className="flex flex-wrap items-start gap-2">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        onClick={() => toggleDocExpanded(group.key)}
+                        aria-expanded={docOpen}
+                      >
+                        {docOpen ? (
+                          <ChevronDown
+                            size={18}
+                            className="shrink-0 text-[#1f6b45]"
+                          />
+                        ) : (
+                          <ChevronRight
+                            size={18}
+                            className="shrink-0 text-[#6d7c74]"
+                          />
+                        )}
+                        <span className="min-w-0">
+                          <span className="block font-semibold">{title}</span>
+                          <span className="text-xs text-[#6d7c74]">
+                            {group.doc?.fileName || "Sin archivo"}
+                            {group.doc?.date ? ` · ${group.doc.date}` : ""}
+                            {` · ${group.items.length} ítem(s)`}
+                          </span>
+                        </span>
+                      </button>
+                      <span className="shrink-0 self-center text-sm font-semibold text-[#1f6b45]">
+                        {cop.format(group.totalCOP)}
+                      </span>
+                    </div>
+
+                    {docOpen ? (
+                      <div className="mt-3 space-y-3 border-t border-[#eee8dc] pt-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="os-btn os-btn-ghost text-xs"
+                            onClick={() => addManualSubItem(group.key)}
+                          >
+                            <Plus size={14} />
+                            Agregar ítem a esta cotización
+                          </button>
+                          {group.items.length ? (
+                            <>
+                              <button
+                                type="button"
+                                className="os-btn os-btn-primary text-xs"
+                                onClick={() =>
+                                  sendToCotizador(group.items, title)
                                 }
-                                onBlur={() => syncCloud()}
-                              />
-                            </label>
-                            <label className="text-xs text-[#6d7c74]">
-                              Unidades
-                              <input
-                                type="number"
-                                min={0}
-                                step={1}
-                                className={`${field} mt-1`}
-                                value={row.qty}
-                                onChange={(e) =>
-                                  patchSub(row.id, {
-                                    qty: Number(e.target.value) || 0,
-                                  })
-                                }
-                                onBlur={() => syncCloud()}
-                              />
-                            </label>
-                            <label className="text-xs text-[#6d7c74]">
-                              Precio und. COP
-                              <input
-                                type="number"
-                                min={0}
-                                className={`${field} mt-1`}
-                                value={row.unitPriceCOP}
-                                onChange={(e) =>
-                                  patchSub(row.id, {
-                                    unitPriceCOP:
-                                      Number(e.target.value) || 0,
-                                  })
-                                }
-                                onBlur={() => syncCloud()}
-                              />
-                            </label>
-                            <label className="text-xs text-[#6d7c74]">
-                              Und.
-                              <input
-                                className={`${field} mt-1`}
-                                value={row.unit || "und"}
-                                onChange={(e) =>
-                                  patchSub(row.id, { unit: e.target.value })
-                                }
-                                onBlur={() => syncCloud()}
-                              />
-                            </label>
-                            <div className="flex flex-col justify-end text-sm">
-                              <span className="text-[#6d7c74]">Total</span>
-                              <span className="font-semibold">
-                                {cop.format(lineCOP)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#6d7c74]">
-                            {row.sourceLabel ? (
-                              <span>{row.sourceLabel}</span>
-                            ) : (
-                              <span>Manual</span>
-                            )}
-                            {isDup ? (
-                              <span className="rounded-md bg-[#f0d9a8] px-2 py-0.5 font-semibold text-[#7a4e12]">
-                                Repetido
-                              </span>
-                            ) : null}
-                            <span className="flex-1" />
-                            {isDup ? (
+                              >
+                                <Send size={14} />
+                                Pasar a cotización
+                              </button>
                               <button
                                 type="button"
                                 className="os-btn os-btn-ghost text-xs"
                                 onClick={() =>
-                                  removeDupGroup(row.productKey)
+                                  promoteSub(group.items.map((r) => r.id))
                                 }
                               >
-                                Limpiar duplicados
+                                <PackagePlus size={14} />
+                                Al inventario principal
                               </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="os-btn os-btn-ghost text-xs"
-                              onClick={() => promoteSub([row.id])}
-                            >
-                              <PackagePlus size={14} />
-                              Al inventario principal
-                            </button>
+                            </>
+                          ) : null}
+                          {group.doc ? (
                             <button
                               type="button"
                               className="os-btn os-btn-ghost text-xs text-[#9b3b2e]"
-                              onClick={() => removeSub(row.id)}
+                              onClick={() => removeDoc(group.doc!.id)}
                             >
                               <Trash2 size={14} />
-                              Eliminar
+                              Eliminar cotización
                             </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </section>
+                          ) : null}
+                        </div>
+
+                        {group.items.length === 0 ? (
+                          <p className="text-sm text-[#6d7c74]">
+                            Sin ítems en este documento.
+                          </p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {group.items.map((row) => {
+                              const isDup = dups.has(row.productKey);
+                              const open = Boolean(expandedSub[row.id]);
+                              const lineCOP = Math.round(
+                                (Number(row.qty) || 0) *
+                                  (Number(row.unitPriceCOP) || 0)
+                              );
+                              return (
+                                <li
+                                  key={row.id}
+                                  className={`rounded-xl border ${
+                                    isDup
+                                      ? "border-[#e8c48a] bg-[#fff9ef]"
+                                      : "border-[#eee8dc] bg-[#fbfaf6]"
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                                    onClick={() => toggleSubExpanded(row.id)}
+                                    aria-expanded={open}
+                                  >
+                                    {open ? (
+                                      <ChevronDown
+                                        size={16}
+                                        className="shrink-0 text-[#1f6b45]"
+                                      />
+                                    ) : (
+                                      <ChevronRight
+                                        size={16}
+                                        className="shrink-0 text-[#6d7c74]"
+                                      />
+                                    )}
+                                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                                      {row.name || "Sin nombre"}
+                                    </span>
+                                    {isDup ? (
+                                      <span className="shrink-0 rounded-md bg-[#f0d9a8] px-2 py-0.5 text-[11px] font-semibold text-[#7a4e12]">
+                                        Repetido
+                                      </span>
+                                    ) : null}
+                                    <span className="shrink-0 text-xs text-[#6d7c74]">
+                                      {row.qty} {row.unit || "und"}
+                                    </span>
+                                    <span className="shrink-0 text-sm font-semibold text-[#1f6b45]">
+                                      {cop.format(lineCOP)}
+                                    </span>
+                                  </button>
+                                  {open ? (
+                                    <div className="border-t border-[#eee8dc] px-3 pb-3 pt-2">
+                                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                                        <label className="text-xs text-[#6d7c74] lg:col-span-2">
+                                          Elemento / equipo
+                                          <input
+                                            className={`${field} mt-1`}
+                                            value={row.name}
+                                            onChange={(e) =>
+                                              patchSub(row.id, {
+                                                name: e.target.value,
+                                              })
+                                            }
+                                            onBlur={() => syncCloud()}
+                                          />
+                                        </label>
+                                        <label className="text-xs text-[#6d7c74]">
+                                          Unidades
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            className={`${field} mt-1`}
+                                            value={row.qty}
+                                            onChange={(e) =>
+                                              patchSub(row.id, {
+                                                qty:
+                                                  Number(e.target.value) || 0,
+                                              })
+                                            }
+                                            onBlur={() => syncCloud()}
+                                          />
+                                        </label>
+                                        <label className="text-xs text-[#6d7c74]">
+                                          Precio und. COP
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            className={`${field} mt-1`}
+                                            value={row.unitPriceCOP}
+                                            onChange={(e) =>
+                                              patchSub(row.id, {
+                                                unitPriceCOP:
+                                                  Number(e.target.value) || 0,
+                                              })
+                                            }
+                                            onBlur={() => syncCloud()}
+                                          />
+                                        </label>
+                                        <label className="text-xs text-[#6d7c74]">
+                                          Und.
+                                          <input
+                                            className={`${field} mt-1`}
+                                            value={row.unit || "und"}
+                                            onChange={(e) =>
+                                              patchSub(row.id, {
+                                                unit: e.target.value,
+                                              })
+                                            }
+                                            onBlur={() => syncCloud()}
+                                          />
+                                        </label>
+                                        <div className="flex flex-col justify-end text-sm">
+                                          <span className="text-[#6d7c74]">
+                                            Total
+                                          </span>
+                                          <span className="font-semibold">
+                                            {cop.format(lineCOP)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#6d7c74]">
+                                        <span className="flex-1" />
+                                        {isDup ? (
+                                          <button
+                                            type="button"
+                                            className="os-btn os-btn-ghost text-xs"
+                                            onClick={() =>
+                                              removeDupGroup(
+                                                row.productKey,
+                                                group.key
+                                              )
+                                            }
+                                          >
+                                            Limpiar duplicados
+                                          </button>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          className="os-btn os-btn-ghost text-xs"
+                                          onClick={() =>
+                                            sendToCotizador([row], title)
+                                          }
+                                        >
+                                          <Send size={14} />
+                                          A cotización
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="os-btn os-btn-ghost text-xs"
+                                          onClick={() => promoteSub([row.id])}
+                                        >
+                                          <PackagePlus size={14} />
+                                          Al inventario principal
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="os-btn os-btn-ghost text-xs text-[#9b3b2e]"
+                                          onClick={() => removeSub(row.id)}
+                                        >
+                                          <Trash2 size={14} />
+                                          Eliminar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
+
+              {subGroups.manual.length ? (
+                <section className="os-panel rounded-2xl border border-dashed border-[#c9d2cb] bg-white p-4">
+                  <div className="flex flex-wrap items-start gap-2">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      onClick={() => toggleDocExpanded("__manual__")}
+                      aria-expanded={isDocOpen("__manual__")}
+                    >
+                      {isDocOpen("__manual__") ? (
+                        <ChevronDown
+                          size={18}
+                          className="shrink-0 text-[#1f6b45]"
+                        />
+                      ) : (
+                        <ChevronRight
+                          size={18}
+                          className="shrink-0 text-[#6d7c74]"
+                        />
+                      )}
+                      <span className="min-w-0">
+                        <span className="block font-semibold">
+                          Ítems manuales
+                        </span>
+                        <span className="text-xs text-[#6d7c74]">
+                          Sin cotización adjunta · {subGroups.manual.length}{" "}
+                          ítem(s)
+                        </span>
+                      </span>
+                    </button>
+                    <span className="shrink-0 self-center text-sm font-semibold text-[#1f6b45]">
+                      {cop.format(subGroups.manualTotal)}
+                    </span>
+                  </div>
+                  {isDocOpen("__manual__") ? (
+                    <ul className="mt-3 space-y-2 border-t border-[#eee8dc] pt-3">
+                      {subGroups.manual.map((row) => {
+                        const dups = dupKeysIn(subGroups.manual);
+                        const isDup = dups.has(row.productKey);
+                        const open = Boolean(expandedSub[row.id]);
+                        const lineCOP = Math.round(
+                          (Number(row.qty) || 0) *
+                            (Number(row.unitPriceCOP) || 0)
+                        );
+                        return (
+                          <li
+                            key={row.id}
+                            className={`rounded-xl border ${
+                              isDup
+                                ? "border-[#e8c48a] bg-[#fff9ef]"
+                                : "border-[#eee8dc] bg-[#fbfaf6]"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                              onClick={() => toggleSubExpanded(row.id)}
+                              aria-expanded={open}
+                            >
+                              {open ? (
+                                <ChevronDown
+                                  size={16}
+                                  className="shrink-0 text-[#1f6b45]"
+                                />
+                              ) : (
+                                <ChevronRight
+                                  size={16}
+                                  className="shrink-0 text-[#6d7c74]"
+                                />
+                              )}
+                              <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                                {row.name || "Sin nombre"}
+                              </span>
+                              <span className="shrink-0 text-xs text-[#6d7c74]">
+                                {row.qty} {row.unit || "und"}
+                              </span>
+                              <span className="shrink-0 text-sm font-semibold text-[#1f6b45]">
+                                {cop.format(lineCOP)}
+                              </span>
+                            </button>
+                            {open ? (
+                              <div className="border-t border-[#eee8dc] px-3 pb-3 pt-2">
+                                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                                  <label className="text-xs text-[#6d7c74] lg:col-span-2">
+                                    Elemento / equipo
+                                    <input
+                                      className={`${field} mt-1`}
+                                      value={row.name}
+                                      onChange={(e) =>
+                                        patchSub(row.id, {
+                                          name: e.target.value,
+                                        })
+                                      }
+                                      onBlur={() => syncCloud()}
+                                    />
+                                  </label>
+                                  <label className="text-xs text-[#6d7c74]">
+                                    Unidades
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      className={`${field} mt-1`}
+                                      value={row.qty}
+                                      onChange={(e) =>
+                                        patchSub(row.id, {
+                                          qty: Number(e.target.value) || 0,
+                                        })
+                                      }
+                                      onBlur={() => syncCloud()}
+                                    />
+                                  </label>
+                                  <label className="text-xs text-[#6d7c74]">
+                                    Precio und. COP
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      className={`${field} mt-1`}
+                                      value={row.unitPriceCOP}
+                                      onChange={(e) =>
+                                        patchSub(row.id, {
+                                          unitPriceCOP:
+                                            Number(e.target.value) || 0,
+                                        })
+                                      }
+                                      onBlur={() => syncCloud()}
+                                    />
+                                  </label>
+                                  <label className="text-xs text-[#6d7c74]">
+                                    Und.
+                                    <input
+                                      className={`${field} mt-1`}
+                                      value={row.unit || "und"}
+                                      onChange={(e) =>
+                                        patchSub(row.id, {
+                                          unit: e.target.value,
+                                        })
+                                      }
+                                      onBlur={() => syncCloud()}
+                                    />
+                                  </label>
+                                  <div className="flex flex-col justify-end text-sm">
+                                    <span className="text-[#6d7c74]">Total</span>
+                                    <span className="font-semibold">
+                                      {cop.format(lineCOP)}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex flex-wrap justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    className="os-btn os-btn-ghost text-xs"
+                                    onClick={() =>
+                                      sendToCotizador(
+                                        [row],
+                                        "Ítems manuales"
+                                      )
+                                    }
+                                  >
+                                    <Send size={14} />
+                                    A cotización
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="os-btn os-btn-ghost text-xs"
+                                    onClick={() => promoteSub([row.id])}
+                                  >
+                                    <PackagePlus size={14} />
+                                    Al inventario principal
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="os-btn os-btn-ghost text-xs text-[#9b3b2e]"
+                                    onClick={() => removeSub(row.id)}
+                                  >
+                                    <Trash2 size={14} />
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                </section>
+              ) : null}
             </div>
           ) : null}
 

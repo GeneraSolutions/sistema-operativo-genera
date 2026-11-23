@@ -61,6 +61,11 @@ import {
   type SavedQuote,
 } from "@/lib/saved-quotes";
 import { OPEN_QUOTE_KEY } from "@/lib/saved-visits";
+import {
+  clearPendingSubinvQuote,
+  mergeQuoteLinesWithSub,
+  peekPendingSubinvQuote,
+} from "@/lib/subinv-to-quote";
 import type { CustomCategory, InventoryItem } from "@/types/inventory";
 import type {
   ParticularTerm,
@@ -195,6 +200,8 @@ function CotizadorEquiposInner() {
         return;
       }
       if (q) loadQuote(q, items);
+    } else {
+      setQuoteLines((rows) => absorbPendingSubinv(rows));
     }
     void fetch("/api/archivo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -212,6 +219,12 @@ function CotizadorEquiposInner() {
         if (openId) {
           const q = merged.find((row) => row.id === openId);
           if (q?.kind === "equipos") loadQuote(q, items);
+          else setQuoteLines((rows) => absorbPendingSubinv(rows));
+        }
+      })
+      .catch(() => {
+        if (openId && !localQuotes.find((row) => row.id === openId)) {
+          setQuoteLines((rows) => absorbPendingSubinv(rows));
         }
       });
     setHydrated(true);
@@ -363,8 +376,36 @@ function CotizadorEquiposInner() {
       getStoredQuoteLines(q.id) ??
       q.quoteLines ??
       [];
-    setQuoteLines(lines.slice(0, MAX_EQUIPMENT_LINES));
+    setQuoteLines(
+      absorbPendingSubinv(lines.slice(0, MAX_EQUIPMENT_LINES), q.id)
+    );
     void items;
+  }
+
+  function absorbPendingSubinv(
+    base: QuoteLineInput[],
+    quoteId?: string
+  ): QuoteLineInput[] {
+    const pending = peekPendingSubinvQuote();
+    if (!pending?.lines.length) return base;
+    const { lines, added, updated, skipped } = mergeQuoteLinesWithSub(
+      base,
+      pending.lines,
+      MAX_EQUIPMENT_LINES
+    );
+    clearPendingSubinvQuote();
+    const bits: string[] = [];
+    if (added) bits.push(`${added} nuevo(s)`);
+    if (updated) bits.push(`${updated} actualizado(s)`);
+    if (skipped) bits.push(`${skipped} fuera de cupo (${MAX_EQUIPMENT_LINES})`);
+    setSaveFlash(
+      `Sub inventario → cotización: ${bits.join(", ") || "sin cambios"}. Revise márgenes de venta.`
+    );
+    if (quoteId) putQuoteLines(quoteId, lines);
+    else if (editingQuoteId.current) {
+      putQuoteLines(editingQuoteId.current, lines);
+    }
+    return lines;
   }
 
   function snapshotCurrent(name?: string): SavedQuote {

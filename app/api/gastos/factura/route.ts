@@ -74,16 +74,8 @@ export async function POST(req: NextRequest) {
           supplier: "",
           place: "",
           date: "",
-          notes: "Sin OPENAI_API_KEY: complete la compra a mano.",
-          lines: [
-            {
-              name: "",
-              qty: 1,
-              unitPriceCOP: 0,
-              unit: "und",
-              categoryLabel: "Compras",
-            },
-          ],
+          notes: "Sin OPENAI_API_KEY: complete a mano.",
+          lines: [],
           totalCOP: 0,
         },
       });
