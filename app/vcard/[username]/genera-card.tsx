@@ -25,6 +25,7 @@ type GeneraProfile = {
   websiteUrl?: string;
   avatarPosition?: string;
   avatarTop?: string;
+  tagline?: string;
 };
 
 function displayHost(url: string): string {
@@ -85,7 +86,7 @@ END:VCARD`;
     const url = pageUrl || window.location.href;
     const payload = {
       title: `${profile.fullName} · ${profile.company}`,
-      text: `${profile.role} — ${profile.company}`,
+      text: profile.tagline || `${profile.role} — ${profile.company}`,
       url,
     };
     try {
@@ -183,12 +184,14 @@ END:VCARD`;
           />
           <div className="gv-status">
             <span className="gv-dot" />
-            <span>EN LÍNEA · BOGOTÁ</span>
+            <span>COLOMBIA · COBERTURA NACIONAL</span>
           </div>
         </header>
 
         <div className="gv-hero">
           <div className="gv-orbit">
+            <div className="gv-orbit-ring" aria-hidden="true" />
+            <div className="gv-orbit-glow" aria-hidden="true" />
             <div className="gv-hex">
               <img
                 src={profile.avatarUrl}
@@ -198,6 +201,9 @@ END:VCARD`;
                   top: profile.avatarTop || "54%",
                 }}
               />
+            </div>
+            <div className="gv-mini-sun" aria-hidden="true">
+              <MiniSun />
             </div>
           </div>
           <div className="gv-id">
@@ -214,14 +220,15 @@ END:VCARD`;
                 {profile.email}
               </a>
             ) : null}
-            {profile.tags.length > 0 ? (
-              <div className="gv-tags">
-                {profile.tags.map((tag) => (
-                  <span key={tag}>{tag}</span>
-                ))}
-              </div>
-            ) : null}
           </div>
+          {profile.tagline ? <p className="gv-tagline">{profile.tagline}</p> : null}
+          {profile.tags.length > 0 ? (
+            <div className="gv-tags">
+              {profile.tags.map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <button type="button" className="gv-save" onClick={saveContact}>
@@ -330,6 +337,43 @@ function LinkedInIcon() {
   );
 }
 
+function MiniSun() {
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40">
+      <defs>
+        <radialGradient id="gvSunCore" cx="35%" cy="35%" r="65%">
+          <stop offset="0%" stopColor="#fff8d4" />
+          <stop offset="42%" stopColor="#f5c542" />
+          <stop offset="100%" stopColor="#b8790c" />
+        </radialGradient>
+      </defs>
+      {Array.from({ length: 12 }, (_, i) => {
+        const angle = (i * 30 * Math.PI) / 180;
+        const inner = i % 2 === 0 ? 12.4 : 11.2;
+        const outer = i % 2 === 0 ? 18.2 : 16.2;
+        const x1 = 20 + Math.cos(angle) * inner;
+        const y1 = 20 + Math.sin(angle) * inner;
+        const x2 = 20 + Math.cos(angle) * outer;
+        const y2 = 20 + Math.sin(angle) * outer;
+        return (
+          <line
+            key={i}
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
+            stroke="#f5c542"
+            strokeWidth={i % 2 === 0 ? 2.4 : 1.7}
+            strokeLinecap="round"
+          />
+        );
+      })}
+      <circle cx="20" cy="20" r="8.4" fill="url(#gvSunCore)" />
+      <circle cx="17.2" cy="16.8" r="2.4" fill="rgba(255,255,255,0.5)" />
+    </svg>
+  );
+}
+
 function SolarMesh() {
   return (
     <svg className="gv-mesh" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
@@ -416,45 +460,80 @@ const css = `
   box-shadow: 0 0 10px var(--leaf);
   animation: gv-blink 2.2s ease-in-out infinite;
 }
-.gv-hero { display: grid; grid-template-columns: 196px 1fr; gap: 16px; align-items: center; }
+.gv-hero {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0;
+}
 .gv-orbit {
-  width: 196px; height: 216px; position: relative;
-  display: grid; place-items: center;
+  width: 198px; height: 218px; position: relative;
+  display: grid; place-items: center; flex-shrink: 0; margin-bottom: 18px;
 }
-.gv-orbit::before {
-  content: "";
-  position: absolute; inset: -10px;
-  border: 1px dashed rgba(245,197,66,0.7);
+.gv-orbit-glow {
+  position: absolute; inset: -4px;
   clip-path: polygon(50% 0, 96% 25%, 96% 75%, 50% 100%, 4% 75%, 4% 25%);
-  animation: gv-spin 18s linear infinite;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(245,197,66,0.5), transparent 62%),
+    radial-gradient(circle at 70% 18%, rgba(255,230,140,0.28), transparent 45%);
+  filter: blur(2px);
+  animation: gv-pulse 2.8s ease-in-out infinite;
+  pointer-events: none;
 }
-.gv-orbit::after {
-  content: "";
-  position: absolute; width: 22px; height: 22px; right: 6px; top: 10px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff3b0, #f5c542 55%, #c58d12);
-  box-shadow: 0 0 18px rgba(245,197,66,0.8);
+.gv-orbit-ring {
+  position: absolute; inset: -14px;
+  border: 1.6px dashed rgba(245,197,66,0.9);
+  clip-path: polygon(50% 0, 96% 25%, 96% 75%, 50% 100%, 4% 75%, 4% 25%);
+  box-shadow:
+    0 0 0 1px rgba(245,197,66,0.2),
+    0 0 34px rgba(245,197,66,0.4),
+    inset 0 0 26px rgba(245,197,66,0.12);
+  animation: gv-spin 14s linear infinite;
+  pointer-events: none;
 }
+.gv-mini-sun {
+  position: absolute; right: -6px; top: -2px; z-index: 3;
+  width: 40px; height: 40px;
+  filter: drop-shadow(0 0 12px rgba(245,197,66,0.95));
+  animation: gv-sun-bob 3.2s ease-in-out infinite;
+}
+.gv-mini-sun svg { width: 40px; height: 40px; display: block; }
 .gv-hex {
-  width: 174px; height: 190px;
+  width: 176px; height: 192px;
   clip-path: polygon(50% 0, 96% 25%, 96% 75%, 50% 100%, 4% 75%, 4% 25%);
-  box-shadow: 0 0 40px rgba(245,197,66,0.38);
+  box-shadow:
+    0 0 0 1px rgba(245,197,66,0.45),
+    0 0 28px rgba(245,197,66,0.55),
+    0 0 70px rgba(245,197,66,0.28);
   position: relative;
   overflow: hidden;
+  z-index: 1;
 }
 .gv-hex img {
   width: 108%; height: 108%; object-fit: cover;
   display: block; position: absolute; left: 50%;
   transform: translate(-50%, -50%);
 }
+.gv-id {
+  width: 100%; min-width: 0;
+  display: flex; flex-direction: column; align-items: center;
+}
 .gv-id h1 {
-  margin: 0; font-size: 1.72rem; line-height: 1.02; letter-spacing: -0.035em; font-weight: 700;
+  margin: 0; font-size: clamp(1.45rem, 5.4vw, 1.85rem); line-height: 1.05;
+  letter-spacing: -0.035em; font-weight: 700; max-width: 16ch;
 }
 .gv-dept, .gv-role {
   margin: 0; font-family: "IBM Plex Mono", monospace; font-size: 10px;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold);
 }
-.gv-role { color: var(--mute); margin-top: 8px; letter-spacing: 0.06em; line-height: 1.4; text-transform: none; font-size: 12px; }
+.gv-role {
+  color: var(--mute); margin-top: 8px; letter-spacing: 0.06em;
+  line-height: 1.4; text-transform: none; font-size: 12px; max-width: 34ch;
+}
+.gv-tagline {
+  margin: 14px 0 0; padding: 12px 10px 0;
+  border-top: 1px solid rgba(126,184,214,0.18);
+  width: 100%; box-sizing: border-box;
+  color: var(--cell); font-size: 13px; line-height: 1.4;
+  letter-spacing: -0.01em; max-width: 36ch;
+}
 .gv-dept { margin-bottom: 8px; }
 .gv-mail {
   display: inline-flex; align-items: center; gap: 7px;
@@ -463,21 +542,28 @@ const css = `
   border-bottom: 1px solid rgba(245,197,66,0.45); padding-bottom: 3px;
   max-width: 100%; overflow-wrap: anywhere;
 }
-.gv-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.gv-tags {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+  width: 100%; margin-top: 14px;
+}
 .gv-tags span {
   font-size: 10px; color: var(--cell); border: 1px solid rgba(126,184,214,0.28);
-  padding: 3px 7px; letter-spacing: 0.02em;
+  padding: 5px 9px; letter-spacing: 0.03em;
+  font-family: "IBM Plex Mono", monospace; line-height: 1.2;
 }
 .gv-save {
   width: 100%; display: flex; justify-content: space-between; align-items: center;
   border: 0; cursor: pointer; color: #08110a; font-family: inherit; font-weight: 700;
-  font-size: 15px; padding: 14px 16px; margin-top: 18px;
+  font-size: 15px; padding: 14px 16px; margin-top: 16px;
   background: linear-gradient(135deg, #f5c542 0%, #6dbe45 100%);
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }
 .gv-save em { font-style: normal; font-family: "IBM Plex Mono", monospace; font-size: 11px; }
 .gv-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px;
+}
+.gv-grid:has(> :nth-child(3):last-child) > :first-child {
+  grid-column: 1 / -1;
 }
 .gv-mod {
   min-height: 78px; padding: 12px 12px 10px;
@@ -517,15 +603,15 @@ const css = `
   background: transparent; color: var(--ink); border: 1px solid rgba(126,184,214,0.35);
   padding: 10px 12px; cursor: pointer; font-family: inherit;
 }
-@keyframes gv-pulse { 0%,100% { opacity: .7; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes gv-pulse { 0%,100% { opacity: .55; transform: scale(0.98); } 50% { opacity: 1; transform: scale(1.04); } }
 @keyframes gv-scan { 0% { background-position: 0 -80%; } 100% { background-position: 0 180%; } }
 @keyframes gv-spin { to { transform: rotate(360deg); } }
 @keyframes gv-blink { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes gv-sun-bob {
+  0%,100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(2px) scale(1.06); }
+}
 @media (max-width: 420px) {
-  .gv-hero { grid-template-columns: 1fr; justify-items: center; text-align: center; }
-  .gv-id { width: 100%; }
-  .gv-tags { justify-content: center; }
-  .gv-mail { justify-content: center; }
   .gv-pass { grid-template-columns: 1fr; }
 }
 `;
