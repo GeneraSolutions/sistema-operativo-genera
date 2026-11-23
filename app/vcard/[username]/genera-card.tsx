@@ -44,6 +44,7 @@ export function GeneraCard({ profile }: { profile: GeneraProfile }) {
   const [pageUrl, setPageUrl] = useState("");
   const [qrOpen, setQrOpen] = useState(false);
   const [savingQr, setSavingQr] = useState(false);
+  const [shareNote, setShareNote] = useState("");
 
   useEffect(() => {
     setPageUrl(window.location.href);
@@ -78,6 +79,35 @@ END:VCARD`;
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const shareCard = async () => {
+    const url = pageUrl || window.location.href;
+    const payload = {
+      title: `${profile.fullName} · ${profile.company}`,
+      text: `${profile.role} — ${profile.company}`,
+      url,
+    };
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share(payload);
+        setShareNote("");
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setShareNote("Enlace copiado");
+      window.setTimeout(() => setShareNote(""), 2200);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareNote("Enlace copiado");
+        window.setTimeout(() => setShareNote(""), 2200);
+      } catch {
+        setShareNote("Copia el enlace de la barra");
+        window.setTimeout(() => setShareNote(""), 2800);
+      }
+    }
   };
 
   const saveQr = async () => {
@@ -231,13 +261,19 @@ END:VCARD`;
           </nav>
         ) : null}
 
-        <button
-          type="button"
-          className="gv-qrbtn"
-          onClick={() => setQrOpen((open) => !open)}
-        >
-          {qrOpen ? "Cerrar código QR" : "Abrir código QR"}
-        </button>
+        <div className="gv-pass">
+          <button type="button" className="gv-share" onClick={shareCard}>
+            Compartir tarjeta
+          </button>
+          <button
+            type="button"
+            className="gv-qrbtn"
+            onClick={() => setQrOpen((open) => !open)}
+          >
+            {qrOpen ? "Cerrar código QR" : "Abrir código QR"}
+          </button>
+        </div>
+        {shareNote ? <p className="gv-share-note">{shareNote}</p> : null}
         {qrOpen && pageUrl ? (
           <div className="gv-qr">
             <img src={qrImageUrl(pageUrl)} alt={`Código QR de ${profile.fullName}`} />
@@ -462,10 +498,18 @@ const css = `
   border: 1px solid rgba(245,197,66,0.28);
 }
 .gv-social a:hover { border-color: var(--gold); color: var(--gold); }
-.gv-qrbtn {
-  margin-top: 16px; width: 100%; background: transparent; color: var(--gold);
+.gv-pass {
+  margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.gv-share, .gv-qrbtn {
+  width: 100%; background: transparent; color: var(--gold);
   border: 1px solid rgba(245,197,66,0.4); padding: 11px; cursor: pointer;
-  font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.16em;
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.12em;
+}
+.gv-share:hover, .gv-qrbtn:hover { border-color: var(--gold); background: rgba(245,197,66,0.06); }
+.gv-share-note {
+  margin: 8px 0 0; text-align: center; color: var(--leaf);
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.08em;
 }
 .gv-qr { margin-top: 12px; display: flex; align-items: center; gap: 14px; }
 .gv-qr img { width: 120px; height: 120px; background: #071018; }
@@ -482,5 +526,6 @@ const css = `
   .gv-id { width: 100%; }
   .gv-tags { justify-content: center; }
   .gv-mail { justify-content: center; }
+  .gv-pass { grid-template-columns: 1fr; }
 }
 `;
