@@ -4,6 +4,8 @@ const PROJECTS_KEY = "genera.gastos.projects.v1";
 const COMPRAS_KEY = "genera.gastos.compras.v1";
 const PAGOS_KEY = "genera.gastos.pagos.v1";
 const PRICES_KEY = "genera.gastos.precios.v1";
+const SUBINV_KEY = "genera.gastos.subinventario.v1";
+const PRESP_DOCS_KEY = "genera.gastos.presupuesto-docs.v1";
 export const ACTIVE_GASTO_PROJECT_KEY = "genera:active-gasto-project";
 
 export type GastoProjectSource = "obra" | "libre";
@@ -74,6 +76,40 @@ export interface PrecioObservado {
   date: string;
   compraId: string;
   projectId: string;
+}
+
+/** Cotización o factura adjunta para armar presupuesto (no es compra cerrada). */
+export interface PresupuestoDoc {
+  id: string;
+  projectId: string;
+  kind: "cotizacion" | "factura";
+  supplier: string;
+  date: string;
+  fileName?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Ítem del Sub inventario: materiales/equipos leídos de cotizaciones o facturas
+ * para presupuestar el próximo proyecto. Aún no son el inventario principal.
+ */
+export interface SubInventarioItem {
+  id: string;
+  projectId: string;
+  productKey: string;
+  name: string;
+  qty: number;
+  unitPriceCOP: number;
+  unit?: string;
+  categoryId?: string;
+  categoryLabel?: string;
+  supplier?: string;
+  sourceDocId?: string;
+  sourceLabel?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -177,7 +213,7 @@ export function savePrecios(rows: PrecioObservado[]): void {
   writeJson(PRICES_KEY, rows.slice(0, 800));
 }
 
-function productKey(name: string): string {
+export function productKey(name: string): string {
   return name
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -185,6 +221,197 @@ function productKey(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 60);
+}
+
+export function loadSubInventario(): SubInventarioItem[] {
+  const rows = readJson<SubInventarioItem[]>(SUBINV_KEY, []);
+  return Array.isArray(rows) ? rows.filter((r) => r?.id && r?.projectId) : [];
+}
+
+export function saveSubInventario(rows: SubInventarioItem[]): void {
+  writeJson(SUBINV_KEY, rows.slice(0, 800));
+}
+
+export function upsertSubItem(item: SubInventarioItem): SubInventarioItem[] {
+  const row = {
+    ...item,
+    productKey: item.productKey || productKey(item.name),
+    updatedAt: new Date().toISOString(),
+  };
+  const next = [row, ...loadSubInventario().filter((r) => r.id !== row.id)];
+  saveSubInventario(next);
+  return next;
+}
+
+export function deleteSubItem(id: string): SubInventarioItem[] {
+  const next = loadSubInventario().filter((r) => r.id !== id);
+  saveSubInventario(next);
+  return next;
+}
+
+export function deleteSubItems(ids: string[]): SubInventarioItem[] {
+  const drop = new Set(ids);
+  const next = loadSubInventario().filter((r) => !drop.has(r.id));
+  saveSubInventario(next);
+  return next;
+}
+
+export function subInventarioForProject(projectId: string): SubInventarioItem[] {
+  return loadSubInventario()
+    .filter((r) => r.projectId === projectId)
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
+}
+
+/** Suma presupuestada del sub inventario del proyecto. */
+export function subInventarioTotalCOP(projectId: string): number {
+  return subInventarioForProject(projectId).reduce(
+    (s, r) => s + Math.round((Number(r.qty) || 0) * (Number(r.unitPriceCOP) || 0)),
+    0
+  );
+}
+
+export function loadPresupuestoDocs(): PresupuestoDoc[] {
+  const rows = readJson<PresupuestoDoc[]>(PRESP_DOCS_KEY, []);
+  return Array.isArray(rows) ? rows.filter((d) => d?.id && d?.projectId) : [];
+}
+
+export function savePresupuestoDocs(rows: PresupuestoDoc[]): void {
+  writeJson(PRESP_DOCS_KEY, rows.slice(0, 200));
+}
+
+export function upsertPresupuestoDoc(doc: PresupuestoDoc): PresupuestoDoc[] {
+  const row = { ...doc, updatedAt: new Date().toISOString() };
+  const next = [row, ...loadPresupuestoDocs().filter((d) => d.id !== row.id)];
+  savePresupuestoDocs(next);
+  return next;
+}
+
+export function deletePresupuestoDoc(id: string): {
+  docs: PresupuestoDoc[];
+  sub: SubInventarioItem[];
+} {
+  const docs = loadPresupuestoDocs().filter((d) => d.id !== id);
+  savePresupuestoDocs(docs);
+  const sub = loadSubInventario().filter((r) => r.sourceDocId !== id);
+  saveSubInventario(sub);
+  return { docs, sub };
+}
+
+export function blankSubItem(projectId: string): SubInventarioItem {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    projectId,
+    productKey: "",
+    name: "",
+    qty: 1,
+    unitPriceCOP: 0,
+    unit: "und",
+    categoryLabel: "Presupuesto",
+    categoryId: "presupuesto",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** Importa líneas leídas de una cotización/factura al Sub inventario. */
+export function importLinesToSubInventario(opts: {
+  projectId: string;
+  doc: PresupuestoDoc;
+  lines: {
+    name: string;
+    qty: number;
+    unitPriceCOP: number;
+    unit?: string;
+    categoryLabel?: string;
+  }[];
+}): SubInventarioItem[] {
+  const now = new Date().toISOString();
+  const incoming: SubInventarioItem[] = opts.lines
+    .filter((l) => l.name.trim())
+    .map((l) => {
+      const name = l.name.trim();
+      return {
+        id: crypto.randomUUID(),
+        projectId: opts.projectId,
+        productKey: productKey(name),
+        name,
+        qty: Number(l.qty) > 0 ? Number(l.qty) : 1,
+        unitPriceCOP: Math.max(0, Math.round(Number(l.unitPriceCOP) || 0)),
+        unit: l.unit || "und",
+        categoryLabel: l.categoryLabel || "Presupuesto",
+        categoryId: slugCategory(l.categoryLabel || "Presupuesto"),
+        supplier: opts.doc.supplier,
+        sourceDocId: opts.doc.id,
+        sourceLabel: `${opts.doc.kind === "cotizacion" ? "Cotización" : "Factura"} · ${opts.doc.supplier}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+  upsertPresupuestoDoc(opts.doc);
+  const next = [...incoming, ...loadSubInventario()].slice(0, 800);
+  saveSubInventario(next);
+  return next;
+}
+
+export function mergeSubInventario(
+  local: SubInventarioItem[],
+  remote: SubInventarioItem[]
+): SubInventarioItem[] {
+  const byId = new Map<string, SubInventarioItem>();
+  for (const row of [...remote, ...local]) {
+    if (!row?.id) continue;
+    const prev = byId.get(row.id);
+    if (!prev || Date.parse(row.updatedAt) >= Date.parse(prev.updatedAt)) {
+      byId.set(row.id, row);
+    }
+  }
+  return [...byId.values()].slice(0, 800);
+}
+
+export function mergePresupuestoDocs(
+  local: PresupuestoDoc[],
+  remote: PresupuestoDoc[]
+): PresupuestoDoc[] {
+  const byId = new Map<string, PresupuestoDoc>();
+  for (const row of [...remote, ...local]) {
+    if (!row?.id) continue;
+    const prev = byId.get(row.id);
+    if (!prev || Date.parse(row.updatedAt) >= Date.parse(prev.updatedAt)) {
+      byId.set(row.id, row);
+    }
+  }
+  return [...byId.values()].slice(0, 200);
+}
+
+/** Claves de producto repetidas en el sub inventario del proyecto. */
+export function duplicateProductKeys(projectId: string): Set<string> {
+  const counts = new Map<string, number>();
+  for (const row of subInventarioForProject(projectId)) {
+    counts.set(row.productKey, (counts.get(row.productKey) || 0) + 1);
+  }
+  return new Set(
+    [...counts.entries()].filter(([, n]) => n > 1).map(([k]) => k)
+  );
+}
+
+/** Pasa ítems del sub inventario al inventario principal. */
+export function promoteSubItemsToInventory(
+  items: SubInventarioItem[],
+  inventory: InventoryItem[],
+  customCats: CustomCategory[]
+): { inventory: InventoryItem[]; customCats: CustomCategory[] } {
+  const lines: CompraLine[] = items.map((r) => ({
+    id: r.id,
+    name: r.name,
+    qty: r.qty,
+    unitPriceCOP: r.unitPriceCOP,
+    unit: r.unit,
+    categoryId: r.categoryId,
+    categoryLabel: r.categoryLabel,
+    addToInventory: true,
+  }));
+  return applyCompraLinesToInventory(lines, inventory, customCats);
 }
 
 /** Registra precios de una compra para el comparador. */
@@ -322,6 +549,8 @@ export interface GastoBundle {
   compras: CompraGasto[];
   pagos: PagoGasto[];
   precios: PrecioObservado[];
+  subInventario: SubInventarioItem[];
+  presupuestoDocs: PresupuestoDoc[];
 }
 
 export function loadGastoBundle(): GastoBundle {
@@ -330,6 +559,8 @@ export function loadGastoBundle(): GastoBundle {
     compras: loadCompras(),
     pagos: loadPagos(),
     precios: loadPrecios(),
+    subInventario: loadSubInventario(),
+    presupuestoDocs: loadPresupuestoDocs(),
   };
 }
 
@@ -338,6 +569,8 @@ export function applyGastoBundle(bundle: GastoBundle): void {
   if (bundle.compras) saveCompras(bundle.compras);
   if (bundle.pagos) savePagos(bundle.pagos);
   if (bundle.precios) savePrecios(bundle.precios);
+  if (bundle.subInventario) saveSubInventario(bundle.subInventario);
+  if (bundle.presupuestoDocs) savePresupuestoDocs(bundle.presupuestoDocs);
 }
 
 export function mergeGastoBundle(
@@ -368,6 +601,14 @@ export function mergeGastoBundle(
     precios: [...preciosFromCompras, ...(remote.precios ?? []), ...local.precios]
       .filter((row, i, arr) => arr.findIndex((x) => x.id === row.id) === i)
       .slice(0, 800),
+    subInventario: mergeSubInventario(
+      local.subInventario ?? [],
+      remote.subInventario ?? []
+    ),
+    presupuestoDocs: mergePresupuestoDocs(
+      local.presupuestoDocs ?? [],
+      remote.presupuestoDocs ?? []
+    ),
   };
 }
 

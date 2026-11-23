@@ -312,6 +312,10 @@ export async function loadArchivoGastos(): Promise<GastoBundle | null> {
     compras: Array.isArray(stored.compras) ? stored.compras : [],
     pagos: Array.isArray(stored.pagos) ? stored.pagos : [],
     precios: Array.isArray(stored.precios) ? stored.precios : [],
+    subInventario: Array.isArray(stored.subInventario) ? stored.subInventario : [],
+    presupuestoDocs: Array.isArray(stored.presupuestoDocs)
+      ? stored.presupuestoDocs
+      : [],
   };
 }
 
@@ -323,6 +327,8 @@ export async function upsertArchivoGastos(
     compras: [],
     pagos: [],
     precios: [],
+    subInventario: [],
+    presupuestoDocs: [],
   };
   const merged = mergeGastoBundle(incoming, current);
   // Strip huge invoice data URLs from cloud copy

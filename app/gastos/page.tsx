@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
+  ClipboardList,
+  PackagePlus,
   Plus,
   Receipt,
   Trash2,
@@ -17,23 +19,35 @@ import {
   blankCompra,
   blankCompraLine,
   blankPago,
+  blankSubItem,
   cheapestByProduct,
   deleteCompra,
   deletePago,
+  deletePresupuestoDoc,
+  deleteSubItem,
+  deleteSubItems,
+  duplicateProductKeys,
   getActiveGastoProjectId,
+  importLinesToSubInventario,
   loadGastoBundle,
   mergeGastoBundle,
   persistGastosCloud,
   pinActiveGastoProject,
+  productKey,
   projectTotals,
+  promoteSubItemsToInventory,
   recordPreciosFromCompra,
+  subInventarioTotalCOP,
   upsertCompra,
   upsertGastoProject,
   upsertPago,
+  upsertSubItem,
   type CompraGasto,
   type CompraLine,
   type GastoProject,
   type PagoGasto,
+  type PresupuestoDoc,
+  type SubInventarioItem,
 } from "@/lib/gastos";
 import {
   loadCustomCategories,
@@ -53,7 +67,7 @@ const cop = new Intl.NumberFormat("es-CO", {
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
 
-type Tab = "compras" | "pagos" | "precios";
+type Tab = "compras" | "pagos" | "precios" | "sub";
 
 function lineTotal(l: CompraLine) {
   return Math.round((Number(l.qty) || 0) * (Number(l.unitPriceCOP) || 0));
@@ -66,8 +80,11 @@ export default function GastosPage() {
   const [tab, setTab] = useState<Tab>("compras");
   const [compras, setCompras] = useState<CompraGasto[]>([]);
   const [pagos, setPagos] = useState<PagoGasto[]>([]);
+  const [subItems, setSubItems] = useState<SubInventarioItem[]>([]);
+  const [presupDocs, setPresupDocs] = useState<PresupuestoDoc[]>([]);
   const [draftCompra, setDraftCompra] = useState<CompraGasto | null>(null);
   const [draftPago, setDraftPago] = useState<PagoGasto | null>(null);
+  const [docKind, setDocKind] = useState<"cotizacion" | "factura">("cotizacion");
   const [newProjectName, setNewProjectName] = useState("");
   const [pickObraId, setPickObraId] = useState("");
   const [flash, setFlash] = useState("");
@@ -88,6 +105,22 @@ export default function GastosPage() {
     [pagos, projectId]
   );
   const priceBoard = useMemo(() => cheapestByProduct(), [compras]);
+  const projectSub = useMemo(
+    () => subItems.filter((r) => r.projectId === projectId),
+    [subItems, projectId]
+  );
+  const projectDocs = useMemo(
+    () => presupDocs.filter((d) => d.projectId === projectId),
+    [presupDocs, projectId]
+  );
+  const dupKeys = useMemo(
+    () => (projectId ? duplicateProductKeys(projectId) : new Set<string>()),
+    [projectId, subItems]
+  );
+  const subBudgetCOP = useMemo(
+    () => (projectId ? subInventarioTotalCOP(projectId) : 0),
+    [projectId, subItems]
+  );
 
   const categoryOptions = useMemo(() => {
     const custom = loadCustomCategories();
@@ -104,6 +137,8 @@ export default function GastosPage() {
     setProjects(local.projects);
     setCompras(local.compras);
     setPagos(local.pagos);
+    setSubItems(local.subInventario ?? []);
+    setPresupDocs(local.presupuestoDocs ?? []);
     const pinned = getActiveGastoProjectId();
     if (pinned && local.projects.some((p) => p.id === pinned)) {
       setProjectId(pinned);
@@ -121,6 +156,8 @@ export default function GastosPage() {
         setProjects(merged.projects);
         setCompras(merged.compras);
         setPagos(merged.pagos);
+        setSubItems(merged.subInventario ?? []);
+        setPresupDocs(merged.presupuestoDocs ?? []);
       })
       .catch(() => undefined);
   }, []);
@@ -354,6 +391,171 @@ export default function GastosPage() {
     });
   }
 
+  async function onPresupuestoFile(file: File | null) {
+    if (!file || !projectId) return;
+    if (file.size > 4_500_000) {
+      setFlash("Archivo muy pesado (máx. ~4.5 MB).");
+      return;
+    }
+    setReading(true);
+    setFlash(
+      docKind === "cotizacion"
+        ? "Leyendo cotización…"
+        : "Leyendo factura de presupuesto…"
+    );
+    try {
+      let imageDataUrl = "";
+      let pdfText = "";
+      if (file.type === "application/pdf") {
+        pdfText = await file.text().catch(() => "");
+        if (!pdfText || pdfText.length < 20) {
+          pdfText = `(PDF binario: ${file.name}. Si no hay texto embebido, tome foto.)`;
+        }
+      } else {
+        imageDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("read"));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      const res = await fetch("/api/gastos/factura", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageDataUrl: imageDataUrl || undefined,
+          pdfText: pdfText || undefined,
+          fileName: file.name,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFlash(data.error || "No se pudo leer el documento.");
+        return;
+      }
+      const reading = data.reading as {
+        supplier?: string;
+        date?: string;
+        notes?: string;
+        lines?: {
+          name: string;
+          qty: number;
+          unitPriceCOP: number;
+          unit?: string;
+          categoryLabel?: string;
+        }[];
+        totalCOP?: number;
+      };
+      const now = new Date().toISOString();
+      const doc: PresupuestoDoc = {
+        id: crypto.randomUUID(),
+        projectId,
+        kind: docKind,
+        supplier: reading.supplier || "Sin proveedor",
+        date: reading.date || now.slice(0, 10),
+        fileName: file.name,
+        notes: reading.notes,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const lines = reading.lines || [];
+      if (!lines.length) {
+        setFlash(
+          data.offline
+            ? "Sin clave OpenAI: agregue ítems a mano al Sub inventario."
+            : "Documento leído sin ítems detectables. Agregue a mano."
+        );
+        return;
+      }
+      const next = importLinesToSubInventario({
+        projectId,
+        doc,
+        lines,
+      });
+      setSubItems(next);
+      setPresupDocs(loadGastoBundle().presupuestoDocs);
+      setFlash(
+        data.offline
+          ? `Sin OpenAI: ${lines.length} ítem(s) cargados (revise precios).`
+          : `${lines.length} ítem(s) al Sub inventario desde ${
+              docKind === "cotizacion" ? "cotización" : "factura"
+            }.`
+      );
+      syncCloud();
+    } catch {
+      setFlash("Error al leer el archivo.");
+    } finally {
+      setReading(false);
+    }
+  }
+
+  function addManualSubItem() {
+    if (!projectId) return;
+    const row = blankSubItem(projectId);
+    row.name = "Nuevo material";
+    row.productKey = productKey(row.name);
+    const next = upsertSubItem(row);
+    setSubItems(next);
+    setFlash("Ítem agregado. Edite nombre, unidades y precio.");
+    syncCloud();
+  }
+
+  function patchSub(id: string, patch: Partial<SubInventarioItem>) {
+    const row = subItems.find((r) => r.id === id);
+    if (!row) return;
+    const nextRow = { ...row, ...patch };
+    if (patch.name !== undefined) {
+      nextRow.productKey = productKey(String(patch.name));
+    }
+    setSubItems(upsertSubItem(nextRow));
+  }
+
+  function removeSub(id: string) {
+    setSubItems(deleteSubItem(id));
+    setFlash("Ítem eliminado del Sub inventario.");
+    syncCloud();
+  }
+
+  function removeDupGroup(key: string) {
+    const ids = projectSub.filter((r) => r.productKey === key).map((r) => r.id);
+    if (ids.length < 2) return;
+    // Keep newest (first by updatedAt), delete the rest
+    const sorted = [...projectSub.filter((r) => r.productKey === key)].sort(
+      (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+    );
+    const drop = sorted.slice(1).map((r) => r.id);
+    setSubItems(deleteSubItems(drop));
+    setFlash(`Duplicados de «${sorted[0].name}» eliminados (quedó 1).`);
+    syncCloud();
+  }
+
+  function promoteSub(ids: string[]) {
+    if (!ids.length) return;
+    const rows = subItems.filter((r) => ids.includes(r.id));
+    if (!rows.length) return;
+    const result = promoteSubItemsToInventory(
+      rows,
+      loadInventory(),
+      loadCustomCategories()
+    );
+    saveInventory(result.inventory);
+    saveCustomCategories(result.customCats);
+    setSubItems(deleteSubItems(ids));
+    setFlash(
+      `${rows.length} ítem(s) pasaron al inventario principal y salieron del Sub inventario.`
+    );
+    syncCloud();
+  }
+
+  function removeDoc(id: string) {
+    const { docs, sub } = deletePresupuestoDoc(id);
+    setPresupDocs(docs);
+    setSubItems(sub);
+    setFlash("Documento y sus ítems eliminados del Sub inventario.");
+    syncCloud();
+  }
+
   if (!hydrated) {
     return (
       <AppShell title="Gastos" subtitle="Cargando…">
@@ -457,8 +659,12 @@ export default function GastosPage() {
               <dt>Pagos</dt>
               <dd>{cop.format(totals.pagosCOP)}</dd>
             </div>
+            <div>
+              <dt>Presupuesto materiales</dt>
+              <dd>{cop.format(subBudgetCOP)}</dd>
+            </div>
             <div data-tone="ok">
-              <dt>Total proyecto</dt>
+              <dt>Total gastado</dt>
               <dd>{cop.format(totals.totalCOP)}</dd>
             </div>
           </dl>
@@ -476,6 +682,7 @@ export default function GastosPage() {
               [
                 ["compras", "Compras", Receipt],
                 ["pagos", "Pagos", Users],
+                ["sub", "Sub inventario", ClipboardList],
                 ["precios", "Dónde es más barato", Building2],
               ] as const
             ).map(([id, label, Icon]) => (
@@ -917,6 +1124,239 @@ export default function GastosPage() {
                   ))
                 )}
               </div>
+            </div>
+          ) : null}
+
+          {tab === "sub" ? (
+            <div className="space-y-4">
+              <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+                <h3 className="font-semibold">Sub inventario · presupuesto de materiales</h3>
+                <p className="mt-1 text-sm text-[#4d5c55]">
+                  Adjunte cotizaciones o facturas del próximo proyecto. Los
+                  ítems quedan aquí con precio y unidades; usted decide cuáles
+                  pasan al inventario principal.
+                </p>
+                <div className="mt-4 flex flex-wrap items-end gap-3">
+                  <label className="text-sm">
+                    Tipo
+                    <select
+                      className={`${field} mt-1 w-auto`}
+                      value={docKind}
+                      onChange={(e) =>
+                        setDocKind(e.target.value as "cotizacion" | "factura")
+                      }
+                    >
+                      <option value="cotizacion">Cotización</option>
+                      <option value="factura">Factura (presupuesto)</option>
+                    </select>
+                  </label>
+                  <label className="os-btn os-btn-primary cursor-pointer">
+                    <Upload size={16} />
+                    {reading ? "Leyendo…" : "Adjuntar documento"}
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      disabled={reading}
+                      onChange={(e) => {
+                        void onPresupuestoFile(e.target.files?.[0] || null);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="os-btn os-btn-ghost"
+                    onClick={addManualSubItem}
+                  >
+                    <Plus size={16} />
+                    Agregar ítem a mano
+                  </button>
+                </div>
+                {projectDocs.length ? (
+                  <ul className="mt-4 space-y-2">
+                    {projectDocs.map((d) => (
+                      <li
+                        key={d.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#eee8dc] px-3 py-2 text-sm"
+                      >
+                        <span>
+                          <span className="font-semibold">
+                            {d.kind === "cotizacion" ? "Cotización" : "Factura"}
+                          </span>
+                          {" · "}
+                          {d.supplier}
+                          {d.fileName ? (
+                            <span className="text-[#6d7c74]"> · {d.fileName}</span>
+                          ) : null}
+                        </span>
+                        <button
+                          type="button"
+                          className="os-btn os-btn-ghost text-[#9b3b2e]"
+                          onClick={() => removeDoc(d.id)}
+                        >
+                          <Trash2 size={14} />
+                          Quitar
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="mt-4 text-sm font-semibold text-[#1f6b45]">
+                  Presupuesto materiales: {cop.format(subBudgetCOP)}
+                  {dupKeys.size ? (
+                    <span className="ml-2 font-normal text-[#9b6b2e]">
+                      · {dupKeys.size} producto(s) repetido(s)
+                    </span>
+                  ) : null}
+                </p>
+              </section>
+
+              <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold">Ítems del Sub inventario</h3>
+                  {projectSub.length ? (
+                    <button
+                      type="button"
+                      className="os-btn os-btn-primary"
+                      onClick={() =>
+                        promoteSub(projectSub.map((r) => r.id))
+                      }
+                    >
+                      <PackagePlus size={16} />
+                      Pasar todos al inventario
+                    </button>
+                  ) : null}
+                </div>
+                {projectSub.length === 0 ? (
+                  <p className="mt-4 text-sm text-[#6d7c74]">
+                    Aún no hay materiales presupuestados. Adjunte una
+                    cotización o agregue un ítem a mano.
+                  </p>
+                ) : (
+                  <ul className="mt-4 space-y-3">
+                    {projectSub.map((row) => {
+                      const isDup = dupKeys.has(row.productKey);
+                      const lineCOP = Math.round(
+                        (Number(row.qty) || 0) * (Number(row.unitPriceCOP) || 0)
+                      );
+                      return (
+                        <li
+                          key={row.id}
+                          className={`rounded-xl border p-3 ${
+                            isDup
+                              ? "border-[#e8c48a] bg-[#fff9ef]"
+                              : "border-[#eee8dc]"
+                          }`}
+                        >
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                            <label className="text-xs text-[#6d7c74] lg:col-span-2">
+                              Elemento / equipo
+                              <input
+                                className={`${field} mt-1`}
+                                value={row.name}
+                                onChange={(e) =>
+                                  patchSub(row.id, { name: e.target.value })
+                                }
+                                onBlur={() => syncCloud()}
+                              />
+                            </label>
+                            <label className="text-xs text-[#6d7c74]">
+                              Unidades
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                className={`${field} mt-1`}
+                                value={row.qty}
+                                onChange={(e) =>
+                                  patchSub(row.id, {
+                                    qty: Number(e.target.value) || 0,
+                                  })
+                                }
+                                onBlur={() => syncCloud()}
+                              />
+                            </label>
+                            <label className="text-xs text-[#6d7c74]">
+                              Precio und. COP
+                              <input
+                                type="number"
+                                min={0}
+                                className={`${field} mt-1`}
+                                value={row.unitPriceCOP}
+                                onChange={(e) =>
+                                  patchSub(row.id, {
+                                    unitPriceCOP:
+                                      Number(e.target.value) || 0,
+                                  })
+                                }
+                                onBlur={() => syncCloud()}
+                              />
+                            </label>
+                            <label className="text-xs text-[#6d7c74]">
+                              Und.
+                              <input
+                                className={`${field} mt-1`}
+                                value={row.unit || "und"}
+                                onChange={(e) =>
+                                  patchSub(row.id, { unit: e.target.value })
+                                }
+                                onBlur={() => syncCloud()}
+                              />
+                            </label>
+                            <div className="flex flex-col justify-end text-sm">
+                              <span className="text-[#6d7c74]">Total</span>
+                              <span className="font-semibold">
+                                {cop.format(lineCOP)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#6d7c74]">
+                            {row.sourceLabel ? (
+                              <span>{row.sourceLabel}</span>
+                            ) : (
+                              <span>Manual</span>
+                            )}
+                            {isDup ? (
+                              <span className="rounded-md bg-[#f0d9a8] px-2 py-0.5 font-semibold text-[#7a4e12]">
+                                Repetido
+                              </span>
+                            ) : null}
+                            <span className="flex-1" />
+                            {isDup ? (
+                              <button
+                                type="button"
+                                className="os-btn os-btn-ghost text-xs"
+                                onClick={() =>
+                                  removeDupGroup(row.productKey)
+                                }
+                              >
+                                Limpiar duplicados
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="os-btn os-btn-ghost text-xs"
+                              onClick={() => promoteSub([row.id])}
+                            >
+                              <PackagePlus size={14} />
+                              Al inventario principal
+                            </button>
+                            <button
+                              type="button"
+                              className="os-btn os-btn-ghost text-xs text-[#9b3b2e]"
+                              onClick={() => removeSub(row.id)}
+                            >
+                              <Trash2 size={14} />
+                              Eliminar
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
             </div>
           ) : null}
 
