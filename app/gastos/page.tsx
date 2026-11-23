@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   ChevronDown,
@@ -99,6 +99,7 @@ export default function GastosPage() {
   const [flash, setFlash] = useState("");
   const [reading, setReading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const localWriteGen = useRef(0);
 
   const active = projects.find((p) => p.id === projectId) || null;
   const totals = useMemo(
@@ -221,20 +222,41 @@ export default function GastosPage() {
       pinActiveGastoProject(local.projects[0].id);
     }
     setHydrated(true);
+    const bootGen = localWriteGen.current;
     void fetch("/api/archivo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data?.gastos) return;
+        // Si el usuario ya guardó algo localmente, merge contra lo último
         const merged = mergeGastoBundle(loadGastoBundle(), data.gastos);
         applyGastoBundle(merged);
         setProjects(merged.projects);
         setCompras(merged.compras);
         setPagos(merged.pagos);
-        setSubItems(merged.subInventario ?? []);
-        setPresupDocs(merged.presupuestoDocs ?? []);
+        // No pisar Sub inventario si hubo escrituras locales durante el fetch
+        if (localWriteGen.current === bootGen) {
+          setSubItems(merged.subInventario ?? []);
+          setPresupDocs(merged.presupuestoDocs ?? []);
+        } else {
+          const latest = loadGastoBundle();
+          const again = mergeGastoBundle(latest, data.gastos);
+          applyGastoBundle(again);
+          setSubItems(again.subInventario ?? []);
+          setPresupDocs(again.presupuestoDocs ?? []);
+        }
       })
       .catch(() => undefined);
   }, []);
+
+  function bumpLocalWrite() {
+    localWriteGen.current += 1;
+  }
+
+  function refreshSubStateFromStorage() {
+    const bundle = loadGastoBundle();
+    setSubItems(bundle.subInventario ?? []);
+    setPresupDocs(bundle.presupuestoDocs ?? []);
+  }
 
   function syncCloud() {
     void persistGastosCloud(loadGastoBundle());
@@ -368,24 +390,56 @@ export default function GastosPage() {
     syncCloud();
   }
 
+  async function shrinkDataUrl(
+    dataUrl: string,
+    maxChars = 1_600_000
+  ): Promise<string> {
+    if (!dataUrl || dataUrl.length <= maxChars) return dataUrl;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, Math.sqrt(maxChars / dataUrl.length) * 0.9);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(640, Math.round(img.width * scale));
+        canvas.height = Math.max(480, Math.round(img.height * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        let out = canvas.toDataURL("image/jpeg", 0.62);
+        if (out.length > maxChars) {
+          out = canvas.toDataURL("image/jpeg", 0.45);
+        }
+        resolve(out);
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
   async function prepareDocForOcr(file: File): Promise<{
     imageDataUrl: string;
     pdfText: string;
   }> {
     if (isPdfFile(file)) {
-      const rendered = await renderBillPdf(file, 3);
+      const rendered = await renderBillPdf(file, 2);
+      const imageDataUrl = await shrinkDataUrl(
+        rendered.pages[0]?.dataUrl || ""
+      );
       return {
-        imageDataUrl: rendered.pages[0]?.dataUrl || "",
+        imageDataUrl,
         pdfText: rendered.text || "",
       };
     }
-    const imageDataUrl = await new Promise<string>((resolve, reject) => {
+    const raw = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
       reader.onerror = () => reject(new Error("read"));
       reader.readAsDataURL(file);
     });
-    return { imageDataUrl, pdfText: "" };
+    return { imageDataUrl: await shrinkDataUrl(raw), pdfText: "" };
   }
 
   async function onInvoiceFile(file: File | null) {
@@ -497,7 +551,7 @@ export default function GastosPage() {
         return;
       }
 
-      const res = await fetch("/api/gastos/factura", {
+      let res = await fetch("/api/gastos/factura", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -506,7 +560,25 @@ export default function GastosPage() {
           fileName: file.name,
         }),
       });
-      const data = await res.json().catch(() => ({}));
+      let data = await res.json().catch(() => ({}));
+      // Reintento con imagen más chica si el cuerpo fue rechazado
+      if (
+        !res.ok &&
+        prepared.imageDataUrl &&
+        (res.status === 400 || res.status === 413 || res.status === 500)
+      ) {
+        const smaller = await shrinkDataUrl(prepared.imageDataUrl, 900_000);
+        res = await fetch("/api/gastos/factura", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imageDataUrl: smaller || undefined,
+            pdfText: prepared.pdfText || undefined,
+            fileName: file.name,
+          }),
+        });
+        data = await res.json().catch(() => ({}));
+      }
       if (!res.ok) {
         setFlash(data.error || "No se pudo leer el documento.");
         return;
@@ -529,7 +601,7 @@ export default function GastosPage() {
         id: crypto.randomUUID(),
         projectId,
         kind: docKind,
-        supplier: reading.supplier || "Sin proveedor",
+        supplier: reading.supplier || file.name.replace(/\.[^.]+$/, "") || "Sin proveedor",
         date: reading.date || now.slice(0, 10),
         fileName: file.name,
         notes: reading.notes,
@@ -540,14 +612,15 @@ export default function GastosPage() {
         String(l.name || "").trim()
       );
 
+      bumpLocalWrite();
       if (lines.length) {
-        const next = importLinesToSubInventario({
+        const saved = importLinesToSubInventario({
           projectId,
           doc,
           lines,
         });
-        setSubItems(next);
-        setPresupDocs(loadGastoBundle().presupuestoDocs);
+        setSubItems(saved.items);
+        setPresupDocs(saved.docs);
         setExpandedDocs((prev) => ({ ...prev, [doc.id]: true }));
         setFlash(
           data.offline
@@ -557,7 +630,6 @@ export default function GastosPage() {
               }.`
         );
       } else {
-        // Documento queda registrado + un ítem editable para que sí “pase algo”
         const blank = blankSubItem(projectId);
         blank.name = "Ítem por completar";
         blank.productKey = productKey(blank.name);
@@ -566,24 +638,35 @@ export default function GastosPage() {
         blank.sourceLabel = `${
           doc.kind === "cotizacion" ? "Cotización" : "Factura"
         } · ${doc.supplier}`;
-        upsertPresupuestoDoc(doc);
-        const next = upsertSubItem(blank);
-        setSubItems(next);
-        setPresupDocs(loadGastoBundle().presupuestoDocs);
+        // Ítem primero, luego el documento (evita cotización vacía)
+        const items = upsertSubItem(blank);
+        const docs = upsertPresupuestoDoc(doc);
+        setSubItems(items);
+        setPresupDocs(docs);
         setExpandedDocs((prev) => ({ ...prev, [doc.id]: true }));
         setFlash(
           data.offline
-            ? "Sin clave OpenAI: cotización guardada aparte. Complete los ítems a mano."
-            : "Cotización guardada aparte, pero no se detectaron ítems. Complete a mano o adjunte una foto más clara."
+            ? "Sin clave OpenAI: cotización guardada. Complete los ítems a mano."
+            : "Cotización guardada, pero no se detectaron ítems. Complete a mano o pruebe otra foto/PDF."
         );
       }
       setTab("sub");
+      refreshSubStateFromStorage();
       syncCloud();
+      // Lleva la vista al bloque nuevo
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`sub-doc-${doc.id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch (err) {
       console.error(err);
-      setFlash(
-        "Error al leer el archivo. Si es PDF escaneado, pruebe una foto de la hoja."
-      );
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : "Error al leer el archivo. Si es PDF escaneado, pruebe una foto de la hoja.";
+      setFlash(msg);
+      refreshSubStateFromStorage();
     } finally {
       setReading(false);
     }
@@ -1383,6 +1466,7 @@ export default function GastosPage() {
                 return (
                   <section
                     key={group.key}
+                    id={`sub-doc-${group.key}`}
                     className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-4"
                   >
                     <div className="flex flex-wrap items-start gap-2">

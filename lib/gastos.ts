@@ -126,7 +126,28 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson(key: string, value: unknown): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(value));
+  const raw = JSON.stringify(value);
+  try {
+    localStorage.setItem(key, raw);
+  } catch {
+    // Libera espacio de facturas embebidas y reintenta una vez
+    try {
+      const compras = readJson<CompraGasto[]>(COMPRAS_KEY, []);
+      if (Array.isArray(compras) && compras.length) {
+        localStorage.setItem(
+          COMPRAS_KEY,
+          JSON.stringify(
+            compras.map((c) => ({ ...c, invoiceDataUrl: undefined }))
+          )
+        );
+      }
+      localStorage.setItem(key, raw);
+    } catch {
+      throw new Error(
+        "Almacenamiento del navegador lleno. Libere espacio o elimine facturas antiguas con foto."
+      );
+    }
+  }
 }
 
 export function loadGastoProjects(): GastoProject[] {
@@ -325,7 +346,7 @@ export function importLinesToSubInventario(opts: {
     unit?: string;
     categoryLabel?: string;
   }[];
-}): SubInventarioItem[] {
+}): { items: SubInventarioItem[]; docs: PresupuestoDoc[] } {
   const now = new Date().toISOString();
   const incoming: SubInventarioItem[] = opts.lines
     .filter((l) => l.name.trim())
@@ -348,10 +369,19 @@ export function importLinesToSubInventario(opts: {
         updatedAt: now,
       };
     });
-  upsertPresupuestoDoc(opts.doc);
-  const next = [...incoming, ...loadSubInventario()].slice(0, 800);
-  saveSubInventario(next);
-  return next;
+  // Ítems primero: si el storage falla, no queda cotización vacía huérfana
+  const nextItems = [...incoming, ...loadSubInventario()].slice(0, 800);
+  saveSubInventario(nextItems);
+  const nextDocs = upsertPresupuestoDoc(opts.doc);
+  const savedForDoc = loadSubInventario().filter(
+    (r) => r.sourceDocId === opts.doc.id
+  );
+  if (incoming.length && savedForDoc.length === 0) {
+    throw new Error(
+      "No se pudieron guardar los ítems de la cotización. El almacenamiento del navegador puede estar lleno."
+    );
+  }
+  return { items: loadSubInventario(), docs: nextDocs };
 }
 
 export function mergeSubInventario(

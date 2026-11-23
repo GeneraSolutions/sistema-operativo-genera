@@ -21,7 +21,8 @@ export async function renderBillPdf(
 
   for (let n = 1; n <= count; n++) {
     const page = await pdf.getPage(n);
-    const viewport = page.getViewport({ scale: 1.45 });
+    // Escala moderada: suficiente para OCR, evita payloads gigantes
+    const viewport = page.getViewport({ scale: 1.15 });
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
@@ -32,8 +33,23 @@ export async function renderBillPdf(
       canvasContext: ctx,
       viewport,
     }).promise;
+    let dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+    if (dataUrl.length > 1_800_000) {
+      dataUrl = canvas.toDataURL("image/jpeg", 0.55);
+    }
+    if (dataUrl.length > 1_800_000) {
+      const small = page.getViewport({ scale: 0.9 });
+      canvas.width = Math.round(small.width);
+      canvas.height = Math.round(small.height);
+      await page.render({
+        canvas,
+        canvasContext: ctx,
+        viewport: small,
+      }).promise;
+      dataUrl = canvas.toDataURL("image/jpeg", 0.5);
+    }
     pages.push({
-      dataUrl: canvas.toDataURL("image/jpeg", 0.78),
+      dataUrl,
       fileName: `${file.name} · p.${n}`,
     });
     const content = await page.getTextContent();
