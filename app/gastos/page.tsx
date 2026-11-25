@@ -100,6 +100,41 @@ export default function GastosPage() {
   const [reading, setReading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const localWriteGen = useRef(0);
+  const subFileRef = useRef<HTMLInputElement | null>(null);
+  const readingWatchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readGen = useRef(0);
+
+  function startReading(label: string) {
+    readGen.current += 1;
+    const gen = readGen.current;
+    setReading(true);
+    setFlash(label);
+    if (readingWatchdog.current) clearTimeout(readingWatchdog.current);
+    // Si el PDF/OCR se cuelga, desbloquea el botón a los 90s
+    readingWatchdog.current = setTimeout(() => {
+      if (readGen.current !== gen) return;
+      readGen.current += 1;
+      setReading(false);
+      setFlash(
+        "La lectura se demoró demasiado y se canceló. Intente de nuevo o adjunte una foto."
+      );
+    }, 90_000);
+    return gen;
+  }
+
+  function stopReading() {
+    if (readingWatchdog.current) {
+      clearTimeout(readingWatchdog.current);
+      readingWatchdog.current = null;
+    }
+    setReading(false);
+  }
+
+  function cancelReading() {
+    readGen.current += 1;
+    stopReading();
+    setFlash("Lectura cancelada. Puede adjuntar de nuevo.");
+  }
 
   const active = projects.find((p) => p.id === projectId) || null;
   const totals = useMemo(
@@ -534,18 +569,24 @@ export default function GastosPage() {
 
   async function onPresupuestoFile(file: File | null) {
     if (!file || !projectId) return;
+    if (reading) {
+      setFlash("Ya hay una lectura en curso. Espere o recargue si se trabó.");
+      return;
+    }
     if (file.size > 12_000_000) {
       setFlash("Archivo muy pesado (máx. ~12 MB).");
       return;
     }
-    setReading(true);
-    setFlash(
+    const gen = startReading(
       docKind === "cotizacion"
         ? "Leyendo cotización…"
         : "Leyendo factura de presupuesto…"
     );
+    const ac = new AbortController();
+    const fetchTimer = setTimeout(() => ac.abort(), 75_000);
     try {
       const prepared = await prepareDocForOcr(file);
+      if (readGen.current !== gen) return;
       if (!prepared.imageDataUrl && !prepared.pdfText) {
         setFlash("No se pudo leer el archivo. Pruebe una foto o PDF.");
         return;
@@ -559,6 +600,7 @@ export default function GastosPage() {
           pdfText: prepared.pdfText || undefined,
           fileName: file.name,
         }),
+        signal: ac.signal,
       });
       let data = await res.json().catch(() => ({}));
       // Reintento con imagen más chica si el cuerpo fue rechazado
@@ -576,9 +618,11 @@ export default function GastosPage() {
             pdfText: prepared.pdfText || undefined,
             fileName: file.name,
           }),
+          signal: ac.signal,
         });
         data = await res.json().catch(() => ({}));
       }
+      if (readGen.current !== gen) return;
       if (!res.ok) {
         setFlash(data.error || "No se pudo leer el documento.");
         return;
@@ -612,6 +656,7 @@ export default function GastosPage() {
         String(l.name || "").trim()
       );
 
+      if (readGen.current !== gen) return;
       bumpLocalWrite();
       if (lines.length) {
         const saved = importLinesToSubInventario({
@@ -660,15 +705,21 @@ export default function GastosPage() {
           ?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     } catch (err) {
+      if (readGen.current !== gen) return;
       console.error(err);
-      const msg =
-        err instanceof Error && err.message
+      const aborted =
+        err instanceof DOMException && err.name === "AbortError";
+      const msg = aborted
+        ? "La lectura se canceló por tiempo. Intente de nuevo o use una foto."
+        : err instanceof Error && err.message
           ? err.message
           : "Error al leer el archivo. Si es PDF escaneado, pruebe una foto de la hoja.";
       setFlash(msg);
       refreshSubStateFromStorage();
     } finally {
-      setReading(false);
+      clearTimeout(fetchTimer);
+      if (readGen.current === gen) stopReading();
+      if (subFileRef.current) subFileRef.current.value = "";
     }
   }
 
@@ -1395,20 +1446,30 @@ export default function GastosPage() {
                       <option value="factura">Factura (presupuesto)</option>
                     </select>
                   </label>
-                  <label className="os-btn os-btn-primary cursor-pointer">
+                  <input
+                    ref={subFileRef}
+                    type="file"
+                    accept="image/*,application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      void onPresupuestoFile(f);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="os-btn os-btn-primary"
+                    onClick={() => {
+                      if (reading) {
+                        cancelReading();
+                        return;
+                      }
+                      subFileRef.current?.click();
+                    }}
+                  >
                     <Upload size={16} />
-                    {reading ? "Leyendo…" : "Adjuntar documento"}
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      disabled={reading}
-                      onChange={(e) => {
-                        void onPresupuestoFile(e.target.files?.[0] || null);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
+                    {reading ? "Leyendo… (clic para cancelar)" : "Adjuntar documento"}
+                  </button>
                   <button
                     type="button"
                     className="os-btn os-btn-ghost"
