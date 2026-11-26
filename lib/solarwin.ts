@@ -18,6 +18,8 @@ export interface SolarwinEnvio {
   /** Proyecto o instalación al que corresponde el dinero. */
   project?: string;
   notes?: string;
+  /** Presupuesto estimado de gastos (opcional) para comparar con lo real. */
+  budgetCOP?: number;
   /** Si existe, el envío está liquidado (cuentas cerradas y congeladas). */
   closedAt?: string;
   createdAt: string;
@@ -38,18 +40,47 @@ export interface SolarwinGasto {
   kind?: SolarwinGastoKind;
   /** Quién puso la plata: Camilo, un técnico, caja de Genera… */
   paidBy?: string;
+  /** Viáticos, transporte, alimentación… para el resumen por categoría. */
+  category?: string;
+  /** Cuándo se le repuso a quien puso la plata de su bolsillo. */
+  reimbursedAt?: string;
   notes?: string;
-  /** Foto del comprobante (comprimida). "" = quitado a propósito. */
+  /** Foto del comprobante (comprimida), copia local. "" = quitado. */
   receiptDataUrl?: string;
+  /** Id de la foto en el servidor (se guarda aparte, no dentro de las cuentas). */
+  receiptId?: string;
+  /** La foto ya se subió al servidor. */
+  receiptUp?: boolean;
   receiptName?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
 }
 
+/** Documento (PDF/enlace) que se compartió con Solar win. */
+export interface SolarwinDoc {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Si es de un solo envío. */
+  envioId?: string;
+  label: string;
+  acceptedAt?: string;
+  acceptedBy?: string;
+  acceptedNote?: string;
+  deletedAt?: string;
+}
+
 export interface SolarwinBundle {
   envios: SolarwinEnvio[];
   gastos: SolarwinGasto[];
+  docs?: SolarwinDoc[];
+}
+
+export interface SolarwinAcceptance {
+  name: string;
+  note?: string;
+  at: string;
 }
 
 export interface EnvioTotals {
@@ -73,10 +104,12 @@ export interface SolarwinStatement {
   /** Si viene, el documento solo incluye ese envío. */
   envioId?: string;
   bundle: SolarwinBundle;
+  /** "Revisado y conforme" de Solar win, desde el enlace público. */
+  acceptance?: SolarwinAcceptance;
 }
 
 export function emptySolarwinBundle(): SolarwinBundle {
-  return { envios: [], gastos: [] };
+  return { envios: [], gastos: [], docs: [] };
 }
 
 export function localISODate(d = new Date()): string {
@@ -96,6 +129,7 @@ function sanitizeEnvio(row: SolarwinEnvio): SolarwinEnvio | null {
   return {
     ...row,
     amountCOP: cleanMoney(row.amountCOP),
+    budgetCOP: row.budgetCOP ? cleanMoney(row.budgetCOP) : undefined,
     concept: String(row.concept || "").trim(),
     date: row.date || localISODate(),
   };
@@ -108,6 +142,9 @@ function sanitizeGasto(row: SolarwinGasto): SolarwinGasto | null {
     amountCOP: cleanMoney(row.amountCOP),
     concept: String(row.concept || "").trim(),
     date: row.date || localISODate(),
+    // Comprobantes de la versión anterior: tenían la foto dentro de la cuenta.
+    receiptId:
+      row.receiptId || (row.receiptDataUrl ? `legacy-${row.id}` : undefined),
   };
 }
 
@@ -118,7 +155,10 @@ function normalizeBundle(raw: Partial<SolarwinBundle> | null | undefined): Solar
   const gastos = (Array.isArray(raw?.gastos) ? raw!.gastos : [])
     .map(sanitizeGasto)
     .filter((r): r is SolarwinGasto => Boolean(r));
-  return { envios, gastos };
+  const docs = (Array.isArray(raw?.docs) ? raw!.docs : []).filter(
+    (d): d is SolarwinDoc => Boolean(d?.id)
+  );
+  return { envios, gastos, docs };
 }
 
 export function loadSolarwinBundle(): SolarwinBundle {
@@ -151,6 +191,7 @@ function pruneTombstones(bundle: SolarwinBundle): SolarwinBundle {
   return {
     envios: bundle.envios.filter(keep),
     gastos: bundle.gastos.filter(keep),
+    docs: (bundle.docs ?? []).filter(keep),
   };
 }
 
@@ -176,22 +217,21 @@ export function mergeSolarwinBundle(
   const r = normalizeBundle(remote);
   const l = normalizeBundle(local);
   const gastos = mergeById(l.gastos, r.gastos).slice(0, 4000);
-  // Si el ganador viene sin foto (se recortó al sincronizar) pero la otra copia
-  // la tiene, se conserva. "" significa que se quitó a propósito.
-  const photos = new Map<string, { url: string; name?: string }>();
+  // La nube guarda las cuentas sin fotos (van aparte). Si el ganador no trae la
+  // copia local de la foto pero otra versión sí, y es la misma foto, se conserva.
+  const photos = new Map<string, string>();
   for (const g of [...r.gastos, ...l.gastos]) {
-    if (g.receiptDataUrl) {
-      photos.set(g.id, { url: g.receiptDataUrl, name: g.receiptName });
-    }
+    if (g.receiptDataUrl && g.receiptId) photos.set(g.receiptId, g.receiptDataUrl);
   }
   const healed = gastos.map((g) => {
-    if (g.receiptDataUrl !== undefined || g.deletedAt) return g;
-    const p = photos.get(g.id);
-    return p ? { ...g, receiptDataUrl: p.url, receiptName: g.receiptName ?? p.name } : g;
+    if (g.receiptDataUrl || g.deletedAt || !g.receiptId) return g;
+    const url = photos.get(g.receiptId);
+    return url ? { ...g, receiptDataUrl: url } : g;
   });
   return pruneTombstones({
     envios: mergeById(l.envios, r.envios).slice(0, 400),
     gastos: healed,
+    docs: mergeById(l.docs ?? [], r.docs ?? []).slice(0, 400),
   });
 }
 
@@ -268,21 +308,304 @@ function buildTotals(
   };
 }
 
+export interface PayerTotals {
+  name: string;
+  /** Todo lo que puso de su bolsillo. */
+  totalCOP: number;
+  /** Lo que ya se le repuso. */
+  reimbursedCOP: number;
+  /** Lo que aún se le debe. */
+  pendingCOP: number;
+}
+
 /** Cuánto puso cada persona de su bolsillo (solo gastos, no devoluciones). */
-export function totalsByPayer(
-  bundle: SolarwinBundle
-): { name: string; totalCOP: number }[] {
+export function totalsByPayer(bundle: SolarwinBundle): PayerTotals[] {
   const ids = new Set(activeEnvios(bundle).map((e) => e.id));
-  const map = new Map<string, number>();
+  const map = new Map<string, PayerTotals>();
   for (const g of bundle.gastos) {
     if (g.deletedAt || !ids.has(g.envioId) || isDevolucion(g)) continue;
     const name = (g.paidBy || "").trim();
     if (!name) continue;
-    map.set(name, (map.get(name) || 0) + cleanMoney(g.amountCOP));
+    const row = map.get(name) ?? {
+      name,
+      totalCOP: 0,
+      reimbursedCOP: 0,
+      pendingCOP: 0,
+    };
+    const amount = cleanMoney(g.amountCOP);
+    row.totalCOP += amount;
+    if (g.reimbursedAt) row.reimbursedCOP += amount;
+    else row.pendingCOP += amount;
+    map.set(name, row);
+  }
+  return [...map.values()].sort((a, b) => b.totalCOP - a.totalCOP);
+}
+
+/** Marca (o desmarca) un gasto como ya repuesto a quien lo pagó. */
+export function setReimbursed(
+  bundle: SolarwinBundle,
+  gastoId: string,
+  on: boolean
+): SolarwinBundle {
+  const now = new Date().toISOString();
+  return {
+    ...bundle,
+    gastos: bundle.gastos.map((g) =>
+      g.id === gastoId
+        ? { ...g, reimbursedAt: on ? now : undefined, updatedAt: now }
+        : g
+    ),
+  };
+}
+
+/** Marca como repuestos todos los gastos pendientes de una persona. */
+export function reimburseAllFor(
+  bundle: SolarwinBundle,
+  name: string
+): SolarwinBundle {
+  const now = new Date().toISOString();
+  const ids = new Set(activeEnvios(bundle).map((e) => e.id));
+  return {
+    ...bundle,
+    gastos: bundle.gastos.map((g) =>
+      !g.deletedAt &&
+      ids.has(g.envioId) &&
+      !isDevolucion(g) &&
+      (g.paidBy || "").trim() === name &&
+      !g.reimbursedAt
+        ? { ...g, reimbursedAt: now, updatedAt: now }
+        : g
+    ),
+  };
+}
+
+export interface CategoryTotals {
+  category: string;
+  totalCOP: number;
+  count: number;
+  percent: number;
+}
+
+export const NO_CATEGORY = "Sin categoría";
+
+/** Gasto total por categoría (excluye devoluciones). */
+export function totalsByCategory(
+  bundle: SolarwinBundle,
+  envioId?: string
+): CategoryTotals[] {
+  const ids = new Set(
+    activeEnvios(bundle)
+      .filter((e) => !envioId || e.id === envioId)
+      .map((e) => e.id)
+  );
+  const map = new Map<string, { totalCOP: number; count: number }>();
+  let total = 0;
+  for (const g of bundle.gastos) {
+    if (g.deletedAt || !ids.has(g.envioId) || isDevolucion(g)) continue;
+    const key = (g.category || "").trim() || NO_CATEGORY;
+    const amount = cleanMoney(g.amountCOP);
+    const row = map.get(key) ?? { totalCOP: 0, count: 0 };
+    row.totalCOP += amount;
+    row.count += 1;
+    map.set(key, row);
+    total += amount;
   }
   return [...map.entries()]
-    .map(([name, totalCOP]) => ({ name, totalCOP }))
+    .map(([category, v]) => ({
+      category,
+      ...v,
+      percent: total > 0 ? Math.round((v.totalCOP / total) * 1000) / 10 : 0,
+    }))
     .sort((a, b) => b.totalCOP - a.totalCOP);
+}
+
+export interface ProjectTotals {
+  project: string;
+  enviadoCOP: number;
+  gastadoCOP: number;
+  devueltoCOP: number;
+  disponibleCOP: number;
+  budgetCOP: number;
+  envios: number;
+}
+
+/** Cuentas agrupadas por proyecto (solo envíos que tengan proyecto). */
+export function totalsByProject(bundle: SolarwinBundle): ProjectTotals[] {
+  const map = new Map<string, ProjectTotals>();
+  for (const envio of activeEnvios(bundle)) {
+    const project = (envio.project || "").trim();
+    if (!project) continue;
+    const t = totalsForEnvio(bundle, envio.id);
+    const row = map.get(project) ?? {
+      project,
+      enviadoCOP: 0,
+      gastadoCOP: 0,
+      devueltoCOP: 0,
+      disponibleCOP: 0,
+      budgetCOP: 0,
+      envios: 0,
+    };
+    row.enviadoCOP += t.enviadoCOP;
+    row.gastadoCOP += t.gastadoCOP;
+    row.devueltoCOP += t.devueltoCOP;
+    row.disponibleCOP += t.disponibleCOP;
+    row.budgetCOP += cleanMoney(envio.budgetCOP);
+    row.envios += 1;
+    map.set(project, row);
+  }
+  return [...map.values()].sort((a, b) => b.gastadoCOP - a.gastadoCOP);
+}
+
+export interface BudgetStatus {
+  budgetCOP: number;
+  gastadoCOP: number;
+  /** % del presupuesto ya gastado (puede pasar de 100) */
+  percent: number;
+  /** presupuesto − gastado (negativo si se pasó) */
+  restanteCOP: number;
+  level: "ok" | "warn" | "over";
+}
+
+export function budgetStatus(
+  budgetCOP: number | undefined,
+  gastadoCOP: number
+): BudgetStatus | null {
+  const budget = cleanMoney(budgetCOP);
+  if (!budget) return null;
+  const percent = Math.round((gastadoCOP / budget) * 1000) / 10;
+  return {
+    budgetCOP: budget,
+    gastadoCOP,
+    percent,
+    restanteCOP: budget - gastadoCOP,
+    level: gastadoCOP > budget ? "over" : percent >= 85 ? "warn" : "ok",
+  };
+}
+
+/** Registra un documento compartido para seguir su aceptación. */
+export function addDoc(
+  bundle: SolarwinBundle,
+  doc: { id: string; envioId?: string; label: string }
+): SolarwinBundle {
+  const now = new Date().toISOString();
+  const row: SolarwinDoc = { ...doc, createdAt: now, updatedAt: now };
+  return {
+    ...bundle,
+    docs: [row, ...(bundle.docs ?? []).filter((d) => d.id !== row.id)],
+  };
+}
+
+export function recordAcceptance(
+  bundle: SolarwinBundle,
+  docId: string,
+  a: SolarwinAcceptance
+): SolarwinBundle {
+  const now = new Date().toISOString();
+  return {
+    ...bundle,
+    docs: (bundle.docs ?? []).map((d) =>
+      d.id === docId
+        ? {
+            ...d,
+            acceptedAt: a.at,
+            acceptedBy: a.name,
+            acceptedNote: a.note,
+            updatedAt: now,
+          }
+        : d
+    ),
+  };
+}
+
+export function removeDoc(bundle: SolarwinBundle, docId: string): SolarwinBundle {
+  const now = new Date().toISOString();
+  return {
+    ...bundle,
+    docs: (bundle.docs ?? []).map((d) =>
+      d.id === docId ? { ...d, deletedAt: now, updatedAt: now } : d
+    ),
+  };
+}
+
+export function activeDocs(bundle: SolarwinBundle): SolarwinDoc[] {
+  return (bundle.docs ?? [])
+    .filter((d) => !d.deletedAt)
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+}
+
+function csvCell(value: unknown): string {
+  const s = String(value ?? "");
+  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** CSV para Excel (separador ";" y BOM para tildes). */
+export function buildSolarwinCsv(bundle: SolarwinBundle): string {
+  const head = [
+    "Fecha",
+    "Tipo",
+    "Envío",
+    "Proyecto",
+    "Concepto",
+    "Categoría",
+    "Quién pagó",
+    "Reembolsado",
+    "Monto (+/−)",
+    "Notas",
+    "Liquidado",
+  ];
+  const rows: unknown[][] = [];
+  const envios = activeEnvios(bundle).sort(
+    (a, b) => Date.parse(a.date) - Date.parse(b.date)
+  );
+  for (const e of envios) {
+    const label = e.concept || "Envío";
+    rows.push([
+      e.date,
+      "Envío",
+      label,
+      e.project || "",
+      "Dinero enviado por Solar win",
+      "",
+      "",
+      "",
+      cleanMoney(e.amountCOP),
+      e.notes || "",
+      e.closedAt ? e.closedAt.slice(0, 10) : "",
+    ]);
+    for (const g of gastosOfEnvio(bundle, e.id).sort(
+      (a, b) => Date.parse(a.date) - Date.parse(b.date)
+    )) {
+      rows.push([
+        g.date,
+        isDevolucion(g) ? "Devolución" : "Gasto",
+        label,
+        e.project || "",
+        g.concept,
+        g.category || "",
+        g.paidBy || "",
+        g.reimbursedAt ? g.reimbursedAt.slice(0, 10) : "",
+        -cleanMoney(g.amountCOP),
+        g.notes || "",
+        e.closedAt ? e.closedAt.slice(0, 10) : "",
+      ]);
+    }
+  }
+  const lines = [head, ...rows].map((r) => r.map(csvCell).join(";"));
+  return "\uFEFF" + lines.join("\r\n");
+}
+
+export function downloadSolarwinCsv(bundle: SolarwinBundle): void {
+  const blob = new Blob([buildSolarwinCsv(bundle)], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `solarwin-cuentas-${localISODate()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 /** Nombres y proyectos ya usados, para autocompletar. */
@@ -336,30 +659,21 @@ export function reopenEnvio(
 }
 
 /**
- * Lote para publicar un documento. Si hay muchos comprobantes y el envío
- * superaría el límite de la petición, se omiten las fotos.
+ * Lote para publicar un documento. Va sin fotos: el servidor las agrega
+ * desde su almacenamiento (por `receiptId`).
  */
 export function bundleForPublish(
   bundle: SolarwinBundle,
-  envioId?: string,
-  maxChars = 3_800_000
-): { bundle: SolarwinBundle; droppedReceipts: boolean } {
+  envioId?: string
+): SolarwinBundle {
   const envios = bundle.envios.filter(
     (e) => !e.deletedAt && (!envioId || e.id === envioId)
   );
   const ids = new Set(envios.map((e) => e.id));
-  const gastos = bundle.gastos.filter((g) => !g.deletedAt && ids.has(g.envioId));
-  const scoped = { envios, gastos };
-  if (JSON.stringify(scoped).length <= maxChars) {
-    return { bundle: scoped, droppedReceipts: false };
-  }
-  return {
-    bundle: {
-      envios,
-      gastos: gastos.map((g) => ({ ...g, receiptDataUrl: undefined })),
-    },
-    droppedReceipts: true,
-  };
+  const gastos = bundle.gastos
+    .filter((g) => !g.deletedAt && ids.has(g.envioId))
+    .map((g) => ({ ...g, receiptDataUrl: undefined }));
+  return { envios, gastos, docs: [] };
 }
 
 export function blankEnvio(): SolarwinEnvio {
@@ -401,6 +715,7 @@ export function upsertEnvio(
     amountCOP: cleanMoney(envio.amountCOP),
     concept: envio.concept.trim(),
     project: (envio.project || "").trim(),
+    budgetCOP: envio.budgetCOP ? cleanMoney(envio.budgetCOP) : undefined,
     updatedAt: new Date().toISOString(),
   };
   return {
@@ -416,6 +731,7 @@ export function removeEnvio(
 ): SolarwinBundle {
   const now = new Date().toISOString();
   return {
+    ...bundle,
     envios: bundle.envios.map((e) =>
       e.id === envioId ? { ...e, deletedAt: now, updatedAt: now } : e
     ),
@@ -436,6 +752,7 @@ export function upsertGasto(
     amountCOP: cleanMoney(gasto.amountCOP),
     concept: gasto.concept.trim(),
     paidBy: (gasto.paidBy || "").trim(),
+    category: (gasto.category || "").trim(),
     updatedAt: new Date().toISOString(),
   };
   return {
@@ -514,35 +831,19 @@ export function buildSolarwinSummary(bundle: SolarwinBundle): string {
 }
 
 /**
- * Sincroniza con la nube. Si con las fotos la petición se vuelve demasiado
- * grande, se omiten primero las más antiguas (ya subidas antes; el servidor
- * las conserva al unir).
+ * Sincroniza con la nube. Las fotos de comprobantes NO viajan aquí: se suben
+ * aparte (`/api/solarwin/foto`) y las cuentas solo guardan su `receiptId`.
  */
 export async function persistSolarwinCloud(bundle: SolarwinBundle): Promise<void> {
   try {
-    const MAX = 3_200_000;
-    let body = JSON.stringify({ solarwin: bundle });
-    if (body.length > MAX) {
-      const withPhoto = bundle.gastos
-        .filter((g) => g.receiptDataUrl)
-        .sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
-      const strip = new Set<string>();
-      for (const g of withPhoto) {
-        strip.add(g.id);
-        const slim = {
-          ...bundle,
-          gastos: bundle.gastos.map((x) =>
-            strip.has(x.id) ? { ...x, receiptDataUrl: undefined } : x
-          ),
-        };
-        body = JSON.stringify({ solarwin: slim });
-        if (body.length <= MAX) break;
-      }
-    }
+    const slim: SolarwinBundle = {
+      ...bundle,
+      gastos: bundle.gastos.map((g) => ({ ...g, receiptDataUrl: undefined })),
+    };
     await fetch("/api/archivo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body,
+      body: JSON.stringify({ solarwin: slim }),
     });
   } catch {
     /* local ya quedó */

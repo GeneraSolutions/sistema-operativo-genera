@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { isPdfFile, renderBillPdf } from "@/lib/bill-pdf";
 import { localISODate, type SolarwinGasto } from "@/lib/solarwin";
 
@@ -86,6 +87,8 @@ export async function attachReceipt(
   const stored = await compress(source, 1000, STORE_MAX_CHARS);
   const patch: Partial<SolarwinGasto> = {
     receiptDataUrl: stored,
+    receiptId: crypto.randomUUID(),
+    receiptUp: false,
     receiptName: file.name,
   };
 
@@ -137,4 +140,60 @@ export async function attachReceipt(
     /* la lectura automática es opcional */
   }
   return { patch, message };
+}
+
+/** Sube la foto al servidor (se guarda aparte de las cuentas). */
+export async function uploadReceipt(
+  id: string,
+  dataUrl: string
+): Promise<boolean> {
+  try {
+    const res = await fetch("/api/solarwin/foto", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, dataUrl }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+const photoCache = new Map<string, string>();
+
+/** Baja una foto del servidor (con caché en memoria). */
+export async function fetchReceipt(id: string): Promise<string | null> {
+  const hit = photoCache.get(id);
+  if (hit) return hit;
+  try {
+    const res = await fetch(`/api/solarwin/foto/${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { dataUrl?: string };
+    if (!data.dataUrl) return null;
+    photoCache.set(id, data.dataUrl);
+    return data.dataUrl;
+  } catch {
+    return null;
+  }
+}
+
+/** URL de la foto: la copia local si existe; si no, se baja del servidor. */
+export function useReceiptUrl(
+  g: Pick<SolarwinGasto, "receiptDataUrl" | "receiptId">
+): string | null {
+  const [remote, setRemote] = useState<{ id: string; url: string } | null>(null);
+  const id = g.receiptId;
+  const local = g.receiptDataUrl || "";
+  useEffect(() => {
+    if (local || !id) return;
+    let alive = true;
+    fetchReceipt(id).then((url) => {
+      if (alive && url) setRemote({ id, url });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [local, id]);
+  if (local) return local;
+  return remote && remote.id === id ? remote.url : null;
 }

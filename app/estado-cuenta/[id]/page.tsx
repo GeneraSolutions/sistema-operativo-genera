@@ -1,4 +1,5 @@
 import { PrintBar } from "@/components/informes/PrintBar";
+import { AcceptBox } from "@/components/solarwin/AcceptBox";
 import { AutoPrint } from "@/components/solarwin/AutoPrint";
 import { StatementDocument } from "@/components/solarwin/StatementDocument";
 import { getSolarwinStatement } from "@/lib/solarwin-share-server";
@@ -32,6 +33,7 @@ export default async function EstadoCuentaPage({
       <AutoPrint />
       <main className="px-4 py-8 sm:px-6">
         <StatementDocument statement={statement} />
+        <AcceptBox id={statement.id} initial={statement.acceptance ?? null} />
       </main>
     </div>
   );

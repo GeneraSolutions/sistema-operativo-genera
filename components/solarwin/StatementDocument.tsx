@@ -3,7 +3,9 @@ import {
   formatCOP,
   gastosOfEnvio,
   isDevolucion,
+  NO_CATEGORY,
   totalsAll,
+  totalsByCategory,
   totalsByPayer,
   totalsForEnvio,
   type SolarwinGasto,
@@ -46,6 +48,7 @@ export function StatementDocument({
   const over = all.excedeCOP > 0;
   const single = Boolean(statement.envioId);
   const payers = totalsByPayer(bundle);
+  const categories = totalsByCategory(bundle);
 
   // Anexo: todos los movimientos con foto de comprobante, en orden de envío.
   const receipts: { n: number; g: SolarwinGasto }[] = [];
@@ -130,6 +133,12 @@ export function StatementDocument({
                 {envio.closedAt ? ` · LIQUIDADO ${shortDate(envio.closedAt.slice(0, 10))}` : ""}
               </h2>
               {envio.notes ? <p className="gen-doc-hint">{envio.notes}</p> : null}
+              {envio.budgetCOP ? (
+                <p className="gen-doc-hint">
+                  Presupuesto de gastos {formatCOP(envio.budgetCOP)} · gastado{" "}
+                  {formatCOP(t.gastadoCOP)} ({Math.round((t.gastadoCOP / envio.budgetCOP) * 100)}%)
+                </p>
+              ) : null}
               <table
                 style={{
                   width: "100%",
@@ -185,6 +194,18 @@ export function StatementDocument({
                           {no ? (
                             <span style={{ color: "#8a6b2a", marginLeft: "0.4rem", fontSize: "0.75rem" }}>
                               [comprobante {no}]
+                            </span>
+                          ) : null}
+                          {g.category ? (
+                            <span
+                              style={{
+                                marginLeft: "0.4rem",
+                                color: "#2f5d46",
+                                fontSize: "0.72rem",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {g.category}
                             </span>
                           ) : null}
                           {g.paidBy || g.notes ? (
@@ -247,6 +268,34 @@ export function StatementDocument({
             </section>
           );
         })}
+
+        {categories.some((c) => c.category !== NO_CATEGORY) ? (
+          <section className="gen-doc-sec" style={{ breakInside: "avoid" }}>
+            <h2>Gasto por categoría</h2>
+            <table
+              style={{
+                width: "100%",
+                marginTop: "0.5rem",
+                borderCollapse: "collapse",
+                fontSize: "0.88rem",
+              }}
+            >
+              <tbody>
+                {categories.map((c) => (
+                  <tr key={c.category} style={{ borderTop: "1px solid #eee8dc" }}>
+                    <td style={cell}>{c.category}</td>
+                    <td style={{ ...cell, color: "#6d7c74", textAlign: "right" }}>
+                      {c.percent}%
+                    </td>
+                    <td style={{ ...cell, textAlign: "right", fontWeight: 600 }}>
+                      {formatCOP(c.totalCOP)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
 
         {payers.length ? (
           <section className="gen-doc-sec" style={{ breakInside: "avoid" }}>

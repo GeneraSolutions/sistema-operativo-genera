@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth/request";
 import { sessionAllowsModule } from "@/lib/auth/roles";
 import { saveSolarwinStatement } from "@/lib/solarwin-share-server";
+import { getSolarwinPhoto } from "@/lib/solarwin-photo-server";
 import {
   mergeSolarwinBundle,
   emptySolarwinBundle,
@@ -39,15 +40,24 @@ export async function POST(req: NextRequest) {
       );
     }
     const ids = new Set(envios.map((e) => e.id));
-    const gastos = normalized.gastos.filter(
+    const scoped = normalized.gastos.filter(
       (g) => !g.deletedAt && ids.has(g.envioId)
+    );
+    // Las fotos viven aparte: se incrustan aquí para que el documento sea
+    // un corte completo e inmutable.
+    const gastos = await Promise.all(
+      scoped.map(async (g) => {
+        if (!g.receiptId) return { ...g, receiptDataUrl: undefined };
+        const photo = await getSolarwinPhoto(g.receiptId);
+        return { ...g, receiptDataUrl: photo || undefined };
+      })
     );
     const statement: SolarwinStatement = {
       id: randomUUID(),
       createdAt: new Date().toISOString(),
       createdByName: session.name,
       envioId: body.envioId || undefined,
-      bundle: { envios, gastos },
+      bundle: { envios, gastos, docs: [] },
     };
     await saveSolarwinStatement(statement);
     return NextResponse.json({ id: statement.id, ok: true });

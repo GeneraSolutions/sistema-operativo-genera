@@ -4,7 +4,7 @@ import {
   storageGetJson,
   storagePutJson,
 } from "@/lib/supabase-storage";
-import type { SolarwinStatement } from "@/lib/solarwin";
+import type { SolarwinAcceptance, SolarwinStatement } from "@/lib/solarwin";
 
 function statementPath(id: string) {
   return `solarwin/${id.replace(/[^a-zA-Z0-9._-]+/g, "-")}.json`;
@@ -48,6 +48,23 @@ export async function saveSolarwinStatement(
   throw new Error(
     "La cuenta se envió al almacenamiento pero no se pudo confirmar. Intente de nuevo."
   );
+}
+
+/** Registra el "revisado y conforme". Solo se puede aceptar una vez. */
+export async function acceptSolarwinStatement(
+  id: string,
+  acceptance: SolarwinAcceptance
+): Promise<
+  | { ok: true; acceptance: SolarwinAcceptance }
+  | { ok: false; reason: "notfound" | "already"; acceptance?: SolarwinAcceptance }
+> {
+  const current = await readStatement(id);
+  if (!current) return { ok: false, reason: "notfound" };
+  if (current.acceptance) {
+    return { ok: false, reason: "already", acceptance: current.acceptance };
+  }
+  await saveSolarwinStatement({ ...current, acceptance });
+  return { ok: true, acceptance };
 }
 
 export async function getSolarwinStatement(

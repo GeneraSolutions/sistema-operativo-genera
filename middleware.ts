@@ -13,6 +13,7 @@ function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/vcard")) return true;
   if (pathname.startsWith("/propuesta")) return true;
   if (pathname.startsWith("/estado-cuenta/")) return true;
+  if (pathname.startsWith("/api/solarwin/aceptar/")) return true;
   if (pathname.startsWith("/informe/") || pathname === "/informe") return true;
   if (pathname.startsWith("/dictamen/") || pathname === "/dictamen") return true;
   if (pathname.startsWith("/api/auth/login")) return true;

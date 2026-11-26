@@ -14,25 +14,32 @@ import {
   ChevronRight,
   Copy,
   Download,
+  FileSpreadsheet,
   Handshake,
   Link2,
   Lock,
   LockOpen,
+  MessageCircle,
   Paperclip,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
   Undo2,
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import {
+  activeDocs,
   activeEnvios,
+  addDoc,
   blankEnvio,
   blankGasto,
+  budgetStatus,
   bundleForPublish,
   buildSolarwinSummary,
   closeEnvio,
+  downloadSolarwinCsv,
   emptySolarwinBundle,
   formatCOP,
   gastosOfEnvio,
@@ -42,12 +49,18 @@ import {
   loadSolarwinBundle,
   mergeSolarwinBundle,
   persistSolarwinCloud,
+  recordAcceptance,
+  reimburseAllFor,
+  removeDoc,
   removeEnvio,
   removeGasto,
   reopenEnvio,
   saveSolarwinBundle,
+  setReimbursed,
   totalsAll,
+  totalsByCategory,
   totalsByPayer,
+  totalsByProject,
   totalsForEnvio,
   upsertEnvio,
   upsertGasto,
@@ -56,7 +69,11 @@ import {
   type SolarwinEnvio,
   type SolarwinGasto,
 } from "@/lib/solarwin";
-import { attachReceipt } from "@/lib/solarwin-receipt";
+import {
+  attachReceipt,
+  uploadReceipt,
+  useReceiptUrl,
+} from "@/lib/solarwin-receipt";
 
 const field =
   "w-full rounded-xl border border-[#d8d2c4] bg-[#fbfaf6] px-3 py-2.5 text-sm";
@@ -205,7 +222,21 @@ function EnvioForm({
             placeholder="Ej. Instalación Sopó 12 kW"
           />
         </label>
-        <label className="text-sm sm:col-span-2">
+        <label className="text-sm">
+          Presupuesto de gastos (opcional)
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            className={`${field} mt-1`}
+            value={draft.budgetCOP || ""}
+            onChange={(e) =>
+              onChange({ ...draft, budgetCOP: Number(e.target.value) || undefined })
+            }
+            placeholder="Cuánto estimas gastar"
+          />
+        </label>
+        <label className="text-sm">
           Notas (opcional)
           <input
             className={`${field} mt-1`}
@@ -250,6 +281,7 @@ function GastoFields({
   const [reading, setReading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dev = isDevolucion(draft);
+  const previewUrl = useReceiptUrl(draft);
   const enter = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && onSubmit) onSubmit();
   };
@@ -263,6 +295,8 @@ function GastoFields({
       setDraft((prev) => ({
         ...prev,
         receiptDataUrl: patch.receiptDataUrl,
+        receiptId: patch.receiptId,
+        receiptUp: false,
         receiptName: patch.receiptName,
         concept: !prev.concept.trim() && patch.concept ? patch.concept : prev.concept,
         amountCOP: !prev.amountCOP && patch.amountCOP ? patch.amountCOP : prev.amountCOP,
@@ -332,19 +366,31 @@ function GastoFields({
         />
       </div>
 
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+      <div className="mt-2 grid gap-2 sm:grid-cols-3">
         {!dev ? (
-          <input
-            className={field}
-            list="sw-payers"
-            value={draft.paidBy || ""}
-            onChange={(e) => setDraft((d) => ({ ...d, paidBy: e.target.value }))}
-            onKeyDown={enter}
-            placeholder="Quién pagó (ej. Camilo, técnico, caja Genera)"
-          />
+          <>
+            <input
+              className={field}
+              list="sw-suggest"
+              value={draft.category || ""}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, category: e.target.value }))
+              }
+              onKeyDown={enter}
+              placeholder="Categoría (ej. Transporte)"
+            />
+            <input
+              className={field}
+              list="sw-payers"
+              value={draft.paidBy || ""}
+              onChange={(e) => setDraft((d) => ({ ...d, paidBy: e.target.value }))}
+              onKeyDown={enter}
+              placeholder="Quién pagó (ej. Camilo, técnico)"
+            />
+          </>
         ) : null}
         <input
-          className={`${field} ${dev ? "sm:col-span-2" : ""}`}
+          className={`${field} ${dev ? "sm:col-span-3" : ""}`}
           value={draft.notes || ""}
           onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
           onKeyDown={enter}
@@ -369,18 +415,24 @@ function GastoFields({
           <Paperclip size={14} />
           {reading
             ? "Leyendo…"
-            : draft.receiptDataUrl
+            : draft.receiptId
               ? "Cambiar comprobante"
               : "Adjuntar comprobante (foto o PDF)"}
         </button>
-        {draft.receiptDataUrl ? (
+        {draft.receiptId ? (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={draft.receiptDataUrl}
-              alt="Comprobante"
-              className="h-10 w-10 rounded-lg border border-[#ddd6c8] object-cover"
-            />
+            {previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewUrl}
+                alt="Comprobante"
+                className="h-10 w-10 rounded-lg border border-[#ddd6c8] object-cover"
+              />
+            ) : (
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-dashed border-[#ddd6c8] text-[10px] text-[#6d7c74]">
+                …
+              </span>
+            )}
             <span className="max-w-[12rem] truncate text-xs text-[#6d7c74]">
               {draft.receiptName}
             </span>
@@ -393,6 +445,8 @@ function GastoFields({
                 setDraft((d) => ({
                   ...d,
                   receiptDataUrl: "",
+                  receiptId: "",
+                  receiptUp: false,
                   receiptName: "",
                 }))
               }
@@ -415,6 +469,7 @@ function GastoRow({
   locked,
   onSave,
   onDelete,
+  onReimburse,
   onFlash,
   onViewReceipt,
 }: {
@@ -422,12 +477,14 @@ function GastoRow({
   locked: boolean;
   onSave: (next: SolarwinGasto) => void;
   onDelete: () => void;
+  onReimburse: (on: boolean) => void;
   onFlash: (msg: string) => void;
   onViewReceipt: (url: string, title: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(gasto);
   const dev = isDevolucion(gasto);
+  const photo = useReceiptUrl(gasto);
 
   if (editing) {
     return (
@@ -474,20 +531,29 @@ function GastoRow({
       }`}
     >
       <div className="flex min-w-0 items-start gap-3">
-        {gasto.receiptDataUrl ? (
-          <button
-            type="button"
-            className="shrink-0"
-            title="Ver comprobante"
-            onClick={() => onViewReceipt(gasto.receiptDataUrl!, gasto.concept)}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={gasto.receiptDataUrl}
-              alt="Comprobante"
-              className="h-11 w-11 rounded-lg border border-[#ddd6c8] object-cover"
-            />
-          </button>
+        {gasto.receiptId ? (
+          photo ? (
+            <button
+              type="button"
+              className="shrink-0"
+              title="Ver comprobante"
+              onClick={() => onViewReceipt(photo, gasto.concept)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo}
+                alt="Comprobante"
+                className="h-11 w-11 rounded-lg border border-[#ddd6c8] object-cover"
+              />
+            </button>
+          ) : (
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-dashed border-[#ddd6c8] text-[10px] text-[#6d7c74]"
+              title="Cargando comprobante…"
+            >
+              …
+            </span>
+          )
         ) : null}
         <div className="min-w-0">
           <p className="text-sm font-medium text-[#10231a]">
@@ -497,12 +563,37 @@ function GastoRow({
               </span>
             ) : null}
             {gasto.concept}
+            {gasto.category ? (
+              <span className="ml-2 rounded-full bg-[#eef3ee] px-2 py-0.5 text-[11px] font-semibold text-[#2f5d46]">
+                {gasto.category}
+              </span>
+            ) : null}
           </p>
           <p className="text-xs text-[#6d7c74]">
             {gasto.date}
             {gasto.paidBy ? ` · pagó ${gasto.paidBy}` : ""}
             {gasto.notes ? ` · ${gasto.notes}` : ""}
           </p>
+          {gasto.paidBy && !dev ? (
+            <button
+              type="button"
+              className={`mt-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                gasto.reimbursedAt
+                  ? "border-[#bcd6c6] bg-[#f1f8f3] text-[#1f6b45]"
+                  : "border-[#e8d3a0] bg-[#fdf6e3] text-[#8a6b2a]"
+              }`}
+              title={
+                gasto.reimbursedAt
+                  ? "Ya se le repuso. Clic para desmarcar."
+                  : `Marcar que ya se le repuso a ${gasto.paidBy}`
+              }
+              onClick={() => onReimburse(!gasto.reimbursedAt)}
+            >
+              {gasto.reimbursedAt
+                ? `✓ Repuesto a ${gasto.paidBy}`
+                : `Por reponer a ${gasto.paidBy}`}
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -553,11 +644,13 @@ function EnvioCard({
   onDelete,
   onPdf,
   onLink,
+  onWhatsapp,
   onClose,
   onReopen,
   onAddGasto,
   onSaveGasto,
   onDeleteGasto,
+  onReimburse,
   onFlash,
   onViewReceipt,
 }: {
@@ -570,15 +663,18 @@ function EnvioCard({
   onDelete: () => void;
   onPdf: () => void;
   onLink: () => void;
+  onWhatsapp: () => void;
   onClose: () => void;
   onReopen: () => void;
   onAddGasto: (g: SolarwinGasto) => void;
   onSaveGasto: (g: SolarwinGasto) => void;
   onDeleteGasto: (id: string) => void;
+  onReimburse: (gastoId: string, on: boolean) => void;
   onFlash: (msg: string) => void;
   onViewReceipt: (url: string, title: string) => void;
 }) {
   const totals = totalsForEnvio(bundle, envio.id);
+  const budget = budgetStatus(envio.budgetCOP, totals.gastadoCOP);
   const gastos = gastosOfEnvio(bundle, envio.id);
   const [draft, setDraft] = useState<SolarwinGasto>(() => blankGasto(envio.id));
   const conceptRef = useRef<HTMLInputElement>(null);
@@ -670,6 +766,37 @@ function EnvioCard({
             : ""}{" "}
           · {totals.usedPercent}% del envío
         </p>
+        {budget ? (
+          <div className="mt-2">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#ece6d8]">
+              <div
+                className={`h-full rounded-full ${
+                  budget.level === "over"
+                    ? "bg-[#c0483a]"
+                    : budget.level === "warn"
+                      ? "bg-[#d99a1f]"
+                      : "bg-[#5b8fc7]"
+                }`}
+                style={{ width: `${Math.min(100, budget.percent)}%` }}
+              />
+            </div>
+            <p
+              className={`mt-1 text-xs ${
+                budget.level === "over"
+                  ? "font-semibold text-[#9b3b2e]"
+                  : budget.level === "warn"
+                    ? "font-semibold text-[#8a6b2a]"
+                    : "text-[#6d7c74]"
+              }`}
+            >
+              Presupuesto {formatCOP(budget.budgetCOP)} · gastado {budget.percent}%
+              {budget.level === "over"
+                ? ` · te pasaste ${formatCOP(Math.abs(budget.restanteCOP))}`
+                : ` · quedan ${formatCOP(budget.restanteCOP)}`}
+              {budget.level === "warn" ? " · cerca del límite" : ""}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       {expanded ? (
@@ -730,6 +857,7 @@ function EnvioCard({
                   locked={closed}
                   onSave={onSaveGasto}
                   onDelete={() => onDeleteGasto(g.id)}
+                  onReimburse={(on) => onReimburse(g.id, on)}
                   onFlash={onFlash}
                   onViewReceipt={onViewReceipt}
                 />
@@ -779,6 +907,15 @@ function EnvioCard({
               <Link2 size={14} />
               Enlace
             </button>
+            <button
+              type="button"
+              className="os-btn os-btn-ghost text-xs"
+              disabled={busy}
+              onClick={onWhatsapp}
+            >
+              <MessageCircle size={14} />
+              WhatsApp
+            </button>
             {!closed ? (
               <>
                 <button
@@ -821,6 +958,7 @@ export default function SolarwinGastosPage() {
   );
   const bundleRef = useRef(bundle);
   const writeGen = useRef(0);
+  const uploading = useRef(new Map<string, Promise<boolean>>());
 
   const apply = useCallback((next: SolarwinBundle) => {
     bundleRef.current = next;
@@ -875,6 +1013,9 @@ export default function SolarwinGastosPage() {
   const all = totalsAll(bundle);
   const over = all.excedeCOP > 0;
   const payers = totalsByPayer(bundle);
+  const categories = totalsByCategory(bundle);
+  const projects = totalsByProject(bundle);
+  const docs = activeDocs(bundle);
   const closedCount = envios.filter((e) => e.closedAt).length;
 
   function openNew() {
@@ -912,12 +1053,60 @@ export default function SolarwinGastosPage() {
     setFlash("Envío liquidado. Genera el PDF para dejar la constancia.");
   }
 
-  /** Publica un corte congelado y devuelve su URL pública. */
-  async function publish(envioId?: string): Promise<string> {
-    const { bundle: scoped, droppedReceipts } = bundleForPublish(
-      bundleRef.current,
-      envioId
+  /** Sube las fotos pendientes; devuelve true si todas quedaron en el servidor. */
+  async function flushUploads(): Promise<boolean> {
+    const pending = bundleRef.current.gastos.filter(
+      (g) => !g.deletedAt && g.receiptDataUrl && g.receiptId && !g.receiptUp
     );
+    if (!pending.length) return true;
+    let allOk = true;
+    for (const g of pending) {
+      let job = uploading.current.get(g.id);
+      if (!job) {
+        job = uploadReceipt(g.receiptId!, g.receiptDataUrl!);
+        uploading.current.set(g.id, job);
+      }
+      const ok = await job;
+      uploading.current.delete(g.id);
+      if (!ok) {
+        allOk = false;
+        continue;
+      }
+      const cur = bundleRef.current;
+      const now = new Date().toISOString();
+      apply({
+        ...cur,
+        gastos: cur.gastos.map((x) =>
+          x.id === g.id && x.receiptId === g.receiptId
+            ? { ...x, receiptUp: true, updatedAt: now }
+            : x
+        ),
+      });
+    }
+    return allOk;
+  }
+
+  // Las fotos de comprobantes se suben solas, aparte de las cuentas.
+  useEffect(() => {
+    if (!ready) return;
+    const needs = bundle.gastos.some(
+      (g) =>
+        !g.deletedAt &&
+        g.receiptDataUrl &&
+        g.receiptId &&
+        !g.receiptUp &&
+        !uploading.current.has(g.id)
+    );
+    if (needs) void flushUploads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bundle, ready]);
+
+  /** Publica un corte congelado y devuelve su id y URL pública. */
+  async function publish(
+    envioId?: string
+  ): Promise<{ id: string; url: string; label: string }> {
+    const uploaded = await flushUploads();
+    const scoped = bundleForPublish(bundleRef.current, envioId);
     const res = await fetch("/api/solarwin/publicar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -927,12 +1116,94 @@ export default function SolarwinGastosPage() {
     if (!res.ok || !data.id) {
       throw new Error(data.error || "No se pudo generar el documento.");
     }
-    if (droppedReceipts) {
+    if (!uploaded) {
       setFlash(
-        "Ojo: había tantos comprobantes que el documento salió sin fotos. Genera uno por envío para incluirlas."
+        "Ojo: algún comprobante no se pudo subir y puede faltar en el documento. Revisa tu conexión y genera otro."
       );
     }
-    return `${window.location.origin}/estado-cuenta/${data.id}`;
+    const envio = envioId
+      ? bundleRef.current.envios.find((e) => e.id === envioId)
+      : undefined;
+    const label = envio
+      ? `${envio.concept || "Envío"}${envio.project ? ` · ${envio.project}` : ""}`
+      : "Cuenta general";
+    apply(addDoc(bundleRef.current, { id: data.id, envioId, label }));
+    return {
+      id: data.id as string,
+      url: `${window.location.origin}/estado-cuenta/${data.id}`,
+      label,
+    };
+  }
+
+  /** Consulta si Solar win ya confirmó los documentos pendientes. */
+  async function refreshAcceptances(silent = false) {
+    const pending = activeDocs(bundleRef.current).filter((d) => !d.acceptedAt);
+    if (!pending.length) {
+      if (!silent) setFlash("No hay documentos pendientes de confirmar.");
+      return;
+    }
+    let found = 0;
+    for (const d of pending.slice(0, 20)) {
+      try {
+        const res = await fetch(`/api/solarwin/aceptar/${d.id}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) continue;
+        const data = (await res.json()) as {
+          acceptance?: { name: string; note?: string; at: string } | null;
+        };
+        if (data.acceptance) {
+          found += 1;
+          apply(recordAcceptance(bundleRef.current, d.id, data.acceptance));
+        }
+      } catch {
+        /* se reintenta la próxima vez */
+      }
+    }
+    if (!silent) {
+      setFlash(
+        found
+          ? `${found} documento(s) confirmado(s) por Solar win.`
+          : "Aún nadie ha confirmado."
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (!ready) return;
+    void refreshAcceptances(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
+  async function shareWhatsapp(envioId?: string) {
+    const tab = window.open("", "_blank");
+    setBusy(true);
+    setError(null);
+    try {
+      const { url, label } = await publish(envioId);
+      const t = envioId
+        ? totalsForEnvio(bundleRef.current, envioId)
+        : totalsAll(bundleRef.current);
+      const saldo =
+        t.excedeCOP > 0
+          ? `Excedido ${formatCOP(t.excedeCOP)}`
+          : `Saldo ${formatCOP(t.disponibleCOP)}`;
+      const text = [
+        `Hola, te comparto el estado de cuenta de Solar win (${label}).`,
+        `Enviado ${formatCOP(t.enviadoCOP)} · Gastado ${formatCOP(t.gastadoCOP)}${
+          t.devueltoCOP ? ` · Devuelto ${formatCOP(t.devueltoCOP)}` : ""
+        } · ${saldo}.`,
+        `Revísalo y confírmalo aquí: ${url}`,
+      ].join("\n");
+      const wa = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      if (tab) tab.location.href = wa;
+      else window.location.href = wa;
+    } catch (e) {
+      tab?.close();
+      setError(e instanceof Error ? e.message : "No se pudo preparar el mensaje.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function sharePdf(envioId?: string) {
@@ -941,7 +1212,7 @@ export default function SolarwinGastosPage() {
     setBusy(true);
     setError(null);
     try {
-      const url = await publish(envioId);
+      const { url } = await publish(envioId);
       if (tab) tab.location.href = `${url}?imprimir=1`;
       else window.location.href = `${url}?imprimir=1`;
       setFlash((f) => f ?? "PDF listo · en la ventana elige “Guardar como PDF”.");
@@ -957,7 +1228,7 @@ export default function SolarwinGastosPage() {
     setBusy(true);
     setError(null);
     try {
-      const url = await publish(envioId);
+      const { url } = await publish(envioId);
       try {
         await navigator.clipboard.writeText(url);
         setFlash((f) => f ?? "Enlace copiado. Quien lo abra ve las cuentas a esta fecha.");
@@ -1068,6 +1339,25 @@ export default function SolarwinGastosPage() {
                 {copied ? <Check size={16} /> : <Copy size={16} />}
                 {copied ? "Texto copiado" : "Copiar como texto"}
               </button>
+              <button
+                type="button"
+                className="os-btn os-btn-ghost text-sm"
+                onClick={() => void shareWhatsapp()}
+                disabled={!envios.length || busy}
+              >
+                <MessageCircle size={16} />
+                WhatsApp
+              </button>
+              <button
+                type="button"
+                className="os-btn os-btn-ghost text-sm"
+                onClick={() => downloadSolarwinCsv(bundleRef.current)}
+                disabled={!envios.length}
+                title="Descargar una hoja que abre en Excel"
+              >
+                <FileSpreadsheet size={16} />
+                Excel (CSV)
+              </button>
             </div>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1101,20 +1391,224 @@ export default function SolarwinGastosPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-[#6d7c74]">
                 Quién puso la plata
               </p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {payers.map((p) => (
-                  <span
+                  <div
                     key={p.name}
-                    className="rounded-full border border-[#e1dac9] bg-[#fbfaf6] px-3 py-1 text-xs"
+                    className="rounded-xl border border-[#e1dac9] bg-[#fbfaf6] px-3 py-2 text-xs"
                   >
-                    {p.name}{" "}
-                    <strong className="tabular-nums">{formatCOP(p.totalCOP)}</strong>
-                  </span>
+                    <p className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-[#10231a]">{p.name}</span>
+                      <span className="tabular-nums">{formatCOP(p.totalCOP)}</span>
+                    </p>
+                    {p.pendingCOP > 0 ? (
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <span className="font-semibold text-[#8a6b2a]">
+                          Por reponer {formatCOP(p.pendingCOP)}
+                        </span>
+                        <button
+                          type="button"
+                          className="rounded-full border border-[#e8d3a0] bg-[#fdf6e3] px-2 py-0.5 font-semibold text-[#8a6b2a]"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `¿Marcar como repuestos los ${formatCOP(p.pendingCOP)} de ${p.name}?`
+                              )
+                            ) {
+                              apply(reimburseAllFor(bundleRef.current, p.name));
+                            }
+                          }}
+                        >
+                          Ya le repuse
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-1 font-semibold text-[#1f6b45]">
+                        ✓ Todo repuesto
+                      </p>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
           ) : null}
+          {categories.some((c) => c.category !== "Sin categoría") ? (
+            <div className="mt-4 border-t border-[#eee8dc] pt-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-[#6d7c74]">
+                En qué se va la plata
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {categories.map((c) => (
+                  <li key={c.category} className="text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-[#10231a]">
+                        {c.category}{" "}
+                        <span className="font-normal text-[#6d7c74]">
+                          ({c.count})
+                        </span>
+                      </span>
+                      <span className="tabular-nums">
+                        {formatCOP(c.totalCOP)}{" "}
+                        <span className="text-[#6d7c74]">· {c.percent}%</span>
+                      </span>
+                    </div>
+                    <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-[#ece6d8]">
+                      <div
+                        className="h-full rounded-full bg-[#2f7d57]"
+                        style={{ width: `${c.percent}%` }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {projects.length ? (
+            <div className="mt-4 border-t border-[#eee8dc] pt-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-[#6d7c74]">
+                Por proyecto
+              </p>
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[34rem] text-xs">
+                  <thead>
+                    <tr className="text-left text-[#6d7c74]">
+                      <th className="py-1 font-medium">Proyecto</th>
+                      <th className="py-1 text-right font-medium">Enviado</th>
+                      <th className="py-1 text-right font-medium">Gastado</th>
+                      <th className="py-1 text-right font-medium">Presupuesto</th>
+                      <th className="py-1 text-right font-medium">Disponible</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projects.map((p) => {
+                      const b = budgetStatus(p.budgetCOP, p.gastadoCOP);
+                      return (
+                        <tr key={p.project} className="border-t border-[#eee8dc]">
+                          <td className="py-1.5 font-medium text-[#10231a]">
+                            {p.project}
+                          </td>
+                          <td className="py-1.5 text-right tabular-nums">
+                            {formatCOP(p.enviadoCOP)}
+                          </td>
+                          <td className="py-1.5 text-right tabular-nums">
+                            {formatCOP(p.gastadoCOP)}
+                          </td>
+                          <td
+                            className={`py-1.5 text-right tabular-nums ${
+                              b?.level === "over"
+                                ? "font-semibold text-[#9b3b2e]"
+                                : b?.level === "warn"
+                                  ? "font-semibold text-[#8a6b2a]"
+                                  : ""
+                            }`}
+                          >
+                            {b ? `${formatCOP(b.budgetCOP)} · ${b.percent}%` : "—"}
+                          </td>
+                          <td
+                            className={`py-1.5 text-right tabular-nums ${
+                              p.disponibleCOP < 0
+                                ? "font-semibold text-[#9b3b2e]"
+                                : "text-[#0f6b45]"
+                            }`}
+                          >
+                            {formatCOP(p.disponibleCOP)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
         </section>
+
+        {docs.length ? (
+          <section className="os-panel rounded-2xl border border-[#ddd6c8] bg-white p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold">Documentos compartidos</h2>
+                <p className="text-sm text-[#6d7c74]">
+                  Ve cuáles ya confirmó Solar win con “Revisado y conforme”.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="os-btn os-btn-ghost text-sm"
+                onClick={() => void refreshAcceptances(false)}
+              >
+                <RefreshCw size={16} />
+                Actualizar
+              </button>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {docs.slice(0, 12).map((d) => (
+                <li
+                  key={d.id}
+                  className="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-[#eee8dc] px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[#10231a]">{d.label}</p>
+                    <p className="text-xs text-[#6d7c74]">
+                      Enviado {longDate(d.createdAt)}
+                    </p>
+                    {d.acceptedAt ? (
+                      <p className="mt-1 text-xs font-semibold text-[#1f6b45]">
+                        ✓ Conforme · {d.acceptedBy} · {longDate(d.acceptedAt)}
+                        {d.acceptedNote ? (
+                          <span className="block font-normal text-[#4d5c55]">
+                            “{d.acceptedNote}”
+                          </span>
+                        ) : null}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs font-semibold text-[#8a6b2a]">
+                        Pendiente de revisión
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <a
+                      className="os-btn os-btn-ghost text-xs"
+                      href={`/estado-cuenta/${d.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Abrir
+                    </a>
+                    <button
+                      type="button"
+                      className="os-icon-btn"
+                      title="Copiar enlace"
+                      aria-label="Copiar enlace"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(
+                            `${window.location.origin}/estado-cuenta/${d.id}`
+                          );
+                          setFlash("Enlace copiado.");
+                        } catch {
+                          setError("No se pudo copiar el enlace.");
+                        }
+                      }}
+                    >
+                      <Link2 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="os-icon-btn text-[#9b3b2e]"
+                      title="Quitar de la lista"
+                      aria-label="Quitar de la lista"
+                      onClick={() => apply(removeDoc(bundleRef.current, d.id))}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         {draftEnvio ? (
           <EnvioForm
@@ -1160,6 +1654,10 @@ export default function SolarwinGastosPage() {
             onDelete={() => deleteEnvio(envio)}
             onPdf={() => void sharePdf(envio.id)}
             onLink={() => void shareLink(envio.id)}
+            onWhatsapp={() => void shareWhatsapp(envio.id)}
+            onReimburse={(gid, on) =>
+              apply(setReimbursed(bundleRef.current, gid, on))
+            }
             onClose={() => liquidar(envio)}
             onReopen={() => apply(reopenEnvio(bundleRef.current, envio.id))}
             onAddGasto={(g) => apply(upsertGasto(bundleRef.current, g))}
