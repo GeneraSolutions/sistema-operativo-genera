@@ -36,6 +36,7 @@ const NAV: {
   { href: "/om", label: "O&M", hint: "Plantas y calendario", group: "operacion", module: "om" },
   { href: "/obra", label: "Obra", hint: "Avance y trámites", group: "operacion", module: "obra" },
   { href: "/gastos", label: "Gastos", hint: "Compras y pagos", group: "operacion", module: "gastos" },
+  { href: "/solarwin/gastos", label: "Gastos", hint: "Dinero enviado y gastos", group: "solarwin", module: "solarwin" },
   { href: "/archivo", label: "Archivo", hint: "Guardados", group: "recursos", module: "archivo" },
   { href: "/inventario", label: "Inventario", hint: "Catálogo & TRM", group: "recursos", module: "inventario" },
   { href: "/inteligencia", label: "Inteligencia", hint: "Especialistas AI", group: "recursos", module: "inteligencia" },

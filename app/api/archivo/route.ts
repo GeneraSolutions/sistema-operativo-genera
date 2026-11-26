@@ -7,6 +7,7 @@ import {
   loadArchivoQuotes,
   loadArchivoReports,
   loadArchivoSizingDoctrine,
+  loadArchivoSolarwin,
   loadArchivoVisits,
   removeArchivoLead,
   removeArchivoObra,
@@ -23,6 +24,7 @@ import {
   upsertArchivoReport,
   upsertArchivoReports,
   upsertArchivoSizingDoctrine,
+  upsertArchivoSolarwin,
   upsertArchivoVisit,
   upsertArchivoVisits,
 } from "@/lib/archivo-server";
@@ -36,6 +38,7 @@ import type { SavedVisit } from "@/lib/saved-visits";
 import type { PlantProfile, SavedReport } from "@/lib/technical-reports";
 import type { SizingDoctrine } from "@/lib/sizing-doctrine";
 import type { GastoBundle } from "@/lib/gastos";
+import type { SolarwinBundle } from "@/lib/solarwin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +79,7 @@ async function payload(session: { id: string; username: string }, aliado: boolea
       leads: [],
       sizingDoctrine: null,
       gastos: null,
+      solarwin: null,
     };
   }
   return {
@@ -87,6 +91,7 @@ async function payload(session: { id: string; username: string }, aliado: boolea
     leads: await loadArchivoLeads(),
     sizingDoctrine: await loadArchivoSizingDoctrine(),
     gastos: await loadArchivoGastos(),
+    solarwin: await loadArchivoSolarwin(),
   };
 }
 
@@ -113,6 +118,7 @@ export async function POST(req: NextRequest) {
     leads?: CommercialLead[];
     sizingDoctrine?: SizingDoctrine;
     gastos?: GastoBundle;
+    solarwin?: SolarwinBundle;
   };
   const stampQuote = (q: SavedQuote): SavedQuote => ({
     ...q,
@@ -130,7 +136,8 @@ export async function POST(req: NextRequest) {
       body.obras ||
       body.leads ||
       body.sizingDoctrine ||
-      body.gastos
+      body.gastos ||
+      body.solarwin
     ) {
       return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
     }
@@ -144,6 +151,9 @@ export async function POST(req: NextRequest) {
   }
   if (body.gastos && !gate.aliado) {
     await upsertArchivoGastos(body.gastos);
+  }
+  if (body.solarwin && !gate.aliado) {
+    await upsertArchivoSolarwin(body.solarwin);
   }
   if (body.visit?.id) await upsertArchivoVisit(body.visit);
   if (body.visits?.length) await upsertArchivoVisits(body.visits);

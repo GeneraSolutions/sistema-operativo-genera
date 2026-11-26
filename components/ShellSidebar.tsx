@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   Clapperboard,
   FileText,
+  Handshake,
   HardHat,
   LayoutDashboard,
   LogOut,
@@ -36,16 +37,28 @@ export type ShellNavItem = {
   group: ShellNavGroup;
 };
 
-export type ShellNavGroup = "comercial" | "operacion" | "recursos" | "admin";
+export type ShellNavGroup =
+  | "comercial"
+  | "operacion"
+  | "solarwin"
+  | "recursos"
+  | "admin";
 
 const GROUP_LABELS: Record<ShellNavGroup, string> = {
   comercial: "Comercial",
   operacion: "Operación",
+  solarwin: "Solar win",
   recursos: "Recursos",
   admin: "Administración",
 };
 
-const GROUP_ORDER: ShellNavGroup[] = ["comercial", "operacion", "recursos", "admin"];
+const GROUP_ORDER: ShellNavGroup[] = [
+  "comercial",
+  "operacion",
+  "solarwin",
+  "recursos",
+  "admin",
+];
 
 const ICONS: Record<string, LucideIcon> = {
   "/inicio": LayoutDashboard,
@@ -58,6 +71,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/om": Wrench,
   "/obra": HardHat,
   "/gastos": Wallet,
+  "/solarwin/gastos": Handshake,
   "/archivo": Archive,
   "/inventario": Boxes,
   "/inteligencia": Sparkles,

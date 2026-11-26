@@ -17,6 +17,11 @@ import {
   mergeGastoBundle,
   type GastoBundle,
 } from "@/lib/gastos";
+import {
+  emptySolarwinBundle,
+  mergeSolarwinBundle,
+  type SolarwinBundle,
+} from "@/lib/solarwin";
 
 const QUOTES_KEY = "genera:archivo-quotes";
 const VISITS_KEY = "genera:archivo-visits";
@@ -29,6 +34,7 @@ const OBRAS_KEY = "genera:archivo-obras";
 const LEADS_KEY = "genera:archivo-leads";
 const DOCTRINE_KEY = "genera:archivo-sizing-doctrine";
 const GASTOS_KEY = "genera:archivo-gastos";
+const SOLARWIN_KEY = "genera:archivo-solarwin";
 
 function quoteItemKey(id: string) {
   return `genera:archivo-quote:${id}`;
@@ -344,4 +350,19 @@ export async function upsertArchivoGastos(
   };
   await persistSet(GASTOS_KEY, slim);
   return slim;
+}
+
+export async function loadArchivoSolarwin(): Promise<SolarwinBundle | null> {
+  const stored = await persistGet<SolarwinBundle>(SOLARWIN_KEY);
+  if (!stored || typeof stored !== "object") return null;
+  return mergeSolarwinBundle(emptySolarwinBundle(), stored);
+}
+
+export async function upsertArchivoSolarwin(
+  incoming: SolarwinBundle
+): Promise<SolarwinBundle> {
+  const current = (await loadArchivoSolarwin()) ?? emptySolarwinBundle();
+  const merged = mergeSolarwinBundle(incoming, current);
+  await persistSet(SOLARWIN_KEY, merged);
+  return merged;
 }
